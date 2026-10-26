@@ -32,6 +32,13 @@ except Exception:  # missing package, or an sqlite3 without extension loading
     VEC = False
 
 
+
+class EnvironmentTests(unittest.TestCase):
+    def test_sqlite_vec_loads_where_required(self):
+        """CI sets SYNAPSE_REQUIRE_VEC=1 so the retrieval tests cannot skip silently."""
+        if os.environ.get("SYNAPSE_REQUIRE_VEC") == "1":
+            self.assertTrue(VEC, "sqlite-vec cannot load in this Python; the retrieval tests would skip")
+
 def fake_embed(text: str, input_type: str = "document") -> list[float]:
     """Each word lights a few dimensions, so texts sharing words are near."""
     v = [0.0] * extract.EMBEDDING_DIM
