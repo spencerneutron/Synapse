@@ -66,22 +66,25 @@ Optional filters when relevant:
 - `--project <name>` — limit to one project's archives
 - `--type decision|pattern|archive` — limit to one note type (Session notes
   are not embedded)
+- `--mode hybrid|vector|keyword` — default `hybrid` (meaning and exact words
+  together); `keyword` for an exact identifier, file name, or issue number
+- `--include-superseded` — also return replaced decisions, labeled
 - `--top-k N` — default 5; raise to 8–10 for broader scans, lower to 3 for
   precision-critical lookups
 - `--since YYYY-MM-DD` — only chunks embedded on or after that date
 
-With a filter, the search widens until it finds `--top-k` matches or has
-covered the whole store, so a filtered query returns fewer hits only when
-fewer exist.
+Filters are exact and run inside the search; `--project` ignores case.
+Superseded decisions are hidden unless `--include-superseded` is passed.
 
 ### 3. Read the output structure
 
 Each result is one ranked hit:
 
 ```
-  N. [score] breadcrumb
+  N. [score] breadcrumb  (match)
      source path
      project: X  type: Y
+     SUPERSEDED by <note>        (only with --include-superseded)
      snippet (200 chars max)
 ```
 
@@ -89,6 +92,9 @@ Each result is one ranked hit:
   A cluster of similar scores (e.g., all 0.62–0.65) usually means the
   query is too generic or the corpus is small — none of the hits is
   dramatically better than the others.
+- **Match** says which search found the hit: `vector` (meaning),
+  `keyword` (exact words), or `both`. A `keyword` hit with a low score can
+  still be the right one for an identifier query.
 - **Breadcrumb** shows the file and the heading path to the chunk.
 - **Source path** is the archive file or vault note the chunk came from.
   Archive files print as full paths in the store. Vault notes print as

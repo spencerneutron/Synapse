@@ -68,12 +68,13 @@ def main(argv: list[str] | None = None) -> int:
     for name, store_path in paths.configured_stores().items():
         (store_path / "archive").mkdir(parents=True, exist_ok=True)
         db = store_path / "vectors.db"
-        init = subprocess.run([str(vp), str(CLI), "extract", "--db", str(db), "init"],
+        init = subprocess.run([str(vp), str(CLI), "extract", "--db", str(db), "upgrade"],
                               capture_output=True, text=True)
         if init.returncode:
             step("FAILED", f"store {name!r}: {init.stderr.strip() or init.stdout.strip()}")
             return 1
-        step("ready", f"store {name!r} at {doctor.tilde(store_path)}")
+        note = " (upgraded to schema v2; backup kept)" if "upgraded" in init.stdout else ""
+        step("ready", f"store {name!r} at {doctor.tilde(store_path)}{note}")
 
     todo = []
     reachable, has_model = doctor.check_ollama()

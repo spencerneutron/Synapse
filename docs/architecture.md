@@ -53,10 +53,10 @@ it harvests finished agents' results from disk before anything is relaunched.
 | Skills | `/synapse:language-sweep` | Prose cleanup in strict ASD-STE100 or lite marketing-copy mode |
 | Skills | `/synapse:setup`, `/synapse:doctor` | Provision the Synapse home; read-only health and conflict report |
 | Hooks | `emission_check.py` (Stop) | Blocks a non-compliant final message once and asks for a rewrite; allows the stop on `stop_hook_active` or any internal error |
-| CLI | `bin/synapse` → `lib/synapse/` | On the Bash PATH from any folder: `where`, `setup`, `doctor`, `archive`, `recall`, `extract`, `vault`, `backfill`, `migrate`; `lib/py.sh` finds Python 3.11+ |
+| CLI | `bin/synapse` → `lib/synapse/` | On the Bash PATH from any folder: `where`, `setup`, `doctor`, `archive`, `recall`, `recall-check`, `extract` (incl. `upgrade`, `supersede`), `vault`, `backfill`, `migrate`; `lib/py.sh` finds Python 3.11+ |
 | Resolver | `lib/synapse/paths.py` | The only code that decides locations: home, store, project, archive, DB, vault |
 | Store | `~/.claude/synapse/stores/<store>/archive/<project>/` | Canonical session history |
-| Store | `~/.claude/synapse/stores/<store>/vectors.db` | sqlite-vec, `nomic-embed-text` via Ollama, cosine distance, model stamped per chunk, store-relative source paths |
+| Store | `~/.claude/synapse/stores/<store>/vectors.db` | Schema v2: sqlite-vec vectors with project/type/status metadata filtered inside the search, an FTS5 keyword index, `nomic-embed-text` via Ollama, cosine distance, store-relative source paths, supersession status |
 | Store | The store's Obsidian vault (default `Synapse`) | Flat folders: Sessions, Decisions, Patterns, Projects |
 | Runtime | Claude Code, auto mode | Controls live in the harness instead of permission prompts |
 
@@ -169,15 +169,15 @@ V1 enforces the output contract with a hook but leaves recall, extraction, and
 role selection to instructions. Each row is a place where probabilistic
 triggering could become deterministic, at some cost.
 
-| Seam | v1.6 today | V2 option | Trade-off |
+| Seam | 2.0 today | V2 option | Trade-off |
 |------|------------|-----------|-----------|
 | Recall triggering | The core rules ask Claude to recall when work resembles prior work | A prompt-submit hook runs `synapse recall` and injects top-k pointers | Never misses; adds tokens every turn and risks noise on unrelated prompts |
 | Extraction | The user runs `/synapse:extract-session` at teardown | `/synapse:end-session` chains it, or a session-end hook queues it | No forgotten sessions; teardown judgment needs live context, so a detached hook loses quality |
 | Role orchestration | Waves and model tiers described in the core rules | Roles as agent definition files with model frontmatter | Right-sizing becomes config, not persuasion; more files to maintain |
-| Memory hygiene | `supersedes` links exist, but the superseded note stays `active` | Extraction flips the old note's status | Recall stops surfacing stale decisions; extraction gets heavier |
-| Retrieval | Pure vector search, ~500-word heading chunks; project and type filters widen the search until enough rows pass | Hybrid keyword plus vector, filtered by project and type | Better exact-name lookups; one more index to keep in sync |
+| Memory hygiene | **Done in V2 slice 1:** `synapse extract supersede` marks the old decision in the DB and its front matter; recall hides it by default | Detect likely supersessions during extraction | Fewer near-duplicate decisions left active |
+| Retrieval | **Done in V2 slice 1:** hybrid keyword + vector with reciprocal rank fusion; exact, case-insensitive filters inside the search | Tuned chunking; a cross-encoder re-ranker | Measured with `synapse recall-check` |
 | Memory scope | Local, single user | Shared team store | Team leverage; poisoned entries propagate and secrets can leak across people. **Gate:** extraction must first scrub session-local references (bare `#17`, "Wave B", "yesterday's session") and user paths or machine ids, generalizing them to context another reader can use |
-| Evaluation | Judged by feel and throughput | Harness Bench runs baseline, v1.6, and v2 on fixed tasks, built on `claude plugin eval` | Changes become measurable; benchmark upkeep is real work |
+| Evaluation | Judged by feel and throughput; agent evals deferred (2026-10-26), to revisit before deterministic triggers ([V2 plan](design/v2.md)) | Harness Bench runs baseline, v1.6, and v2 on fixed tasks, built on `claude plugin eval` | Changes become measurable; benchmark upkeep is real work |
 
 Closed since V1: v1.5 merged the instruction files and split out the platform
 conventions; v1.6 packaged Synapse as a user-scope plugin with a global store

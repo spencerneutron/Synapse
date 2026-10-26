@@ -40,7 +40,7 @@ each conflict into a finding and a recommendation the user decides on.
 | hooks | `disableAllHooks`, managed `allowManagedHooksOnly` | Synapse's rules and Stop hook never load |
 | old-install | `kb/scripts`, `.claude-work/archive`, `.claude-work/kb` in the project and parents | A V1/v1.5 memory system running beside the plugin |
 | gitignore | the project's git repo | `.claude-work/` working files would be committed |
-| runtime | Python, venv, `vectors.db`, Ollama, `obsidian` CLI, the vault | Memory features degrade without them |
+| runtime | Python, venv, `vectors.db` and its schema version, Ollama, `obsidian` CLI, the vault | Memory features degrade without them; an old schema needs `synapse setup` |
 
 ## Output Behavior
 

@@ -124,7 +124,15 @@ def check_runtime(rep: Report, r: paths.Resolved) -> None:
         try:
             con = sqlite3.connect(f"file:{r.db}?mode=ro", uri=True)
             n = con.execute("SELECT count(*) FROM chunks").fetchone()[0]
-            rep.add("ok", "vectors", f"{n} chunks in {tilde(r.db)}")
+            tables = {t[0] for t in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+            row = con.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone() \
+                if "meta" in tables else None
+            version = int(row[0]) if row else 1
+            if version < 2:
+                rep.add("warn", "vectors", f"{n} chunks in {tilde(r.db)}, schema v{version}",
+                        "run: synapse setup (upgrades in place, backs up first, keeps every vector)")
+            else:
+                rep.add("ok", "vectors", f"{n} chunks in {tilde(r.db)} (schema v{version})")
         except sqlite3.Error as e:
             rep.add("error", "vectors", f"{tilde(r.db)} unreadable: {e}")
     else:

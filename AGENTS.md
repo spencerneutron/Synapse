@@ -28,6 +28,10 @@ Synapse gives every session are in `instructions/`, not here.
 - **Non-destructive:** nothing may write outside the Synapse home, the
   project's working files, or the vault. New overlap risks get a check in
   `lib/synapse/doctor.py` and a row in INSTALL.md's preflight table.
+- **Store schema:** a change to `vectors.db` bumps `extract.SCHEMA_VERSION`
+  and extends `synapse extract upgrade` (backup first, no re-embedding,
+  verify every vector). Measure retrieval changes with `synapse
+  recall-check` against a golden set before and after.
 - **Python:** 3.11+, stdlib only except `sqlite-vec`.
 - **No personal data:** no home paths, usernames, machine ids, or private
   links outside `examples/` (CI scans for them).

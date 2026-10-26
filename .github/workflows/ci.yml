@@ -18,6 +18,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - name: sqlite-vec for the retrieval tests (they skip where extensions cannot load)
+        run: python -m pip install "sqlite-vec~=0.1.9"
       - name: SessionStart payloads are current and under the 10,000-character cap
         run: python tools/build_context.py --check
       - name: Unit tests

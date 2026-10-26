@@ -203,7 +203,7 @@ def merge_db(src_db: Path, r: paths.Resolved, session_projects: dict, dry: bool)
         else:
             src = extract.db_connect(src_copy)
             dst = extract.db_connect(r.db)
-            extract.db_init(dst)
+            extract.db_init(dst, r.db)
 
         for row in src.execute("SELECT * FROM chunks ORDER BY id").fetchall():
             project = session_projects.get(row["session_id"]) or paths.safe_project(
@@ -222,17 +222,17 @@ def merge_db(src_db: Path, r: paths.Resolved, session_projects: dict, dry: bool)
             if vec is None:
                 stats["no_vector"] += 1
                 continue
-            cur = dst.execute(
-                """INSERT INTO chunks (chunk_hash, source_path, source_type, session_id,
-                   project, chunk_index, text, metadata, embedding_model, embedding_dim,
-                   created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (new_hash, new_path, row["source_type"], row["session_id"],
-                 project if row["source_type"] == "archive" else row["project"],
-                 row["chunk_index"], row["text"], row["metadata"],
-                 row["embedding_model"], row["embedding_dim"], row["created_at"]),
-            )
-            dst.execute("INSERT INTO chunks_vec (rowid, embedding) VALUES (?, ?)",
-                        (cur.lastrowid, vec[0]))
+            keys = row.keys()
+            extract.insert_chunk(dst, {
+                "chunk_hash": new_hash, "source_path": new_path,
+                "source_type": row["source_type"], "session_id": row["session_id"],
+                "project": project if row["source_type"] == "archive" else row["project"],
+                "chunk_index": row["chunk_index"], "text": row["text"],
+                "metadata": row["metadata"], "embedding_model": row["embedding_model"],
+                "embedding_dim": row["embedding_dim"], "created_at": row["created_at"],
+                "status": row["status"] if "status" in keys else "active",
+                "superseded_by": row["superseded_by"] if "superseded_by" in keys else None,
+            }, vec[0])
             stats["inserted"] += 1
         if not dry:
             dst.commit()

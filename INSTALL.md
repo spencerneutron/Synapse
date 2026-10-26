@@ -202,6 +202,11 @@ Third-party marketplaces do not auto-update unless the user enables it in
 claude plugin update synapse@synapse
 ```
 
+After an update, run `synapse setup` once. It upgrades each store's
+`vectors.db` to the current schema in place, writes a
+`vectors.db.bak-<date>` first, and keeps every vector, so nothing is
+re-embedded. Until then, recall stops with a message that says to run it.
+
 ## Uninstall
 
 ```bash

@@ -7,7 +7,9 @@ synapse — command-line entry point for the Synapse plugin.
   synapse doctor [--json]                read-only health and conflict report
   synapse archive [--project P]          archive .claude-work/current into the store
   synapse recall "<query>" [...]         semantic search over the active store
-  synapse extract <subcommand> [...]     init | embed-archive | embed-note | status
+  synapse recall-check <golden.toml>     score recall against a golden set
+  synapse extract <subcommand> [...]     init | embed-archive | embed-note | status |
+                                         upgrade | supersede
   synapse vault <subcommand> [...]       verify | create-note | note-exists | search
   synapse backfill [...]                 embed archived sessions with no marker
   synapse migrate --from DIR [...]       copy a V1/v1.5 workspace's memory in
@@ -32,6 +34,7 @@ COMMANDS = {
     "doctor": "doctor",
     "archive": "archive",
     "recall": "recall",
+    "recall-check": "recall_check",
     "extract": "extract",
     "vault": "vault_write",
     "backfill": "backfill",

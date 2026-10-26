@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.0.0 — 2026-10-26 — V2 slice 1: retrieval quality
+
+Store schema v2: older plugin versions cannot use an upgraded store, so
+update every machine that shares one, then run `synapse setup` once.
+
+### Added
+
+- **Hybrid recall.** Every query runs a vector search and an FTS5 keyword
+  search, merged by reciprocal rank fusion. Exact names (`QuickAddTracker`,
+  `#127`, file names) now surface. Each hit is labeled `vector`, `keyword`, or
+  `both`; `--mode vector|keyword|hybrid` picks one search.
+- **Supersession.** `synapse extract supersede <old> --by <new>` marks a
+  replaced Decision in the DB and in its front matter; recall hides it unless
+  `--include-superseded` is passed. `/synapse:extract-session` runs it for
+  every Decision written with `supersedes`. Re-embedding keeps the status. It
+  edits front matter through the store's `vault_path` and never calls the
+  Obsidian CLI.
+- **`synapse recall-check <golden.toml>`** scores recall against a golden set
+  (hit rate and MRR, overall and per kind), so retrieval changes are measured
+  without agent runs.
+- **Store schema v2:** filter metadata inside the vector index, an FTS5 index,
+  status and `superseded_by` columns, and `origin`/`author` reserved for
+  shared stores.
+
+### Changed
+
+- **Filters are exact and run inside the search**, replacing v1.6.1's widening
+  loop (kept only for `--since`). `--project` ignores case.
+- **`synapse setup` upgrades an older store in place** (`synapse extract
+  upgrade`): it backs up `vectors.db` first, rebuilds the indexes from the
+  stored vectors without re-embedding, and verifies every vector is unchanged.
+  Other commands stop on an old schema and say to run it.
+
 ## 1.6.1 — 2026-10-26
 
 ### Fixed

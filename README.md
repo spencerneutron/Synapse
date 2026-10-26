@@ -5,7 +5,7 @@ execute in small verified steps, archive the working state, and promote
 durable decisions into a local knowledge base the next session can recall.
 It installs once for the whole machine and works in every project.
 
-**Version:** 1.6.1 (2026-10-26). See [CHANGELOG.md](CHANGELOG.md).
+**Version:** 2.0.0 (2026-10-26). See [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
@@ -55,8 +55,8 @@ setup are reported for the user to decide.
 .claude-plugin/   plugin.json, marketplace.json (this repo is its own marketplace)
 instructions/     core.md, platform-macos.md, platform-windows.md (each < 10,000 chars)
 hooks/            hooks.json, session_start.sh + context/*.json, emission_check.py
-bin/synapse       CLI on the Bash PATH: where, setup, doctor, archive, recall, extract,
-                  vault, backfill, migrate
+bin/synapse       CLI on the Bash PATH: where, setup, doctor, archive, recall,
+                  recall-check, extract, vault, backfill, migrate
 lib/              py.sh (finds Python 3.11+), synapse/ (resolver + memory pipeline)
 skills/           plan-session, end-session, recall, extract-session, emission-contract,
                   workflow-recovery, language-sweep, setup, doctor

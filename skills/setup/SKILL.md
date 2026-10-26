@@ -20,7 +20,9 @@ otherwise) and is safe to re-run: it keeps an existing config and venv.
 1. **Provision.** Run `synapse setup`. It:
    - creates `config.toml` only if missing (one global store, `main`, with the
      vault `Synapse`)
-   - creates the store's archive folder and `vectors.db`
+   - creates each store's archive folder and `vectors.db`, or upgrades an
+     older `vectors.db` in place to the current schema (it writes a
+     `vectors.db.bak-<date>` first and keeps every vector)
    - builds a venv with `sqlite-vec`
    - lists what is still missing for memory features
 

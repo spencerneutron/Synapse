@@ -7,6 +7,10 @@ Subcommands:
   embed-archive <session-id> Embed PLAN/EXECUTION/NOTES files for one session.
   embed-note <path>          Embed a single vault note (decision/pattern/session).
   status <session-id>        Report extraction status for a session.
+  upgrade                    Bring the DB to the current schema (backs up first,
+                             keeps every vector; also creates a new DB).
+  supersede <old> --by <new> Mark a Decision note superseded in the DB and in its
+                             front matter; recall then hides it by default.
   reembed-all                Detect embedding-model mismatches and re-embed.
 
 The script is deterministic and idempotent. Atomic-note extraction (deciding
@@ -164,35 +168,124 @@ def db_connect(db_path: Path) -> sqlite3.Connection:
 
     conn.enable_load_extension(False)
     conn.row_factory = sqlite3.Row
+    # SQLite's lower() folds ASCII only; recall's keyword filter uses this
+    # instead, so it matches the Python-lowered project partition in chunks_vec.
+    conn.create_function("py_lower", 1, lambda s: s.lower() if isinstance(s, str) else s,
+                         deterministic=True)
     return conn
 
 
-def db_init(conn: sqlite3.Connection) -> None:
-    """Create schema. Safe to call repeatedly."""
-    conn.executescript(f"""
-        CREATE TABLE IF NOT EXISTS chunks (
-            id INTEGER PRIMARY KEY,
-            chunk_hash TEXT UNIQUE NOT NULL,
-            source_path TEXT NOT NULL,
-            source_type TEXT NOT NULL,
-            session_id TEXT,
-            project TEXT,
-            chunk_index INTEGER NOT NULL,
-            text TEXT NOT NULL,
-            metadata JSON,
-            embedding_model TEXT NOT NULL,
-            embedding_dim INTEGER NOT NULL,
-            created_at TEXT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_chunks_session ON chunks(session_id);
-        CREATE INDEX IF NOT EXISTS idx_chunks_project ON chunks(project);
-        CREATE INDEX IF NOT EXISTS idx_chunks_type ON chunks(source_type);
+SCHEMA_VERSION = 2
 
-        CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(
-            embedding FLOAT[{EMBEDDING_DIM}] distance_metric=cosine
-        );
-    """)
+CHUNKS_DDL = """
+    CREATE TABLE IF NOT EXISTS chunks (
+        id INTEGER PRIMARY KEY,
+        chunk_hash TEXT UNIQUE NOT NULL,
+        source_path TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        session_id TEXT,
+        project TEXT,
+        chunk_index INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        metadata JSON,
+        embedding_model TEXT NOT NULL,
+        embedding_dim INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        superseded_by TEXT,
+        origin TEXT,
+        author TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_chunks_session ON chunks(session_id);
+    CREATE INDEX IF NOT EXISTS idx_chunks_project ON chunks(project);
+    CREATE INDEX IF NOT EXISTS idx_chunks_type ON chunks(source_type);
+    CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source_path);
+"""
+
+# Filters run inside the KNN search on these metadata columns. project is a
+# partition key, lower-cased so a project filter ignores case ("VeilMX" and
+# "veilmx" are one project). origin and author are reserved for shared stores.
+VEC_DDL = f"""
+    CREATE VIRTUAL TABLE chunks_vec USING vec0(
+        embedding FLOAT[{EMBEDDING_DIM}] distance_metric=cosine,
+        project TEXT PARTITION KEY,
+        source_type TEXT,
+        status TEXT
+    );
+"""
+FTS_DDL = "CREATE VIRTUAL TABLE chunks_fts USING fts5(text, tokenize='porter unicode61');"
+META_DDL = "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+
+
+def vec_project(project: str | None) -> str:
+    """The partition value stored for a project: lower-cased, never NULL."""
+    return (project or "").lower()
+
+
+def schema_version(conn: sqlite3.Connection) -> int:
+    """0 = empty DB, 1 = the V1/v1.6 layout, 2 = current."""
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    if "meta" in tables:
+        row = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+        if row:
+            return int(row[0])
+    return 1 if "chunks" in tables else 0
+
+
+def require_current(conn: sqlite3.Connection, db_path: Path) -> None:
+    v = schema_version(conn)
+    if v > SCHEMA_VERSION:
+        sys.exit(f"error: {db_path} uses schema v{v}, newer than this plugin understands "
+                 f"(v{SCHEMA_VERSION}); update Synapse (claude plugin update synapse@synapse)")
+    if v not in (0, SCHEMA_VERSION):
+        sys.exit(f"error: {db_path} uses schema v{v}; run `synapse extract upgrade` "
+                 f"(or `synapse setup`). It backs the DB up first and keeps every vector.")
+
+
+def db_init(conn: sqlite3.Connection, db_path: Path | None = None) -> None:
+    """Create the current schema on an empty DB. Safe to call repeatedly;
+    refuses to touch an older schema (that is `upgrade`'s job)."""
+    v = schema_version(conn)
+    if v == SCHEMA_VERSION:
+        return
+    if v != 0:
+        require_current(conn, db_path or Path("vectors.db"))
+    conn.executescript(CHUNKS_DDL + VEC_DDL + FTS_DDL + META_DDL)
+    conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)",
+                 (str(SCHEMA_VERSION),))
     conn.commit()
+
+
+def insert_chunk(conn: sqlite3.Connection, row: dict, embedding) -> int:
+    """Insert one chunk with its vector and full-text entry. `embedding` is a
+    JSON array string or sqlite-vec's float32 blob. Returns the chunk id."""
+    status = row.get("status") or "active"
+    cur = conn.execute(
+        """INSERT INTO chunks (chunk_hash, source_path, source_type, session_id, project,
+               chunk_index, text, metadata, embedding_model, embedding_dim, created_at,
+               status, superseded_by, origin, author)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (row["chunk_hash"], row["source_path"], row["source_type"], row.get("session_id"),
+         row.get("project"), row["chunk_index"], row["text"], row.get("metadata"),
+         row["embedding_model"], row["embedding_dim"], row["created_at"],
+         status, row.get("superseded_by"), row.get("origin"), row.get("author")),
+    )
+    cid = cur.lastrowid
+    conn.execute(
+        "INSERT INTO chunks_vec (rowid, embedding, project, source_type, status) VALUES (?, ?, ?, ?, ?)",
+        (cid, embedding, vec_project(row.get("project")), row["source_type"], status),
+    )
+    conn.execute("INSERT INTO chunks_fts (rowid, text) VALUES (?, ?)", (cid, row["text"]))
+    return cid
+
+
+def delete_chunks(conn: sqlite3.Connection, ids: list[int]) -> None:
+    if not ids:
+        return
+    marks = ",".join("?" * len(ids))
+    conn.execute(f"DELETE FROM chunks_vec WHERE rowid IN ({marks})", ids)
+    conn.execute(f"DELETE FROM chunks_fts WHERE rowid IN ({marks})", ids)
+    conn.execute(f"DELETE FROM chunks WHERE id IN ({marks})", ids)
 
 
 # ---------- Embedding ----------
@@ -522,7 +615,8 @@ def chunk_document(
 
 # ---------- Storage ----------
 
-def store_chunks(conn: sqlite3.Connection, chunks: list[Chunk]) -> tuple[int, int]:
+def store_chunks(conn: sqlite3.Connection, chunks: list[Chunk], status: str = "active",
+                 superseded_by: str | None = None) -> tuple[int, int]:
     """Embed and insert chunks. Returns (inserted, skipped) counts."""
     if not chunks:
         return 0, 0
@@ -545,27 +639,14 @@ def store_chunks(conn: sqlite3.Connection, chunks: list[Chunk]) -> tuple[int, in
             skipped += 1
             continue
 
-        cursor = conn.execute(
-            """
-            INSERT INTO chunks (
-                chunk_hash, source_path, source_type, session_id, project,
-                chunk_index, text, metadata, embedding_model, embedding_dim,
-                created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                chunk_hash, chunk.source_path, chunk.source_type,
-                chunk.session_id, chunk.project, chunk.chunk_index,
-                chunk.text, json.dumps(chunk.metadata),
-                EMBEDDING_MODEL, EMBEDDING_DIM, now,
-            ),
-        )
-        chunk_id = cursor.lastrowid
-        # sqlite-vec wants the embedding as a JSON array string.
-        conn.execute(
-            "INSERT INTO chunks_vec (rowid, embedding) VALUES (?, ?)",
-            (chunk_id, json.dumps(emb)),
-        )
+        insert_chunk(conn, {
+            "chunk_hash": chunk_hash, "source_path": chunk.source_path,
+            "source_type": chunk.source_type, "session_id": chunk.session_id,
+            "project": chunk.project, "chunk_index": chunk.chunk_index,
+            "text": chunk.text, "metadata": json.dumps(chunk.metadata),
+            "embedding_model": EMBEDDING_MODEL, "embedding_dim": EMBEDDING_DIM,
+            "created_at": now, "status": status, "superseded_by": superseded_by,
+        }, json.dumps(emb))
         inserted += 1
 
     conn.commit()
@@ -576,7 +657,7 @@ def store_chunks(conn: sqlite3.Connection, chunks: list[Chunk]) -> tuple[int, in
 
 def cmd_init(args: argparse.Namespace) -> int:
     conn = db_connect(args.db)
-    db_init(conn)
+    db_init(conn, args.db)
     print(f"initialized {args.db}")
     return 0
 
@@ -606,7 +687,7 @@ def cmd_embed_archive(args: argparse.Namespace) -> int:
         sys.exit(f"error: no archive files found for session {session_id} in {archive_dir}")
 
     conn = db_connect(args.db)
-    db_init(conn)
+    db_init(conn, args.db)
 
     if args.force:
         # Delete existing chunks for this session so re-ingest produces
@@ -616,9 +697,7 @@ def cmd_embed_archive(args: argparse.Namespace) -> int:
         ).fetchall()
         if deleted:
             ids = [row["id"] for row in deleted]
-            placeholders = ",".join("?" * len(ids))
-            conn.execute(f"DELETE FROM chunks_vec WHERE rowid IN ({placeholders})", ids)
-            conn.execute("DELETE FROM chunks WHERE session_id = ?", (session_id,))
+            delete_chunks(conn, ids)
             conn.commit()
             print(f"  --force: cleared {len(ids)} existing chunks for session {session_id}")
 
@@ -668,9 +747,14 @@ def cmd_embed_note(args: argparse.Namespace) -> int:
     session_id = frontmatter.get("session_id") or None
     r = paths.resolve(project=frontmatter.get("project") or args.project)
     project = r.project
+    # A superseded note keeps that status when it is re-embedded.
+    status = "superseded" if str(frontmatter.get("status", "")).strip() == "superseded" else "active"
+    superseded_by = frontmatter.get("superseded_by") or None
+    if superseded_by:  # front matter holds a [[wikilink]]; the DB holds the stored path
+        superseded_by = note_ref(str(superseded_by), r, path.parent.name)[0]
 
     conn = db_connect(args.db)
-    db_init(conn)
+    db_init(conn, args.db)
 
     # Always-replace semantics: vault notes can be edited (manually or by
     # re-extraction). Delete any existing chunks for this exact source_path
@@ -680,13 +764,17 @@ def cmd_embed_note(args: argparse.Namespace) -> int:
     # is the only correct behavior for note re-embedding.
     source_path_str = paths.to_stored_path(path, r)
     existing = conn.execute(
-        "SELECT id FROM chunks WHERE source_path = ?", (source_path_str,)
+        "SELECT id, status, superseded_by FROM chunks WHERE source_path = ?", (source_path_str,)
     ).fetchall()
+    # The DB is the authority on supersession: if the note was superseded but
+    # its front matter could not be updated, a re-embed must not revive it.
+    was = next((row for row in existing if row["status"] == "superseded"), None)
+    if was and status != "superseded":
+        status, superseded_by = "superseded", was["superseded_by"]
+        print(f"  {path.name} stays superseded (by {superseded_by})")
     if existing:
         ids = [row["id"] for row in existing]
-        placeholders = ",".join("?" * len(ids))
-        conn.execute(f"DELETE FROM chunks_vec WHERE rowid IN ({placeholders})", ids)
-        conn.execute("DELETE FROM chunks WHERE source_path = ?", (source_path_str,))
+        delete_chunks(conn, ids)
         conn.commit()
         print(f"  cleared {len(ids)} existing chunks for {path.name}")
 
@@ -697,8 +785,9 @@ def cmd_embed_note(args: argparse.Namespace) -> int:
         session_id=session_id,
         project=project,
     )
-    inserted, skipped = store_chunks(conn, chunks)
-    print(f"{path.name}: {inserted} new, {skipped} unchanged")
+    inserted, skipped = store_chunks(conn, chunks, status=status, superseded_by=superseded_by)
+    print(f"{path.name}: {inserted} new, {skipped} unchanged"
+          + (" (superseded)" if status == "superseded" else ""))
     return 0
 
 
@@ -728,6 +817,129 @@ def cmd_reembed_all(args: argparse.Namespace) -> int:
     print(f"found chunks from models: {models}; current is {EMBEDDING_MODEL}")
     print("re-embed not yet implemented — flagged as a v2 feature")
     return 2
+
+
+def cmd_upgrade(args: argparse.Namespace) -> int:
+    """v1 -> v2 in place: back up, rebuild chunks_vec with filter metadata from
+    the stored vectors (no re-embedding), build the full-text index, verify."""
+    db = Path(args.db)
+    conn = db_connect(db)
+    v = schema_version(conn)
+    if v == SCHEMA_VERSION:
+        print(f"{db}: already schema v{SCHEMA_VERSION}")
+        return 0
+    if v > SCHEMA_VERSION:
+        require_current(conn, db)  # exits: newer than this plugin
+    if v == 0:
+        db_init(conn, db)
+        print(f"{db}: created schema v{SCHEMA_VERSION}")
+        return 0
+
+    rows = conn.execute(
+        "SELECT c.id, c.project, c.source_type, c.text, v.embedding "
+        "FROM chunks c JOIN chunks_vec v ON v.rowid = c.id").fetchall()
+    total = conn.execute("SELECT count(*) FROM chunks").fetchone()[0]
+    if len(rows) != total:
+        sys.exit(f"error: {total - len(rows)} chunk(s) have no vector; nothing changed")
+    vectors = {r["id"]: bytes(r["embedding"]) for r in rows}
+
+    backup = db.with_name(f"{db.name}.bak-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+    b = sqlite3.connect(backup)
+    conn.backup(b)
+    b.close()
+    print(f"  backup: {backup}")
+
+    conn.isolation_level = None  # manage the transaction by hand, DDL included
+    try:
+        conn.execute("BEGIN")
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(chunks)")}
+        for col, ddl in (("status", "TEXT NOT NULL DEFAULT 'active'"), ("superseded_by", "TEXT"),
+                         ("origin", "TEXT"), ("author", "TEXT")):
+            if col not in cols:
+                conn.execute(f"ALTER TABLE chunks ADD COLUMN {col} {ddl}")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source_path)")
+        conn.execute("DROP TABLE chunks_vec")
+        conn.execute(VEC_DDL)
+        conn.execute(FTS_DDL)
+        for r in rows:
+            conn.execute(
+                "INSERT INTO chunks_vec (rowid, embedding, project, source_type, status) "
+                "VALUES (?, ?, ?, ?, 'active')",
+                (r["id"], vectors[r["id"]], vec_project(r["project"]), r["source_type"]))
+            conn.execute("INSERT INTO chunks_fts (rowid, text) VALUES (?, ?)", (r["id"], r["text"]))
+        conn.execute(META_DDL)
+        conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)",
+                     (str(SCHEMA_VERSION),))
+        conn.execute("COMMIT")
+    except sqlite3.Error as e:
+        conn.execute("ROLLBACK")
+        sys.exit(f"error: upgrade failed ({e}); the DB is unchanged and a backup is at {backup}")
+    finally:
+        conn.isolation_level = ""
+
+    counts = [conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
+              for t in ("chunks", "chunks_vec", "chunks_fts")]
+    changed = sum(1 for rid, emb in conn.execute("SELECT rowid, embedding FROM chunks_vec")
+                  if bytes(emb) != vectors.get(rid))
+    if len(set(counts)) != 1 or changed:
+        sys.exit(f"error: verification failed (chunks/vectors/text = {counts}, "
+                 f"{changed} vector(s) changed); restore {backup}")
+    print(f"{db}: upgraded to schema v{SCHEMA_VERSION}; {counts[0]} chunks, "
+          f"every vector unchanged")
+    return 0
+
+
+def note_ref(arg: str, r: "paths.Resolved", folder: str) -> tuple[str, Path | None]:
+    """A note given as a path, a [[wikilink]], or a title -> (stored path, file or None)."""
+    if arg.endswith(".md") and ("/" in arg or "\\" in arg):
+        p = Path(arg).expanduser()
+        stored = paths.to_stored_path(p, r)
+        if p.is_absolute():
+            return stored, p
+        if stored.startswith("vault/") and r.vault_path:
+            return stored, r.vault_path / stored.removeprefix("vault/")
+        return stored, None
+    import vault_write
+    title = arg.strip().removeprefix("[[").removesuffix("]]")
+    title = re.split(r"[|#]", title, maxsplit=1)[0].strip()   # [[Title|alias]], [[Title#Heading]]
+    title = re.sub(r"^(Decision|Pattern):\s*", "", title).removesuffix(".md")
+    name = vault_write.safe_name(title)
+    stored = f"vault/{folder}/{name}.md"
+    return stored, (r.vault_path / folder / f"{name}.md") if r.vault_path else None
+
+
+def cmd_supersede(args: argparse.Namespace) -> int:
+    r = paths.resolve()
+    old, old_file = note_ref(args.old, r, args.folder)
+    new, _ = note_ref(args.by, r, args.folder)
+    if old == new:
+        sys.exit("error: a note cannot supersede itself")
+
+    conn = db_connect(args.db)
+    require_current(conn, args.db)
+    ids = [row["id"] for row in conn.execute("SELECT id FROM chunks WHERE source_path = ?", (old,))]
+    for cid in ids:
+        conn.execute("UPDATE chunks SET status = 'superseded', superseded_by = ? WHERE id = ?", (new, cid))
+        conn.execute("UPDATE chunks_vec SET status = 'superseded' WHERE rowid = ?", (cid,))
+    conn.commit()
+
+    note_updated = None
+    if old_file is None:
+        print("warning: the old note's front matter was not updated: set vault_path for "
+              f"[stores.{r.store}] in {paths.config_path()} or pass the note's full path. "
+              "The DB keeps it superseded either way.", file=sys.stderr)
+    elif not old_file.exists():
+        print(f"warning: {old_file} not found; front matter not updated", file=sys.stderr)
+    if old_file and old_file.exists():
+        import vault_write
+        new_title = Path(new).stem
+        vault_write.set_frontmatter(old_file, {"status": "superseded",
+                                               "superseded_by": f"[[{new_title}]]"})
+        note_updated = str(old_file)
+
+    print(json.dumps({"superseded": old, "by": new, "chunks_marked": len(ids),
+                      "note_updated": note_updated}, indent=2))
+    return 0
 
 
 # ---------- Entry point ----------
@@ -764,6 +976,15 @@ def main(argv: list[str] | None = None) -> int:
     p_stat.add_argument("--project", default=None)
     p_stat.add_argument("--processed-dir", type=Path, default=None)
     p_stat.set_defaults(func=cmd_status)
+
+    p_up = sub.add_parser("upgrade", help="bring the DB to the current schema (backs up first)")
+    p_up.set_defaults(func=cmd_upgrade)
+
+    p_sup = sub.add_parser("supersede", help="mark a note superseded by another")
+    p_sup.add_argument("old", help="the replaced note: path, [[wikilink]], or title")
+    p_sup.add_argument("--by", required=True, help="the replacing note: path, [[wikilink]], or title")
+    p_sup.add_argument("--folder", default="Decisions", help="vault folder for titles (default Decisions)")
+    p_sup.set_defaults(func=cmd_supersede)
 
     p_re = sub.add_parser("reembed-all", help="detect model mismatches")
     p_re.set_defaults(func=cmd_reembed_all)

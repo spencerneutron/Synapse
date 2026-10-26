@@ -188,6 +188,29 @@ def emit_frontmatter(fields: dict) -> str:
     return "\n".join(lines)
 
 
+def set_frontmatter(path: Path, updates: dict) -> None:
+    """Set front-matter keys in an existing note, keeping every other line.
+    Adds a front-matter block when the note has none."""
+    text = path.read_text(encoding="utf-8").removeprefix("\ufeff")
+    lines = [f"{k}: {emit_yaml_value(v)}" for k, v in updates.items()]
+    close = re.compile(r"\n---[ \t]*(?=\n|$)").search(text, 3) if text.startswith("---\n") else None
+    if close:
+        end = close.start()
+        head = text[4:end].split("\n") if end > 3 else []
+        for k, line in zip(updates, lines):
+            idx = next((i for i, h in enumerate(head) if h.split(":", 1)[0].strip() == k), None)
+            if idx is None:
+                head.append(line)
+            else:
+                head[idx] = line
+        new = "---\n" + "\n".join(head) + text[end:]
+    else:
+        new = "---\n" + "\n".join(lines) + "\n---\n" + text
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(new, encoding="utf-8", newline="\n")
+    tmp.replace(path)
+
+
 # ---------- Note construction ----------
 
 def safe_name(title: str) -> str:

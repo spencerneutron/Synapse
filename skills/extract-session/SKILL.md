@@ -301,6 +301,20 @@ If a note already exists at that title (from a prior run), use
 we get `<session-id>.md`, `<session-id> v2.md`, etc. and don't lose
 history.
 
+**Supersession.** For each Decision note written with `supersedes`, mark the
+old decision once the new note exists:
+
+```
+synapse extract supersede "[[<old title>]]" --by "[[<new title>]]"
+```
+
+It marks the old note's chunks `superseded` (recall hides them by default)
+and sets `status: superseded` and `superseded_by` in the old note's front
+matter. Report the `chunks_marked` count. Zero is fine when the old note was
+never embedded. If it warns that the front matter was not updated, tell the
+user to set `vault_path` for the store (`/synapse:doctor` shows the value);
+the DB still treats the note as superseded.
+
 ### 9. Embed the archive
 
 Run:
