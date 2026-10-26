@@ -104,7 +104,7 @@ Code" section sends the agent to `INSTALL.md`, a runbook it follows in order:
 Uninstall: `claude plugin uninstall synapse@synapse`. The store stays; deleting
 `~/.claude/synapse/` is the user's call.
 
-Until the repo is public, step 2 works only for GitHub accounts with read
+While the repo is private, step 2 works only for GitHub accounts with read
 access, through `gh auth setup-git` or an SSH key.
 
 ---

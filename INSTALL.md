@@ -20,7 +20,7 @@ install.
 | Python 3.11+ | `python3 --version` (Windows: `python --version`) | Synapse picks the first 3.11+ it finds |
 | Ollama + `nomic-embed-text` | `ollama list` | Needed for recall and extraction |
 | Obsidian with its CLI on `PATH` | `obsidian --help` | Needed for vault notes |
-| Read access to `spencerneutron/Synapse` | `gh repo view spencerneutron/Synapse` | The repo is private. If the check fails, the **user** runs `gh auth login` and `gh auth setup-git` (the second changes their global git credential helper); an agent cannot complete them |
+| Read access to `spencerneutron/Synapse` | `gh repo view spencerneutron/Synapse` | Public repos need nothing. If the repo is private and the check fails, the **user** runs `gh auth login` and `gh auth setup-git` (the second changes their global git credential helper); an agent cannot complete them |
 
 Ollama and Obsidian can come later; the session rules, skills, and output
 contract work without them.
@@ -29,8 +29,8 @@ contract work without them.
 
 ## 0. Get this runbook
 
-A private repo cannot be read with a web fetch. An agent reads this file with
-the user's GitHub credentials instead:
+A web fetch of the raw file works while the repo is public. If it is
+private, read it with the user's GitHub credentials instead:
 
 ```bash
 gh api repos/spencerneutron/Synapse/contents/INSTALL.md -H "Accept: application/vnd.github.raw"
