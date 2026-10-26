@@ -1,0 +1,11 @@
+# Working state, archives, and the vector DB stay local.
+.claude-work/
+kb/.venv/
+*.db
+
+# Per-user Claude Code settings. (Do not add a CLAUDE.local.md: like CLAUDE.md,
+# it stops Claude Code from reading AGENTS.md.)
+.claude/settings.local.json
+
+__pycache__/
+.DS_Store

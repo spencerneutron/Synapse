@@ -1,0 +1,48 @@
+{
+  "_comment": "Mechanical subset of the emission contract. where = start (first paragraph), end (last paragraph), or anywhere. Regexes are case-insensitive unless ignore_case is false, and run on prose with fenced code, inline code, and > quotes removed.",
+  "patterns": [
+    {
+      "id": "opener-praise",
+      "where": "start",
+      "regex": "^\\W*(great|good|excellent|fantastic) (question|idea|point)\\b",
+      "message": "opens with praise"
+    },
+    {
+      "id": "opener-filler",
+      "where": "start",
+      "regex": "^\\W*(sure|certainly|absolutely|of course)\\s*[!,.]",
+      "message": "opens with filler"
+    },
+    {
+      "id": "opener-happy",
+      "where": "start",
+      "regex": "^\\W*i('d| would) be (happy|glad) to\\b",
+      "message": "opens with an offer to help"
+    },
+    {
+      "id": "closer-pleasantry",
+      "where": "end",
+      "regex": "\\b(let me know if|feel free to|i hope (this|that) helps|hope this helps|happy to help)\\b",
+      "message": "ends with an offer or pleasantry"
+    },
+    {
+      "id": "tic-words",
+      "where": "anywhere",
+      "regex": "\\b(delve[sd]?|delving|tapestry|testament to)\\b",
+      "ignore_case": false,
+      "message": "uses a banned tic word (delve, tapestry, testament to)"
+    },
+    {
+      "id": "tic-phrases",
+      "where": "anywhere",
+      "regex": "\\b(it'?s worth noting|in today'?s \\w+ (world|landscape))\\b",
+      "message": "uses a banned tic phrase (it's worth noting, in today's ... world)"
+    },
+    {
+      "id": "emoji",
+      "where": "anywhere",
+      "regex": "[\\U0001F300-\\U0001FAFF\\u2705\\u274C\\u2728]",
+      "message": "contains emoji"
+    }
+  ]
+}
