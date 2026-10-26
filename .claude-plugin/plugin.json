@@ -8,5 +8,6 @@
   },
   "homepage": "https://github.com/spencerneutron/Synapse",
   "repository": "https://github.com/spencerneutron/Synapse",
+  "license": "MIT",
   "keywords": ["harness", "planning", "memory", "recall", "obsidian", "sqlite-vec", "hooks"]
 }

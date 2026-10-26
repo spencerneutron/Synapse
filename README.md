@@ -75,3 +75,7 @@ examples/         real PLAN/EXECUTION files from a mature project
 - [docs/design/packaging.md](docs/design/packaging.md): why a plugin, and how
   install stays non-destructive
 - [AGENTS.md](AGENTS.md): working on this repo
+
+## License
+
+MIT. See [LICENSE](LICENSE).
