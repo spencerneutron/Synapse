@@ -70,8 +70,9 @@ Optional filters when relevant:
   precision-critical lookups
 - `--since YYYY-MM-DD` — only chunks embedded on or after that date
 
-Filters apply after the nearest ~20 neighbours are found, so a filtered query
-can return fewer than `--top-k` hits even when more matches exist.
+With a filter, the search widens until it finds `--top-k` matches or has
+covered the whole store, so a filtered query returns fewer hits only when
+fewer exist.
 
 ### 3. Read the output structure
 

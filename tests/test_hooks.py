@@ -1,12 +1,29 @@
 import json
+import os
 import shutil
 import subprocess
 import sys
 import unittest
+from pathlib import Path
 
 from helpers import ROOT
 
 HOOK = ROOT / "hooks" / "emission_check.py"
+
+
+def find_bash() -> str | None:
+    """bash as Claude Code runs it: Git Bash on Windows, where System32's
+    bash.exe is the WSL launcher and fails without a Linux distribution."""
+    if sys.platform != "win32":
+        return shutil.which("bash")
+    candidates = [Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "bin" / "bash.exe"]
+    git = shutil.which("git")
+    if git:
+        candidates.insert(0, Path(git).resolve().parent.parent / "bin" / "bash.exe")
+    return next((str(c) for c in candidates if c.exists()), None)
+
+
+BASH = find_bash()
 
 
 def run_hook(event) -> str:
@@ -53,17 +70,17 @@ class EmissionCheckTests(unittest.TestCase):
         self.assertTrue(run_hook(raw))
 
 
-@unittest.skipUnless(shutil.which("bash"), "bash not available")
+@unittest.skipUnless(BASH, "bash (Git Bash on Windows) not available")
 class SessionStartTests(unittest.TestCase):
     def test_core_payload(self):
-        out = subprocess.run(["bash", str(ROOT / "hooks" / "session_start.sh"), "core"],
+        out = subprocess.run([BASH, str(ROOT / "hooks" / "session_start.sh"), "core"],
                              capture_output=True, check=True)
         payload = json.loads(out.stdout)["hookSpecificOutput"]
         self.assertEqual(payload["hookEventName"], "SessionStart")
         self.assertTrue(payload["additionalContext"].startswith("# Synapse rules"))
 
     def test_unknown_argument_prints_nothing(self):
-        out = subprocess.run(["bash", str(ROOT / "hooks" / "session_start.sh"), "nope"],
+        out = subprocess.run([BASH, str(ROOT / "hooks" / "session_start.sh"), "nope"],
                              capture_output=True, check=True)
         self.assertEqual(out.stdout, b"")
 

@@ -39,6 +39,19 @@ from extract import (  # noqa: E402
 # Snippet display: short enough to glance, long enough to judge relevance.
 SNIPPET_MAX_CHARS = 200
 DEFAULT_TOP_K = 5
+MAX_KNN_K = 4096  # sqlite-vec refuses a larger k in one KNN query
+
+
+def next_window(current: int, got: int, top_k: int, filtered: bool, ceiling: int) -> int | None:
+    """The next KNN size to try, or None when the last query was enough.
+
+    Filters run after the KNN step, so the nearest rows may all belong to
+    another type or project. Widen eightfold until enough rows pass the
+    filters, or until the whole DB (or sqlite-vec's ceiling) was searched.
+    """
+    if got >= top_k or not filtered or current >= ceiling:
+        return None
+    return min(current * 8, ceiling)
 
 
 def search(
@@ -109,10 +122,15 @@ def search(
         LIMIT ?
     """
 
-    rows = conn.execute(
-        sql,
-        [json.dumps(query_embedding), over_fetch, *params, top_k],
-    ).fetchall()
+    ceiling = min(MAX_KNN_K, conn.execute("SELECT count(*) FROM chunks").fetchone()[0])
+    while True:
+        rows = conn.execute(
+            sql,
+            [json.dumps(query_embedding), over_fetch, *params, top_k],
+        ).fetchall()
+        over_fetch = next_window(over_fetch, len(rows), top_k, bool(filters), ceiling)
+        if over_fetch is None:
+            break
 
     results = []
     for r in rows:

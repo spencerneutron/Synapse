@@ -8,8 +8,11 @@ from pathlib import Path
 
 import helpers  # noqa: F401  (isolated SYNAPSE_HOME)
 import archive
+import doctor
 import extract
 import migrate
+import paths
+import recall
 
 
 class ArchiveTests(unittest.TestCase):
@@ -61,6 +64,36 @@ class MigrateTests(unittest.TestCase):
                               source_type="archive", session_id="1", project="App",
                               chunk_index=3, metadata={})
         self.assertEqual(migrate.chunk_hash(chunk.source_path, 3, chunk.text), chunk.hash())
+
+
+class RecallWindowTests(unittest.TestCase):
+    def test_unfiltered_or_satisfied_queries_stop(self):
+        self.assertIsNone(recall.next_window(20, 3, 5, filtered=False, ceiling=1580))
+        self.assertIsNone(recall.next_window(20, 5, 5, filtered=True, ceiling=1580))
+
+    def test_filtered_shortfall_widens_to_the_ceiling(self):
+        sizes, k = [], 20
+        while k is not None:
+            sizes.append(k)
+            k = recall.next_window(k, 0, 5, filtered=True, ceiling=1580)
+        self.assertEqual(sizes, [20, 160, 1280, 1580])
+        self.assertEqual(recall.next_window(1000, 0, 5, True, recall.MAX_KNN_K), recall.MAX_KNN_K)
+
+
+class DoctorMigratedTests(unittest.TestCase):
+    def test_counts_sessions_already_in_the_store(self):
+        tmp = Path(tempfile.mkdtemp())
+        os.environ["SYNAPSE_HOME"] = str(tmp / "home")
+        old = tmp / "ws" / ".claude-work" / "archive"
+        old.mkdir(parents=True)
+        for sid in ("2026-01-01-0900", "2026-01-02-0900"):
+            (old / f"PLAN_{sid}.md").write_text("x")
+        r = paths.resolve(cwd=tmp)
+        (r.archive_root / "App").mkdir(parents=True)
+        (r.archive_root / "App" / "PLAN_2026-01-01-0900.md").write_text("x")
+        self.assertEqual(doctor.migrated_count(old, r), (2, 1))
+        (r.archive_root / "App" / "PLAN_2026-01-02-0900.md").write_text("x")
+        self.assertEqual(doctor.migrated_count(old, r), (2, 2))
 
 
 if __name__ == "__main__":

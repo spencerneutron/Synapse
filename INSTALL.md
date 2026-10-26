@@ -145,8 +145,16 @@ install never embedded:
 synapse backfill --dry-run
 ```
 
-After migrating, doctor flags the old instruction files and skill copies. They
-duplicate what the plugin now loads; retiring them is the user's call.
+After migrating, doctor reports the old memory as `ok` (already in the store)
+and flags the old instruction files and skill copies, which duplicate what the
+plugin now loads. Retiring them is the user's call; moving them into a folder
+such as `.claude-work/v1-retired/` keeps them restorable.
+
+If V1's `plan-session` ran a project command at session start (for example a
+roadmap sync), list that command under `## Session hooks` in the project's
+`PLAN.md`; `/synapse:plan-session` runs only what is listed there. Project
+skills that are not Synapse's own (a deploy or log-triage skill, say) keep
+working where they are.
 
 ---
 

@@ -231,7 +231,17 @@ def check_settings(rep: Report, project_dir: Path) -> None:
                         "check it does not also ask for rewrites")
 
 
-def check_old_installs(rep: Report, project_dir: Path) -> None:
+def migrated_count(old_archive: Path, r: paths.Resolved) -> tuple[int, int]:
+    """(sessions in an old flat archive, how many are fully in the store)."""
+    from archive import discover_sessions
+    sessions = discover_sessions(old_archive)
+    in_store = sum(
+        all(any((proj / f.name).exists() for proj in r.archive_root.glob("*/")) for f in s["files"].values())
+        for s in sessions)
+    return len(sessions), in_store
+
+
+def check_old_installs(rep: Report, project_dir: Path, r: paths.Resolved) -> None:
     try:
         children = [c for c in project_dir.iterdir() if c.is_dir() and not c.name.startswith(".")]
     except OSError:
@@ -239,9 +249,20 @@ def check_old_installs(rep: Report, project_dir: Path) -> None:
     for d in (project_dir, *project_dir.parents, *children):
         old = [p for p in ("kb/scripts/extract.py", ".claude-work/kb/vectors.db", ".claude-work/archive")
                if (d / p).exists()]
-        if old:
-            rep.add("info", "old-install", f"V1/v1.5 memory at {tilde(d)} ({', '.join(old)})",
-                    f"copy it into the store: synapse migrate --from \"{d}\" --dry-run, then without --dry-run")
+        if not old:
+            continue
+        total, done = migrated_count(d / ".claude-work" / "archive", r)
+        if total and done == total and not (d / "kb" / "scripts").exists():
+            rep.add("ok", "old-install", f"V1/v1.5 memory at {tilde(d)}: all {total} sessions are in "
+                    f"store {r.store!r}; the old copy is only a backup")
+            continue
+        detail = f"V1/v1.5 memory at {tilde(d)} ({', '.join(old)})"
+        if total:
+            detail += f"; {done} of {total} sessions already in store {r.store!r}"
+        fix = f"copy it into the store: synapse migrate --from \"{d}\" --dry-run, then without --dry-run"
+        if total and done == total:
+            fix = "the sessions are migrated; retire the V1 scripts (kb/) when ready"
+        rep.add("info", "old-install", detail, fix)
 
 
 def check_gitignore(rep: Report, project_dir: Path) -> None:
@@ -268,7 +289,7 @@ def run(project_dir: Path) -> Report:
     check_skills(rep, project_dir)
     check_rules(rep, project_dir)
     check_settings(rep, project_dir)
-    check_old_installs(rep, project_dir)
+    check_old_installs(rep, project_dir, r)
     check_gitignore(rep, project_dir)
     return rep
 

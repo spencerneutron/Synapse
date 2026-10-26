@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.6.1 — 2026-10-26
+
+### Fixed
+
+- **Filtered recall came back empty.** `--type` and `--project` filters ran
+  after a fixed 20-neighbour search, so in a large store a `--type decision`
+  query could return nothing while hundreds of decisions existed. The search
+  now widens (×8 per round, up to sqlite-vec's 4,096 limit or the whole DB)
+  until enough rows pass the filters. Unfiltered queries are unchanged.
+- **Doctor kept suggesting a migration that was already done.** It now checks
+  an old archive's sessions against the store and reports a fully migrated
+  copy as `ok` (a backup), or how many sessions are still missing.
+- **Windows CI.** The SessionStart tests called `bash`, which on GitHub's
+  Windows runners resolves to the WSL launcher; they now use Git Bash, as
+  Claude Code does.
+- INSTALL.md's upgrade notes again cover session hooks for project commands
+  that V1's `plan-session` ran, and how to retire V1 files restorably.
+
 ## 1.6.0 — 2026-10-26
 
 Packages Synapse as a Claude Code plugin with a global knowledge base. No new

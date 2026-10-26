@@ -175,7 +175,7 @@ triggering could become deterministic, at some cost.
 | Extraction | The user runs `/synapse:extract-session` at teardown | `/synapse:end-session` chains it, or a session-end hook queues it | No forgotten sessions; teardown judgment needs live context, so a detached hook loses quality |
 | Role orchestration | Waves and model tiers described in the core rules | Roles as agent definition files with model frontmatter | Right-sizing becomes config, not persuasion; more files to maintain |
 | Memory hygiene | `supersedes` links exist, but the superseded note stays `active` | Extraction flips the old note's status | Recall stops surfacing stale decisions; extraction gets heavier |
-| Retrieval | Pure vector search, ~500-word heading chunks; project and type filters run after a ~20-neighbour search, so filtered queries can come back short | Hybrid keyword plus vector, filtered by project and type | Better exact-name lookups; one more index to keep in sync |
+| Retrieval | Pure vector search, ~500-word heading chunks; project and type filters widen the search until enough rows pass | Hybrid keyword plus vector, filtered by project and type | Better exact-name lookups; one more index to keep in sync |
 | Memory scope | Local, single user | Shared team store | Team leverage; poisoned entries propagate and secrets can leak across people. **Gate:** extraction must first scrub session-local references (bare `#17`, "Wave B", "yesterday's session") and user paths or machine ids, generalizing them to context another reader can use |
 | Evaluation | Judged by feel and throughput | Harness Bench runs baseline, v1.6, and v2 on fixed tasks, built on `claude plugin eval` | Changes become measurable; benchmark upkeep is real work |
 
