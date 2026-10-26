@@ -1,0 +1,12 @@
+{
+  "name": "synapse",
+  "version": "1.6.0",
+  "description": "Operating layer for Claude Code: plan/execute/archive session loop, agent waves with right-sized models, a late-bound output contract with a Stop hook, and a local knowledge base (sqlite-vec + Ollama + Obsidian) recalled across sessions.",
+  "author": {
+    "name": "spencerneutron",
+    "url": "https://github.com/spencerneutron"
+  },
+  "homepage": "https://github.com/spencerneutron/Synapse",
+  "repository": "https://github.com/spencerneutron/Synapse",
+  "keywords": ["harness", "planning", "memory", "recall", "obsidian", "sqlite-vec", "hooks"]
+}

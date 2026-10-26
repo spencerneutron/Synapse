@@ -1,5 +1,55 @@
 # Changelog
 
+## 1.6.0 — 2026-10-26
+
+Packages Synapse as a Claude Code plugin with a global knowledge base. No new
+memory or retrieval capabilities; locations and installation change.
+
+### Changed
+
+- **Synapse is a plugin.** The repo is its own marketplace; install with
+  `claude plugin install synapse --marketplace spencerneutron/Synapse` at user
+  scope, and it applies in every project. Skills are namespaced
+  (`/synapse:recall`), so they never collide with a user's own skills.
+- **Rules load from a `SessionStart` hook** (`instructions/core.md`, 7,074
+  characters, under the 10,000 cap) instead of a workspace `AGENTS.md`, so a
+  project's own `CLAUDE.md` no longer hides them. The platform profile is
+  picked by OS automatically. Where a project's rules conflict, Synapse defers
+  to the project's.
+- **One global store in `~/.claude/synapse/`** (archive, `vectors.db`, vault,
+  plus the venv), resolved from any folder. V1 depended on the working
+  directory and on files sitting next to the kb scripts.
+- **Optional per-project stores:** a `.synapse.toml` with `store = "<name>"`
+  splits a project's archive, vector DB, and vault together. `SYNAPSE_STORE`
+  overrides it for a session.
+- **Portable paths in the DB:** chunks record `archive/<project>/…` and
+  `vault/<Folder>/…` instead of machine paths.
+- **Python 3.11+** (config uses `tomllib`), found by `lib/py.sh`, which
+  handles the Windows Store stub and Git Bash paths. The Stop hook no longer
+  hard-codes `python3`.
+
+### Added
+
+- `synapse` CLI on the Bash PATH: `where`, `setup`, `doctor`, `archive`,
+  `recall`, `extract`, `vault`, `backfill`, `migrate`, `version`.
+- `/synapse:setup` (idempotent provisioning) and `/synapse:doctor` (read-only
+  health and conflict report covering same-named skills, competing rules,
+  other Stop hooks, output styles, disabled hooks, old installs, unignored
+  working files).
+- `synapse migrate --from <dir>`: copies a V1/v1.5 workspace's archive and
+  vectors into the store without re-embedding; idempotent; never writes to
+  the source.
+- INSTALL.md as an agent-followable runbook (read-only preflight, consent
+  points, expected outputs); AGENTS.md is now the guide for working on this
+  repo.
+- Unit tests, `tools/build_context.py`, and a CI workflow (tests on macOS,
+  Linux, and Windows; cap check; personal-path scan; plugin validation).
+
+### Removed
+
+- The workspace-copy install (`docs/setup.md`, `templates/settings.json`,
+  `platform/`, `kb/`).
+
 ## 1.5 — 2026-10-26
 
 Consolidates V1 into one portable repo. No new memory or retrieval features.

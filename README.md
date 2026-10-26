@@ -1,64 +1,77 @@
 # Synapse
 
-An operating layer for Claude Code in a multi-repo workspace. Every
-non-trivial session plans, executes in small verified steps, archives its
-working state, and promotes durable decisions into a local knowledge base that
-the next session can recall.
+A Claude Code plugin that gives every session the same operating loop: plan,
+execute in small verified steps, archive the working state, and promote
+durable decisions into a local knowledge base the next session can recall.
+It installs once for the whole machine and works in every project.
 
-**Version:** 1.5 (2026-10-26). See [CHANGELOG.md](CHANGELOG.md).
+**Version:** 1.6.0 (2026-10-26). See [CHANGELOG.md](CHANGELOG.md).
+
+## Install
+
+```bash
+claude plugin install synapse --marketplace spencerneutron/Synapse
+```
+
+Then, in a new Claude Code session, run `/synapse:setup` and `/synapse:doctor`.
+
+### Install with Claude Code
+
+Tell Claude: *"Install Synapse from github.com/spencerneutron/Synapse."*
+It follows [INSTALL.md](INSTALL.md): a read-only check of the existing setup
+first, then the install, provisioning, and verification, asking before each
+change. Synapse never edits what it does not own; overlaps with an existing
+setup are reported for the user to decide.
 
 ## How a session runs
 
-1. **Plan:** `/plan-session` reads or starts `PLAN.md` and `EXECUTION.md`,
-   runs the project's session hooks, and calls `/recall` when the work
-   resembles past work.
+1. **Plan:** `/synapse:plan-session` reads or starts `PLAN.md` and
+   `EXECUTION.md`, runs the project's session hooks, and calls
+   `/synapse:recall` when the work resembles past work.
 2. **Execute:** small steps, each with a run path, an expected outcome, and a
    failure signal. Independent work runs as waves of sub-agents, with the
    model sized to each wave.
-3. **Emit:** the `emission-contract` skill shapes each final message, and a
-   Stop hook enforces its mechanical rules.
-4. **Archive:** `/end-session` copies the planning files to
-   `.claude-work/archive/` and writes session notes.
-5. **Extract:** `/extract-session` promotes Decisions and Patterns to an
-   Obsidian vault and embeds the session into a local vector DB.
-6. **Recall:** later sessions get ranked pointers into that history.
+3. **Emit:** the `synapse:emission-contract` skill shapes each final message,
+   and a Stop hook enforces its mechanical rules.
+4. **Archive:** `/synapse:end-session` copies the planning files into the
+   store and writes session notes.
+5. **Extract:** `/synapse:extract-session` promotes Decisions and Patterns to
+   an Obsidian vault and embeds the session in the vector DB.
+6. **Recall:** later sessions, in any project, get ranked pointers into that
+   history.
 
-Everything stays on the machine: sqlite-vec, Ollama embeddings, and an
-Obsidian vault.
+## Where things live
+
+- **Rules** load at every session start from the plugin's `SessionStart`
+  hook: the core rules, plus a macOS or Windows profile picked automatically.
+- **Data** lives in `~/.claude/synapse/`: one global store by default (archive,
+  `vectors.db`, and an Obsidian vault). A project can opt into its own store
+  with a one-line `.synapse.toml`; see [INSTALL.md](INSTALL.md).
+- **Everything stays local:** sqlite-vec, Ollama embeddings, and Obsidian.
 
 ## Layout
 
 ```
-AGENTS.md                 the only instruction file (Claude Code reads it natively)
-platform/                 shell conventions → installed as .claude/rules/platform.md
-  macos.md
-  windows.md
-.claude/
-  skills/                 plan-session, end-session, recall, extract-session,
-                          emission-contract, workflow-recovery, language-sweep
-  hooks/                  emission_check.py + emission_patterns.json (Stop hook)
-kb/
-  scripts/                extract.py, recall.py, vault_write.py, backfill.py
-  requirements.txt
-templates/                PLAN.md, EXECUTION.md, NOTES.md, settings.json (hook registration)
-docs/
-  setup.md                install into a workspace root
-  architecture.md         lifecycle, components, principles, loop diagram, V2 seams
-examples/                 real PLAN/EXECUTION files from a mature project
+.claude-plugin/   plugin.json, marketplace.json (this repo is its own marketplace)
+instructions/     core.md, platform-macos.md, platform-windows.md (each < 10,000 chars)
+hooks/            hooks.json, session_start.sh + context/*.json, emission_check.py
+bin/synapse       CLI on the Bash PATH: where, setup, doctor, archive, recall, extract,
+                  vault, backfill, migrate
+lib/              py.sh (finds Python 3.11+), synapse/ (resolver + memory pipeline)
+skills/           plan-session, end-session, recall, extract-session, emission-contract,
+                  workflow-recovery, language-sweep, setup, doctor
+templates/        PLAN.md, EXECUTION.md, NOTES.md
+tools/            build_context.py (rebuilds hooks/context from instructions/)
+tests/            unit tests (python -m unittest discover -s tests)
+docs/             architecture.md, design/packaging.md
+examples/         real PLAN/EXECUTION files from a mature project
 ```
 
-## Install
+## Learn more
 
-See [docs/setup.md](docs/setup.md). In short: copy the harness into your
-workspace root, install a platform profile as `.claude/rules/platform.md`,
-register the Stop hook, then build the venv, pull `nomic-embed-text`, and
-point it at an Obsidian vault.
-
-Requires Claude Code 2.1.277 or later, Python 3.10+, Ollama, and Obsidian.
-
-## What's next
-
-V2 turns the remaining instruction-driven seams into deterministic ones: hook-
-driven recall, chained extraction, agent definition files for wave roles,
-supersession, hybrid retrieval, and a benchmark. See
-[docs/architecture.md](docs/architecture.md#toward-v2).
+- [INSTALL.md](INSTALL.md): install, provision, migrate, split stores, uninstall
+- [docs/architecture.md](docs/architecture.md): lifecycle, components,
+  principles, and the V2 roadmap
+- [docs/design/packaging.md](docs/design/packaging.md): why a plugin, and how
+  install stays non-destructive
+- [AGENTS.md](AGENTS.md): working on this repo

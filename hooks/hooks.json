@@ -1,0 +1,32 @@
+{
+  "description": "Synapse: always-on rules at session start; emission-contract check at stop",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session_start.sh\" core",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session_start.sh\" platform",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SYNAPSE_MIN_PY=3.9 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/emission_check.py\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

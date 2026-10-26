@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# synapse — the Synapse plugin's CLI. Claude Code puts the plugin's bin/ on the
+# Bash tool's PATH, so skills can run `synapse <command>` from any folder.
+set -e
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec bash "$ROOT/lib/py.sh" "$ROOT/lib/synapse/cli.py" "$@"

@@ -1,6 +1,5 @@
 # Working state, archives, and the vector DB stay local.
 .claude-work/
-kb/.venv/
 *.db
 
 # Per-user Claude Code settings. (Do not add a CLAUDE.local.md: like CLAUDE.md,

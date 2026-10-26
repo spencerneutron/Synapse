@@ -1,0 +1,16 @@
+{
+  "$schema": "https://code.claude.com/schemas/marketplace.json",
+  "name": "synapse",
+  "description": "Synapse: a session loop, output contract, and global local knowledge base for Claude Code.",
+  "owner": {
+    "name": "spencerneutron",
+    "url": "https://github.com/spencerneutron"
+  },
+  "plugins": [
+    {
+      "name": "synapse",
+      "source": "./",
+      "description": "Operating layer for Claude Code: session loop, agent waves, output contract, and a global local knowledge base."
+    }
+  ]
+}

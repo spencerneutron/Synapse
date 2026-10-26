@@ -1,8 +1,8 @@
 # Architecture
 
-Synapse is an operating layer for Claude Code in a multi-repo workspace. Every
-non-trivial session runs plan, execute, archive, and extract, and the next
-session starts with prior knowledge recalled.
+Synapse is a Claude Code plugin that gives every session, in any project, the
+same operating loop: plan, execute, archive, and extract, with prior knowledge
+recalled at the start of the next session.
 
 Instructions decide *when*; skills decide *how*; Python does the mechanics;
 hooks enforce what instructions can only request.
@@ -11,28 +11,30 @@ hooks enforce what instructions can only request.
 
 ## Session lifecycle
 
-1. **Plan** (`/plan-session`). Explore the repos with batched reads and a
+1. **Plan** (`/synapse:plan-session`). Explore the repos with batched reads and a
    sub-agent for cross-repo searches; run any session hooks the plan lists;
-   `/recall` when the work resembles prior work. Write
+   `/synapse:recall` when the work resembles prior work. Write
    `.claude-work/current/PLAN.md` (strategy, constraints, Decision Log) and
    `EXECUTION.md` (the active task).
 2. **Execute.** Small, verifiable, localized steps, in waves of role-specific
    agents (implementation, verification, research, adversarial review).
    Frontier models plan; right-sized models execute. `EXECUTION.md` updates
    often; `PLAN.md` only for durable decisions.
-3. **Emit** (every turn end). The `emission-contract` skill loads just before
+3. **Emit** (every turn end). The `synapse:emission-contract` skill loads just before
    the user-facing message. A Stop hook checks the message and forces one
    rewrite on a violation.
-4. **Archive** (`/end-session`). `PLAN`, `EXECUTION`, and `NOTES` are copied
-   to `.claude-work/archive/` under a session ID such as `2026-05-01-1515`.
-5. **Extract** (`/extract-session`). At teardown, while context is fresh,
+4. **Archive** (`/synapse:end-session`). `synapse archive` copies `PLAN` and
+   `EXECUTION` into the active store as `archive/<project>/<FILE>_<id>.md`
+   under a session ID such as `2026-05-01-1515`; the skill adds `NOTES`.
+5. **Extract** (`/synapse:extract-session`). At teardown, while context is fresh,
    Claude proposes Decision and Pattern notes and the user confirms once.
    Promoted notes and a Session note go to the vault; the archive and new
    notes are embedded; a `.processed/<id>.json` marker records the run.
-6. **Recall** (`/recall`). Later sessions query the vector DB and get ranked
+6. **Recall** (`/synapse:recall`). Later sessions, in any project, query the
+   active store's vector DB and get ranked
    snippets with source paths: pointers into the archive, not loaded context.
 
-`/workflow-recovery` sits outside the loop: when a background workflow dies,
+`/synapse:workflow-recovery` sits outside the loop: when a background workflow dies,
 it harvests finished agents' results from disk before anything is relaunched.
 
 ---
@@ -41,19 +43,27 @@ it harvests finished agents' results from disk before anything is relaunched.
 
 | Layer | Component | Role |
 |-------|-----------|------|
-| Instructions | `AGENTS.md` | The only instruction file, read natively by Claude Code: lifecycle, planning, validation, waves and model right-sizing, recall triggers, emission trigger |
-| Instructions | `.claude/rules/platform.md` | Shell and path conventions, installed from `platform/macos.md` or `platform/windows.md` |
-| Skills | `/plan-session`, `/end-session` | Session start/resume and archiving |
-| Skills | `/recall`, `/extract-session` | Memory read and write; extraction holds the promotion gate |
-| Skills | `emission-contract` | Late-bound output contract: a compact directive plus exemplars |
-| Skills | `/workflow-recovery` | Salvage results from an interrupted multi-agent run |
-| Skills | `language-sweep` | Prose cleanup in strict ASD-STE100 or lite marketing-copy mode |
+| Package | `.claude-plugin/` | Plugin manifest plus a marketplace manifest, so the repo installs with one command at user scope |
+| Instructions | `instructions/core.md` | Always-on rules (lifecycle, planning, validation, waves and model right-sizing, recall and emission triggers), injected by a `SessionStart` hook; under 10,000 characters |
+| Instructions | `instructions/platform-*.md` | Shell conventions for macOS or Windows, picked by the same hook from `uname` |
+| Skills | `/synapse:plan-session`, `/synapse:end-session` | Session start/resume and archiving |
+| Skills | `/synapse:recall`, `/synapse:extract-session` | Memory read and write; extraction holds the promotion gate |
+| Skills | `synapse:emission-contract` | Late-bound output contract: a compact directive plus exemplars |
+| Skills | `/synapse:workflow-recovery` | Salvage results from an interrupted multi-agent run |
+| Skills | `/synapse:language-sweep` | Prose cleanup in strict ASD-STE100 or lite marketing-copy mode |
+| Skills | `/synapse:setup`, `/synapse:doctor` | Provision the Synapse home; read-only health and conflict report |
 | Hooks | `emission_check.py` (Stop) | Blocks a non-compliant final message once and asks for a rewrite; allows the stop on `stop_hook_active` or any internal error |
-| Scripts | `extract.py`, `recall.py`, `vault_write.py`, `backfill.py` | Chunk, embed, search, write notes, bulk ingest |
-| Store | `.claude-work/archive/` | Canonical session history |
-| Store | `.claude-work/kb/vectors.db` | sqlite-vec, `nomic-embed-text` via Ollama, cosine distance, model stamped per chunk |
-| Store | Obsidian vault (`SYNAPSE_VAULT`, default `Synapse`) | Flat folders: Sessions, Decisions, Patterns, Projects |
+| CLI | `bin/synapse` → `lib/synapse/` | On the Bash PATH from any folder: `where`, `setup`, `doctor`, `archive`, `recall`, `extract`, `vault`, `backfill`, `migrate`; `lib/py.sh` finds Python 3.11+ |
+| Resolver | `lib/synapse/paths.py` | The only code that decides locations: home, store, project, archive, DB, vault |
+| Store | `~/.claude/synapse/stores/<store>/archive/<project>/` | Canonical session history |
+| Store | `~/.claude/synapse/stores/<store>/vectors.db` | sqlite-vec, `nomic-embed-text` via Ollama, cosine distance, model stamped per chunk, store-relative source paths |
+| Store | The store's Obsidian vault (default `Synapse`) | Flat folders: Sessions, Decisions, Patterns, Projects |
 | Runtime | Claude Code, auto mode | Controls live in the harness instead of permission prompts |
+
+**Stores.** One global store (`main`) by default. A project can opt into
+another with a `.synapse.toml` at its root (`store = "<name>"`), and
+`SYNAPSE_STORE` overrides both for a session. A store keeps its archive, vector
+DB, and vault together, so splitting a project splits all three.
 
 ---
 
@@ -69,7 +79,8 @@ it harvests finished agents' results from disk before anything is relaunched.
   always-replace for edited notes.
 - Fail loud: encoding errors, embedding-model mismatches, and unreachable
   services error out rather than write bad data.
-- Local only: no egress beyond Claude Code itself.
+- Local only: no egress beyond Claude Code itself, except the one-time
+  `sqlite-vec` download from PyPI during setup.
 - Recall results are navigation, not context.
 
 **Execution**
@@ -106,8 +117,8 @@ flowchart TD
     T([Task arrives]) --> PS
 
     subgraph P["Plan"]
-        PS["/plan-session<br/>parallel repo exploration<br/>+ session hooks"] --> RQ{"Resembles<br/>prior work?"}
-        RQ -- yes --> RC["/recall<br/>ranked snippets + paths"]
+        PS["/synapse:plan-session<br/>parallel repo exploration<br/>+ session hooks"] --> RQ{"Resembles<br/>prior work?"}
+        RQ -- yes --> RC["/synapse:recall<br/>ranked snippets + paths"]
         RQ -- no --> PF
         RC --> PF["Write PLAN.md<br/>+ EXECUTION.md"]
     end
@@ -132,14 +143,14 @@ flowchart TD
     DN -- yes --> ND
 
     subgraph M["Memory"]
-        ND["/end-session"] --> AR[("Archive<br/>canonical")]
-        AR --> XS["/extract-session<br/>propose, confirm once"]
+        ND["/synapse:end-session"] --> AR[("Store archive<br/>canonical")]
+        AR --> XS["/synapse:extract-session<br/>propose, confirm once"]
         XS --> GT{"Choice, rationale,<br/>durable, non-obvious?"}
         GT -- yes --> VT[("Obsidian vault<br/>Decisions, Patterns, Sessions")]
         GT -- no --> AO["Stays in archive only"]
-        AR --> EM["extract.py embed"]
+        AR --> EM["synapse extract"]
         VT --> EM
-        BF["backfill.py"] --> EM
+        BF["synapse backfill / migrate"] --> EM
         EM --> DB[("vectors.db<br/>sqlite-vec + nomic-embed-text")]
     end
 
@@ -158,15 +169,17 @@ V1 enforces the output contract with a hook but leaves recall, extraction, and
 role selection to instructions. Each row is a place where probabilistic
 triggering could become deterministic, at some cost.
 
-| Seam | v1.5 today | V2 option | Trade-off |
+| Seam | v1.6 today | V2 option | Trade-off |
 |------|------------|-----------|-----------|
-| Recall triggering | `AGENTS.md` asks Claude to recall when work resembles prior work | A prompt-submit hook runs `recall.py` and injects top-k pointers | Never misses; adds tokens every turn and risks noise on unrelated prompts |
-| Extraction | The user runs `/extract-session` at teardown | `/end-session` chains it, or a session-end hook queues it | No forgotten sessions; teardown judgment needs live context, so a detached hook loses quality |
-| Role orchestration | Waves and model tiers described in `AGENTS.md` | Roles as agent definition files with model frontmatter | Right-sizing becomes config, not persuasion; more files to maintain |
+| Recall triggering | The core rules ask Claude to recall when work resembles prior work | A prompt-submit hook runs `synapse recall` and injects top-k pointers | Never misses; adds tokens every turn and risks noise on unrelated prompts |
+| Extraction | The user runs `/synapse:extract-session` at teardown | `/synapse:end-session` chains it, or a session-end hook queues it | No forgotten sessions; teardown judgment needs live context, so a detached hook loses quality |
+| Role orchestration | Waves and model tiers described in the core rules | Roles as agent definition files with model frontmatter | Right-sizing becomes config, not persuasion; more files to maintain |
 | Memory hygiene | `supersedes` links exist, but the superseded note stays `active` | Extraction flips the old note's status | Recall stops surfacing stale decisions; extraction gets heavier |
-| Retrieval | Pure vector search, ~500-word heading chunks | Hybrid keyword plus vector, filtered by project and type | Better exact-name lookups; one more index to keep in sync |
-| Memory scope | Local, single user | Shared team store | Team leverage; poisoned entries propagate and secrets can leak across people |
-| Evaluation | Judged by feel and throughput | Harness Bench runs baseline, v1.5, and v2 on fixed tasks | Changes become measurable; benchmark upkeep is real work |
+| Retrieval | Pure vector search, ~500-word heading chunks; project and type filters run after a ~20-neighbour search, so filtered queries can come back short | Hybrid keyword plus vector, filtered by project and type | Better exact-name lookups; one more index to keep in sync |
+| Memory scope | Local, single user | Shared team store | Team leverage; poisoned entries propagate and secrets can leak across people. **Gate:** extraction must first scrub session-local references (bare `#17`, "Wave B", "yesterday's session") and user paths or machine ids, generalizing them to context another reader can use |
+| Evaluation | Judged by feel and throughput | Harness Bench runs baseline, v1.6, and v2 on fixed tasks, built on `claude plugin eval` | Changes become measurable; benchmark upkeep is real work |
 
-The "single native `AGENTS.md`" seam closed in v1.5, and the platform split
-(an OS-neutral core with shell profiles) shipped as well.
+Closed since V1: v1.5 merged the instruction files and split out the platform
+conventions; v1.6 packaged Synapse as a user-scope plugin with a global store
+([design](design/packaging.md)). An MCP server for memory, the natural
+transport for a shared store, belongs with the memory-scope row.
