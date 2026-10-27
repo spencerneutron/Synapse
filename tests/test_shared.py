@@ -293,7 +293,7 @@ class ShareGateTests(Members):
         tmp = self.tmp / "tmpXYZ"                   # a temp file without --source: named by its title
         tmp.write_text(NOTE, encoding="utf-8")
         res = json.loads(run(share.main, "add", "beta", str(tmp), "--json")[1])
-        self.assertTrue(res["path"].endswith("Decisions/Pin the embedding model.md"))
+        self.assertEqual(Path(res["path"]).parts[-2:], ("Decisions", "Pin the embedding model.md"))
         bad = self.note("alex fix for #17 from Session 2026-10-01-0900", NOTE)
         with self.assertRaises(SystemExit):
             run(share.main, "add", "beta", str(bad), "--source", str(bad))
