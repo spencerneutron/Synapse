@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.2.1 — 2026-10-26 — Windows checkout fix
+
+### Fixed
+
+- **Windows could not clone the repo**, so the plugin could not install
+  there: an eval fixture note had `<` and `>` in its file name. Renamed, and
+  CI now rejects file names Windows cannot check out.
+- **Background-task notifications got recall hints.** They reach the
+  `UserPromptSubmit` hook like prompts; prompts that start with a hyphenated
+  tag (such as `<task-notification>`) now get no hint.
+
 ## 2.2.0 — 2026-10-26 — V2 slice D: deterministic triggers
 
 ### Added

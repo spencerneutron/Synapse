@@ -188,7 +188,8 @@ missing:
 - **Recall hints.** On each prompt of four words or more, Synapse searches
   the active store and, when a past session or note scores at least 0.70,
   adds up to three pointers to the prompt (about 0.2 s with Ollama warm).
-  Each hint is shown once per session.
+  Each hint is shown once per session. Slash commands and background-task
+  notifications get none.
 - **Extraction reminder.** At session start, if this project has archived
   sessions that were never extracted, one line says so.
 

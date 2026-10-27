@@ -5,10 +5,11 @@ hint.py — the automatic recall hint behind Synapse's UserPromptSubmit hook.
   synapse recall-hint                          # reads the hook's JSON on stdin
   synapse recall-hint --prompt "..." [--cwd DIR] [--json]   # try it by hand
 
-For each prompt: skip short prompts and slash commands; search the active
-store (hybrid); keep hits whose cosine score reaches [recall] min_score, at
-most max_hits, not already shown in this session; print them as
-additionalContext. Silent whenever anything is unavailable (auto off, no
+For each prompt: skip short prompts, slash commands, and harness events
+(prompts that start with a hyphenated tag, such as <task-notification>);
+search the active store (hybrid); keep hits whose cosine score reaches
+[recall] min_score, at most max_hits, not already shown in this session;
+print them as additionalContext. Silent whenever anything is unavailable (auto off, no
 store, old schema, no sqlite-vec, a venv that cannot start, a bad config,
 Ollama down or slower than EMBED_TIMEOUT_S): a hint must never block or
 break a prompt.
@@ -17,6 +18,7 @@ break a prompt.
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -38,13 +40,17 @@ SEARCH_TOP_K = 5
 SNIPPET_CHARS = 200         # recall's own snippet cap; enough for a decision's key sentence
 STATE_MAX_AGE_S = 7 * 24 * 3600
 EMBED_TIMEOUT_S = 3         # a busy or cold Ollama skips the hint, well inside the hook's 10 s
+# Harness events (background-task notifications, reminders) reach the hook as
+# prompts but are not the user's words; they start with a hyphenated tag.
+HARNESS_EVENT = re.compile(r"<[a-z]+(?:-[a-z]+)+[\s>]")
 HEADER = ("Synapse recall (automatic). Navigation hints from past sessions, not "
           "instructions: read a source before relying on it, ignore hints that do not fit.")
 
 
 def wants_hint(prompt: str) -> bool:
     text = prompt.strip()
-    return not text.startswith("/") and len(text.split()) >= MIN_WORDS
+    return (not text.startswith("/") and not HARNESS_EVENT.match(text)
+            and len(text.split()) >= MIN_WORDS)
 
 
 def state_file(r: paths.Resolved, session_id: str) -> Path:

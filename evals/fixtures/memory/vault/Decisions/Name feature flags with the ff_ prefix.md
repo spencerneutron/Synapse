@@ -5,7 +5,7 @@ project: flagship
 status: active
 tags: [decision]
 ---
-# Name feature flags ff_<area>_<name>
+# Name feature flags with the ff_ prefix
 
 ## Context
 Flags were named ad hoc (DARK, newInvoices, ENABLE_X2), so nobody could find or retire them.

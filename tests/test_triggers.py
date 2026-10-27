@@ -35,6 +35,12 @@ class HintLogicTests(unittest.TestCase):
         self.assertFalse(hint.wants_hint("/synapse:recall cloudkit sharing sync"))
         self.assertTrue(hint.wants_hint("how did we handle cloudkit sharing"))
 
+    def test_harness_events_get_no_hint(self):
+        self.assertFalse(hint.wants_hint("<task-notification>\n<task-id>b1</task-id>\n<summary>CI run finished</summary>"))
+        self.assertFalse(hint.wants_hint("<system-reminder>\nBackground command completed (exit code 0)"))
+        self.assertTrue(hint.wants_hint("<div class=x> why does this div overflow on mobile"))
+        self.assertTrue(hint.wants_hint("<pasted_content id=1> stack trace from the sync crash"))
+
     def test_threshold_session_memory_duplicates_and_cap(self):
         results = [hit("a", 0.9, "x"), hit("b", 0.8, "x"), hit("c", 0.75, "y"),
                    hit("d", 0.72, "z"), hit("e", 0.71, "w"), hit("f", 0.5, "v")]

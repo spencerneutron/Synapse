@@ -46,6 +46,11 @@ jobs:
                --exclude-dir=.git --exclude-dir=examples --exclude-dir=tests .; then
             echo "Replace machine-specific paths with placeholders."; exit 1
           fi
+      - name: File names valid on Windows
+        run: |
+          if git ls-files | grep -nE '[<>:"|?*\\]'; then
+            echo "Rename these: Windows cannot check out <>:\"|?* or backslashes in a path."; exit 1
+          fi
 
   validate:
     runs-on: ubuntu-latest
