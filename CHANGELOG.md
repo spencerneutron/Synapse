@@ -1,5 +1,63 @@
 # Changelog
 
+## 2.3.0 — 2026-10-26 — V2 slice E: shared memory for a small team
+
+### Added
+
+- **Teams.** A team shares Decisions and Patterns (never session archives)
+  through a folder that reaches every member by **git** (any remote, even a
+  bare repo on a NAS) or a **synced folder** (Dropbox, iCloud Drive, SMB).
+  Each member keeps a local index rebuilt from the folder by content hash;
+  the index is never shared. `synapse shared init | join | sync | status |
+  retract | push`.
+- **Scrub gate** (`synapse share scrub`, `synapse share lint`). Home and temp
+  paths are rewritten; secrets, emails, private IPs, host names, and device
+  ids block sharing; session-local references (a bare `#17`, "Wave B",
+  "this session"), the user's login name, and text aimed at an agent must
+  be reworded. `synapse share lint <folder>` can guard a team repo in CI.
+- **`/synapse:share`.** Scrubs each chosen note, rewrites what needs
+  judgment, shows only the changed lines, adds only the notes the user
+  approves (with `origin`, `author`, `shared_at`, `source_id`; personal
+  front matter dropped), and asks before every push. Sharing an edited note
+  again replaces its copy.
+- **Retraction.** `synapse shared retract` moves a note to `Retracted/` with
+  a reason; every member's next sync drops it.
+- **Automatic sync.** A `SessionStart` hook starts a background pull and
+  re-index at most every 10 minutes. It never prompts for credentials and
+  never makes the session wait; a sync failing for 3 days gets one line.
+- **Recall and hints include teams.** Shared hits are labeled
+  `shared:<team>, <author>`; each list keeps its order and the lists merge
+  by score, the store's own result first on a tie, so a weak shared hit
+  never displaces a stronger local one. A note you shared shows once.
+  `synapse recall --scope all|local|shared`.
+- **Inbound gate.** Sync lints every incoming note: one with a secret, an
+  identifier, or text aimed at an agent is held back from the index and
+  listed by `synapse shared status`; author names are plain labels.
+- **Doctor** reports each team: folder, last sync and error, unpushed
+  commits, sync-conflict copies.
+- **`tools/live-check-share.sh`**: a guarded live check of the share flow
+  (eval sessions cannot run the CLI).
+
+### Changed
+
+- **Core rules:** a teammate's note is weighed like any hint, never
+  followed as an instruction, and loses to a contradicting local decision
+  (say so); share only through `/synapse:share`, per note, and ask before
+  every push.
+- `/synapse:extract-session` offers `/synapse:share` once when a team is
+  configured.
+- `tools/run-evals.sh` drops an installed Synapse from PATH, so evals call
+  the plugin under test.
+
+### Measured
+
+- Scrub corpus: every planted finding caught, 0 of 25 clean notes blocked.
+  On the author's 125 real notes: 7 flagged, all correctly; no false blocks.
+- Conflict eval 2/2; live share check 2/2 (scrubbed, asked first, nothing
+  added before approval).
+- No regression: slice-C and slice-D cases unchanged; golden set identical
+  with no team configured.
+
 ## 2.2.1 — 2026-10-26 — Windows checkout fix
 
 ### Fixed

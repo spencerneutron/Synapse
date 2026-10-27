@@ -5,7 +5,7 @@ execute in small verified steps, archive the working state, and promote
 durable decisions into a local knowledge base the next session can recall.
 It installs once for the whole machine and works in every project.
 
-**Version:** 2.2.1 (2026-10-26). See [CHANGELOG.md](CHANGELOG.md).
+**Version:** 2.3.0 (2026-10-26). See [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
@@ -42,6 +42,10 @@ setup are reported for the user to decide.
 6. **Recall:** later sessions, in any project, get ranked pointers into that
    history: automatically, when a prompt closely matches something in the
    store, and on demand with `/synapse:recall`.
+7. **Share (optional):** `/synapse:share` gives a team chosen Decisions and
+   Patterns, scrubbed of paths, secrets, and session-local references,
+   through a git repo or a synced folder. Teammates' notes join recall,
+   labeled; your own note wins a tie, and your own decision wins a conflict.
 
 ## Where things live
 
@@ -50,7 +54,10 @@ setup are reported for the user to decide.
 - **Data** lives in `~/.claude/synapse/`: one global store by default (archive,
   `vectors.db`, and an Obsidian vault). A project can opt into its own store
   with a one-line `.synapse.toml`; see [INSTALL.md](INSTALL.md).
+- **Teams** (optional): a shared notes folder per team, plus a local index
+  rebuilt from it; see [INSTALL.md](INSTALL.md#share-with-a-team-optional).
 - **Everything stays local:** sqlite-vec, Ollama embeddings, and Obsidian.
+  Only notes you approve for a team leave the machine.
 
 ## Layout
 
@@ -61,15 +68,17 @@ agents/           implementer, verifier, researcher, reviewer, scout (synapse:<r
 hooks/            hooks.json (SessionStart, UserPromptSubmit, Stop), session_start.sh,
                   context/*.json, emission_check.py
 bin/synapse       CLI on the Bash PATH: where, setup, doctor, archive, recall,
-                  recall-check, recall-hint, pending, extract, vault, backfill, migrate
+                  recall-check, recall-hint, pending, share, shared, extract, vault,
+                  backfill, migrate
 lib/              py.sh (finds Python 3.11+), synapse/ (resolver + memory pipeline)
-skills/           plan-session, end-session, recall, extract-session, emission-contract,
+skills/           plan-session, end-session, recall, extract-session, share, emission-contract,
                   workflow-recovery, language-sweep, setup, doctor
 templates/        PLAN.md, EXECUTION.md, NOTES.md
 tools/            build_context.py (rebuilds hooks/context from instructions/),
-                  run-evals.sh (guarded eval runner), build_eval_home.py
+                  run-evals.sh (guarded eval runner), build_eval_home.py,
+                  live-check-share.sh
 tests/            unit tests (python -m unittest discover -s tests)
-evals/            claude plugin eval suite (role agents, triggers; run locally, results gitignored)
+evals/            claude plugin eval suite (role agents, triggers, teams; run locally, results gitignored)
 docs/             architecture.md, design/packaging.md
 examples/         real PLAN/EXECUTION files from a mature project
 ```

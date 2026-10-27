@@ -1,6 +1,6 @@
 {
   "name": "synapse",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "description": "Operating layer for Claude Code: plan/execute/archive session loop, agent waves with right-sized models, a late-bound output contract with a Stop hook, and a local knowledge base (sqlite-vec + Ollama + Obsidian) recalled across sessions.",
   "author": {
     "name": "spencerneutron",

@@ -46,7 +46,7 @@ from the folder where the user usually starts Claude Code.
 
 | Look for | Command | If found |
 |----------|---------|----------|
-| Skills named `plan-session`, `end-session`, `recall`, `extract-session`, `emission-contract`, `workflow-recovery`, `language-sweep`, `setup`, `doctor` | `ls ~/.claude/skills .claude/skills 2>/dev/null` | Both copies load beside `/synapse:<name>`. An older Synapse copy should be retired later (the user's call) |
+| Skills named `plan-session`, `end-session`, `recall`, `extract-session`, `share`, `emission-contract`, `workflow-recovery`, `language-sweep`, `setup`, `doctor` | `ls ~/.claude/skills .claude/skills 2>/dev/null` | Both copies load beside `/synapse:<name>`. An older Synapse copy should be retired later (the user's call) |
 | Always-on rules about planning files, recall, memory, or output style | `ls ~/.claude/CLAUDE.md ~/.claude/rules CLAUDE.md AGENTS.md CLAUDE.local.md .claude/CLAUDE.md 2>/dev/null`, then read them | Where a project's rules conflict, Synapse defers to them; tell the user which rules overlap |
 | Other `Stop` hooks, an `outputStyle`, or `disableAllHooks` | `grep -n -e '"Stop"' -e outputStyle -e disableAllHooks ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Another blocking Stop hook can stack rewrite requests. `disableAllHooks` stops Synapse from working at all |
 | Managed settings that allow only managed hooks | macOS `/Library/Application Support/ClaudeCode/managed-settings.json`, Linux `/etc/claude-code/managed-settings.json`, Windows `C:\Program Files\ClaudeCode\managed-settings.json` | `allowManagedHooksOnly` means Synapse cannot load; stop and tell the user |
@@ -207,13 +207,69 @@ remind = true      # false turns the reminder off
 
 Prompts go only to the local Ollama server.
 
+## Share with a team (optional)
+
+A team shares Decisions and Patterns, never session archives. The notes live
+in a folder that reaches every member through a **git repo** (GitHub, GitLab,
+a bare repo on a NAS) or a **synced folder** (Dropbox, iCloud Drive, SMB).
+Each member builds a local index from it; the index is never shared.
+
+One member creates the team (ask first; creating the remote repo is the
+user's step):
+
+```bash
+synapse shared init acme --author alex --remote git@github.com:acme/synapse-notes.git
+```
+
+```bash
+synapse shared init acme --author alex --path ~/Dropbox/acme-synapse
+```
+
+Push the first commit of a git team with `synapse shared push acme`. The
+others join:
+
+```bash
+synapse shared join acme git@github.com:acme/synapse-notes.git --author sam
+```
+
+```bash
+synapse shared join acme ~/Dropbox/acme-synapse --author sam
+```
+
+From then on:
+
+- **Sharing** is `/synapse:share`: it scrubs each note (home paths become
+  `~/`; secrets, emails, private IPs, host names, and device ids block it;
+  session-local references such as a bare `#17` must be reworded), shows the
+  result, adds only the notes the user approves, and asks before each push.
+- **Receiving** is automatic: each session start runs a background pull and
+  re-index (at most every 10 minutes) that never prompts for credentials and
+  never makes the session wait. `synapse shared sync` does it by hand.
+- **Recall and hints** include the team's notes, labeled `shared:<team>,
+  <author>`, ranked by relevance with your own note first on a tie; a
+  teammate's note never overrides your own decision.
+- **Incoming notes pass the scrub gate too.** A teammate's note with a
+  secret, an identifier, or text aimed at an agent is held back from your
+  index; `synapse shared status` lists it.
+- **Git identity:** commits in a git team carry your git name and email,
+  like any commit you push.
+- **Taking a note back:** `synapse shared retract acme "<note>" --reason
+  "<why>"` moves it to `Retracted/`; every member's next sync drops it.
+- `synapse share lint <folder>` checks a whole team folder, for example in
+  the team repo's CI.
+
+Per-team settings live under `[shared.<team>]` in `config.toml`: `stores`
+limits which stores search the team, and `auto_sync = false` turns the
+background sync off.
+
 ## What Synapse writes
 
 | Location | What | Written by |
 |----------|------|------------|
 | `~/.claude/plugins/` | The plugin itself | Claude Code's installer |
 | `~/.claude/settings.json` | `enabledPlugins`, `extraKnownMarketplaces` entries | Claude Code's installer |
-| `~/.claude/synapse/` | Config, stores (archives + `vectors.db`), venv, `state/` (which hints a session has seen; pruned after 7 days) | `synapse setup`, `archive`, `extract`, `migrate`, the recall-hint hook |
+| `~/.claude/synapse/` | Config, stores (archives + `vectors.db`), venv, `state/` (which hints a session has seen, pruned after 7 days; each team's last sync), `shared/<team>/` (a git team's clone and every team's index) | `synapse setup`, `archive`, `extract`, `migrate`, `shared`, the hooks |
+| A folder team's synced folder | `Decisions/`, `Patterns/`, `Retracted/`, `.synapse-team.toml` | `synapse shared init`, `/synapse:share`, `synapse shared retract` |
 | `<project>/.claude-work/current/` | `PLAN.md`, `EXECUTION.md` | The agent, during structured work |
 | The store's Obsidian vault | `Sessions/`, `Decisions/`, `Patterns/`, `Projects/` notes | `/synapse:extract-session` |
 
@@ -252,4 +308,6 @@ decision.
 | `synapse: no Python 3.11+ found` | No suitable interpreter on `PATH` | macOS: `brew install python`; Windows: python.org installer, not the Microsoft Store |
 | `error: DB not found` from recall | Setup has not run for this store | `/synapse:setup` |
 | `cannot reach Ollama` | Ollama is not running | `ollama serve` |
+| A team's notes never arrive | The background sync fails (credentials, network) | `synapse shared sync <team>` shows the git error; `/synapse:doctor` lists each team |
+| `conflict copy, not indexed` | The sync service saved two versions of a note | Merge the copy into the original, then delete the copy |
 | `is Obsidian running with the 'Synapse' vault open?` | Obsidian closed or another vault open | Open the store's vault in Obsidian |

@@ -169,10 +169,13 @@ def emit_yaml_value(value) -> str:
     needs_quote = needs_quote or s.strip() != s
     needs_quote = needs_quote or s.lower() in ("true", "false", "null", "yes", "no", "")
     needs_quote = needs_quote or (s and s[0] in "[]{},'\"")
+    needs_quote = needs_quote or any(ord(c) < 32 for c in s)
 
     if needs_quote:
-        # Use double quotes; escape internal double quotes and backslashes.
+        # Double quotes; escape backslashes, quotes, and control characters,
+        # so a value never starts a new front-matter line.
         escaped = s.replace("\\", "\\\\").replace('"', '\\"')
+        escaped = "".join(c if ord(c) >= 32 else f"\\x{ord(c):02x}" for c in escaped)
         return f'"{escaped}"'
     return s
 

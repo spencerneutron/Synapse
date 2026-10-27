@@ -75,6 +75,8 @@ Optional filters when relevant:
 - `--top-k N` — default 5; raise to 8–10 for broader scans, lower to 3 for
   precision-critical lookups
 - `--since YYYY-MM-DD` — only chunks embedded on or after that date
+- `--scope all|local|shared` — default `all`: the active store plus its
+  teams' shared notes; `local` or `shared` for one side only
 
 Filters are exact and run inside the search; `--project` ignores case.
 Superseded decisions are hidden unless `--include-superseded` is passed.
@@ -87,6 +89,7 @@ Each result is one ranked hit:
   N. [score] breadcrumb  (match)
      source path
      project: X  type: Y
+     shared: <team> (<author>)   (only for a teammate's shared note)
      SUPERSEDED by <note>        (only with --include-superseded)
      snippet (200 chars max)
 ```

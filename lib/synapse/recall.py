@@ -13,6 +13,11 @@ Usage:
   synapse recall "QuickAddTracker" --mode keyword
   synapse recall "obsidian cli" --since 2026-04-01 --top-k 10 --format text
   synapse recall "mail forwarding" --include-superseded
+  synapse recall "release gate" --scope shared      # only the teams' notes
+
+The active store's teams ([shared.<team>] in config.toml) are searched too.
+Each list keeps its own order and the lists merge by score, the store's own
+result first on a tie; shared hits are labeled with their team and author.
 """
 
 import argparse
@@ -37,9 +42,11 @@ import paths  # noqa: E402
 from extract import (  # noqa: E402
     EMBEDDING_DIM,
     EMBEDDING_MODEL,
+    SCHEMA_VERSION,
     db_connect,
     embed_text,
     require_current,
+    schema_version,
     vec_project,
 )
 
@@ -49,6 +56,7 @@ DEFAULT_TOP_K = 5
 MAX_KNN_K = 4096  # sqlite-vec refuses a larger k in one KNN query
 RRF_K = 60        # reciprocal rank fusion constant: each list adds 1 / (RRF_K + rank)
 MODES = ("hybrid", "vector", "keyword")
+SCOPES = ("all", "local", "shared")
 
 
 def candidate_window(top_k: int) -> int:
@@ -149,9 +157,11 @@ def search(
     resolved: "paths.Resolved | None" = None,
     mode: str = "hybrid",
     include_superseded: bool = False,
+    embedding: str | None = None,
 ) -> list[dict]:
     """Run a hybrid (or vector-only, or keyword-only) search with optional
-    filters. Returns ranked results."""
+    filters. Returns ranked results. `embedding` reuses a query vector
+    already computed for another DB."""
     if mode not in MODES:
         sys.exit(f"error: --mode must be one of {', '.join(MODES)}")
 
@@ -171,7 +181,7 @@ def search(
             f"clear the DB and re-ingest."
         )
 
-    embedding = json.dumps(embed_text(query, input_type="query"))
+    embedding = embedding or json.dumps(embed_text(query, input_type="query"))
     args = (top_k, project, source_type, since, include_superseded)
     vector = vector_ranked(conn, embedding, *args) if mode != "keyword" else []
     keyword = keyword_ranked(conn, query, *args) if mode != "vector" else []
@@ -209,9 +219,65 @@ def search(
             "breadcrumb": metadata.get("breadcrumb", ""),
             "snippet": snippet,
             "created_at": r["created_at"],
+            "origin": r["origin"] or "local",
+            "author": r["author"],
+            "source_id": (metadata.get("frontmatter") or {}).get("source_id"),
         })
 
     return results
+
+
+def search_all(
+    conn: sqlite3.Connection,
+    query: str,
+    top_k: int,
+    resolved: "paths.Resolved",
+    scope: str = "all",
+    teams: "list[paths.Team] | None" = None,
+    **filters,
+) -> list[dict]:
+    """The active store plus its teams. Each list keeps its own (fused) order;
+    the lists merge by cosine score, the store's own result first on a tie,
+    so a weak shared hit never displaces a stronger local one. A note the
+    user shared appears once: its local copy."""
+    if scope not in SCOPES:
+        sys.exit(f"error: --scope must be one of {', '.join(SCOPES)}")
+    embedding = json.dumps(embed_text(query, input_type="query"))
+    lists = [search(conn, query, top_k, resolved=resolved, embedding=embedding, **filters)
+             if scope != "shared" else []]
+    if scope != "local":
+        if teams is None:
+            try:
+                teams = paths.teams_for(resolved.store)
+            except SystemExit:  # a broken [shared.*] table: doctor reports it; local recall goes on
+                teams = []
+        vault_paths = [r[0] for r in conn.execute(
+            "SELECT DISTINCT source_path FROM chunks WHERE source_path LIKE 'vault/%'")]
+        for team in teams:
+            if not team.db.exists():
+                continue
+            tconn = db_connect(team.db)
+            if schema_version(tconn) != SCHEMA_VERSION:
+                continue  # an index from another Synapse version: the next sync rebuilds it
+            mine = {paths.source_id(team.author, sp) for sp in vault_paths}
+            hits = []
+            for h in search(tconn, query, top_k, embedding=embedding, **filters):
+                if h["source_id"] in mine:
+                    continue
+                h["origin"] = team.name
+                h["source_path"] = str(team.notes / h["stored_path"])
+                h["stored_path"] = f"shared/{team.name}/{h['stored_path']}"
+                hits.append(h)
+            lists.append(hits)
+    merged, heads = [], [0] * len(lists)
+    while len(merged) < top_k:
+        live = [i for i, lst in enumerate(lists) if heads[i] < len(lst)]
+        if not live:
+            break
+        best = max(live, key=lambda i: (lists[i][heads[i]]["score"], -i))  # ties: earlier list (local)
+        merged.append(lists[best][heads[best]])
+        heads[best] += 1
+    return merged
 
 
 def format_text(results: list[dict], query: str) -> str:
@@ -225,6 +291,8 @@ def format_text(results: list[dict], query: str) -> str:
         lines.append(f"     {r['source_path']}")
         if r["project"]:
             lines.append(f"     project: {r['project']}  type: {r['source_type']}")
+        if r.get("origin", "local") != "local":
+            lines.append(f"     shared: {r['origin']} ({r['author'] or 'unknown author'})")
         if r["status"] == "superseded":
             lines.append(f"     SUPERSEDED by {r['superseded_by']}")
         lines.append(f"     {r['snippet']}")
@@ -249,6 +317,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="hybrid (default), vector, or keyword")
     parser.add_argument("--include-superseded", action="store_true",
                         help="also return chunks of superseded notes, labeled")
+    parser.add_argument("--scope", choices=SCOPES, default="all",
+                        help="all (default): the store and its teams; local; or shared only")
     parser.add_argument("--format", choices=["json", "text"], default="json",
                         help="output format (default: json)")
     args = parser.parse_args(argv)
@@ -267,14 +337,16 @@ def main(argv: list[str] | None = None) -> int:
 
     conn = db_connect(db)
     require_current(conn, db)
-    results = search(
+    results = search_all(
         conn,
         query=args.query,
         top_k=args.top_k,
+        resolved=resolved,
+        scope=args.scope,
+        teams=[] if args.db else None,   # an explicit --db searches that DB alone
         project=args.project,
         source_type=args.source_type,
         since=args.since,
-        resolved=resolved,
         mode=args.mode,
         include_superseded=args.include_superseded,
     )

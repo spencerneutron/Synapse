@@ -32,8 +32,9 @@ Synapse gives every session are in `instructions/`, not here.
 - **Skills call the CLI** (`synapse …`), never script paths. Name new skills
   without a `synapse-` prefix; the plugin namespaces them.
 - **Non-destructive:** nothing may write outside the Synapse home, the
-  project's working files, or the vault. New overlap risks get a check in
-  `lib/synapse/doctor.py` and a row in INSTALL.md's preflight table.
+  project's working files, the vault, or a team's notes folder. New overlap
+  risks get a check in `lib/synapse/doctor.py` and a row in INSTALL.md's
+  preflight table.
 - **Store schema:** a change to `vectors.db` bumps `extract.SCHEMA_VERSION`
   and extends `synapse extract upgrade` (backup first, no re-embedding,
   verify every vector). Measure retrieval changes with `synapse
@@ -79,8 +80,14 @@ run `EVAL_SYNAPSE_HOME=<dir> tools/run-evals.sh --yes --tag slice-d`. Eval runs
 cannot read files outside their workspace, so a hint's snippet is all the
 agent sees of a memory there. Eval traces record `SessionStart` hook output
 but not `UserPromptSubmit` output, so no grader can see a hint: measure it by
-outcome, hints-on home against hints-off home. Run the CLI
-against a throwaway home: `SYNAPSE_HOME=$(mktemp -d) bin/synapse setup`.
+outcome, hints-on home against hints-off home. The `slice-e` case needs
+`build_eval_home.py <dir> --triggers on --team`.
+
+Eval sessions cannot run the `synapse` CLI (the plugin's `bin/` is not on
+their PATH, and their sandbox blocks the Synapse home), so a CLI-driven skill
+is checked live instead: `tools/live-check-share.sh --yes <team home>` runs
+headless sessions with this repo as the plugin (about $0.30 per run). Run the
+CLI against a throwaway home: `SYNAPSE_HOME=$(mktemp -d) bin/synapse setup`.
 
 ## Release
 

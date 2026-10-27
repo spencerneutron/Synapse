@@ -20,6 +20,10 @@ fi
 shift
 
 cd "$ROOT"
+# Run from inside a Claude Code session, PATH carries the installed Synapse's
+# bin/; an eval must call the plugin under test, so drop installed copies.
+PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '/plugins/cache/synapse/' | paste -sd: -)"
+export PATH
 exec claude plugin eval . \
     --runs 2 --ablation none --scaffold \
     --allow-tools Bash Edit Write Agent \

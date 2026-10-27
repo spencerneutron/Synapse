@@ -31,7 +31,7 @@ import paths  # noqa: E402
 
 OLLAMA_BASE = "http://localhost:11434"
 EMBEDDING_MODEL = "nomic-embed-text"
-SKILL_NAMES = ("plan-session", "end-session", "recall", "extract-session",
+SKILL_NAMES = ("plan-session", "end-session", "recall", "extract-session", "share",
                "emission-contract", "workflow-recovery", "language-sweep",
                "setup", "doctor")
 RULE_KEYWORDS = ("PLAN.md", "EXECUTION.md", ".claude-work", "/recall",
@@ -312,6 +312,35 @@ def check_old_installs(rep: Report, project_dir: Path, r: paths.Resolved) -> Non
         rep.add("info", "old-install", detail, fix)
 
 
+def check_teams(rep: Report, r: paths.Resolved) -> None:
+    """Each team: folder present, last sync, unpushed commits, conflict copies."""
+    import shared
+    try:
+        teams = paths.teams()
+    except SystemExit as e:
+        rep.add("error", "teams", str(e))
+        return
+    for t in teams.values():
+        name = f"team {t.name}"
+        if not t.notes.is_dir():
+            rep.add("error", name, f"notes folder {tilde(t.notes)} missing",
+                    "check the path (folder team) or rejoin: synapse shared join")
+            continue
+        s = shared.team_status(t)
+        in_store = t.stores is None or r.store in t.stores
+        detail = (f"{t.transport}, {s['notes']} notes, author {t.author}, last sync {s['last_success'] or 'never'}"
+                  + ("" if in_store else f"; not searched from store {r.store!r}"))
+        if s["last_error"]:
+            rep.add("warn", name, f"{detail}; last error: {s['last_error']}", f"run: synapse shared sync {t.name}")
+        else:
+            rep.add("ok", name, detail)
+        if s["unpushed"]:
+            rep.add("info", name, f"{s['unpushed']} commit(s) not pushed", f"after the user's OK: synapse shared push {t.name}")
+        if s["conflicts"]:
+            rep.add("warn", name, f"{len(s['conflicts'])} sync-conflict copies not indexed: "
+                    + ", ".join(Path(c).name for c in s["conflicts"][:3]), "merge them into the original and delete the copy")
+
+
 def check_gitignore(rep: Report, project_dir: Path) -> None:
     work = project_dir / ".claude-work"
     if not work.exists() or not paths.find_upwards(project_dir, ".git"):
@@ -333,6 +362,7 @@ def run(project_dir: Path) -> Report:
         rep.add("error", "config", str(e))
         return rep
     check_runtime(rep, r)
+    check_teams(rep, r)
     check_skills(rep, project_dir)
     check_rules(rep, project_dir)
     check_settings(rep, project_dir)

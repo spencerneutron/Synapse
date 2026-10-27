@@ -624,8 +624,10 @@ def chunk_document(
 # ---------- Storage ----------
 
 def store_chunks(conn: sqlite3.Connection, chunks: list[Chunk], status: str = "active",
-                 superseded_by: str | None = None) -> tuple[int, int]:
-    """Embed and insert chunks. Returns (inserted, skipped) counts."""
+                 superseded_by: str | None = None, origin: str | None = None,
+                 author: str | None = None) -> tuple[int, int]:
+    """Embed and insert chunks. Returns (inserted, skipped) counts. origin and
+    author mark a team's notes (None for the personal store)."""
     if not chunks:
         return 0, 0
 
@@ -654,6 +656,7 @@ def store_chunks(conn: sqlite3.Connection, chunks: list[Chunk], status: str = "a
             "text": chunk.text, "metadata": json.dumps(chunk.metadata),
             "embedding_model": EMBEDDING_MODEL, "embedding_dim": EMBEDDING_DIM,
             "created_at": now, "status": status, "superseded_by": superseded_by,
+            "origin": origin, "author": author,
         }, json.dumps(emb))
         inserted += 1
 

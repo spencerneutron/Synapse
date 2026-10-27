@@ -178,10 +178,11 @@ triggering could become deterministic, at some cost.
 | Role orchestration | **Done in V2 slice C:** five plugin agents with per-role models, tool limits, and their own rules; measured with an eval suite | Hooks that route work to a role | Right-sizing is config; agent files to maintain |
 | Memory hygiene | **Done in V2 slice 1:** `synapse extract supersede` marks the old decision in the DB and its front matter; recall hides it by default | Detect likely supersessions during extraction | Fewer near-duplicate decisions left active |
 | Retrieval | **Done in V2 slice 1:** hybrid keyword + vector with reciprocal rank fusion; exact, case-insensitive filters inside the search | Tuned chunking; a cross-encoder re-ranker | Measured with `synapse recall-check` |
-| Memory scope | Local, single user | Shared team store | Team leverage; poisoned entries propagate and secrets can leak across people. **Gate:** extraction must first scrub session-local references (bare `#17`, "Wave B", "yesterday's session") and user paths or machine ids, generalizing them to context another reader can use |
-| Evaluation | Judged by feel and throughput; agent evals deferred (2026-10-26), to revisit before deterministic triggers ([V2 plan](design/v2.md)) | Harness Bench runs baseline, v1.6, and v2 on fixed tasks, built on `claude plugin eval` | Changes become measurable; benchmark upkeep is real work |
+| Memory scope | **Done in V2 slice E:** optional teams share Decisions and Patterns through a git repo or a synced folder, behind a scrub gate and per-note approval, with provenance and local-first ranking | Encryption, access control beyond the git host's | Team leverage; poisoned entries propagate and secrets can leak across people. **Gate:** extraction must first scrub session-local references (bare `#17`, "Wave B", "yesterday's session") and user paths or machine ids, generalizing them to context another reader can use |
+| Evaluation | **Started in V2 slice C:** a `claude plugin eval` suite of role-agent and trigger cases, run on demand through `tools/run-evals.sh` ([V2 plan](design/v2.md)) | Harness Bench runs baseline, v1.6, and v2 on fixed tasks, built on `claude plugin eval` | Changes become measurable; benchmark upkeep is real work |
 
 Closed since V1: v1.5 merged the instruction files and split out the platform
 conventions; v1.6 packaged Synapse as a user-scope plugin with a global store
-([design](design/packaging.md)). An MCP server for memory, the natural
-transport for a shared store, belongs with the memory-scope row.
+([design](design/packaging.md)). Slice E shares memory through a folder
+(git or a sync service); an MCP server for clients outside Claude Code is
+slice F.

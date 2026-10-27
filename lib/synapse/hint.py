@@ -82,7 +82,8 @@ def select(results: list[dict], min_score: float, max_hits: int, seen: set) -> l
 def render(hits: list[dict]) -> str:
     lines = [HEADER]
     for h in hits:
-        where = ", ".join(x for x in (h.get("project"), h.get("source_type")) if x)
+        shared = f"shared:{h['origin']}, {h.get('author') or 'unknown'}" if h.get("origin", "local") != "local" else ""
+        where = ", ".join(x for x in (h.get("project"), h.get("source_type"), shared) if x)
         snippet = h["snippet"][:SNIPPET_CHARS].rstrip()
         lines.append(f"- [{h['score']}] {h['breadcrumb']} — {h['source_path']} ({where})")
         lines.append(f"  {snippet}")
@@ -98,7 +99,7 @@ def find_hits(prompt: str, cwd: Path, session_id: str | None, remember: bool) ->
     if extract.schema_version(conn) != extract.SCHEMA_VERSION:
         return []
     extract.EMBED_TIMEOUT_S = EMBED_TIMEOUT_S
-    results = recall.search(conn, prompt[:MAX_QUERY_CHARS], SEARCH_TOP_K, resolved=r)
+    results = recall.search_all(conn, prompt[:MAX_QUERY_CHARS], SEARCH_TOP_K, resolved=r)
     seen, sf = set(), None
     if session_id:
         sf = state_file(r, session_id)

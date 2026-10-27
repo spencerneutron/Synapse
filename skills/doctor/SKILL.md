@@ -44,6 +44,7 @@ each conflict into a finding and a recommendation the user decides on.
 | runtime | Python, venv, `vectors.db` and its schema version, Ollama, `obsidian` CLI, the vault | Memory features degrade without them; an old schema needs `synapse setup` |
 | triggers | `[recall]` and `[extract]` in `config.toml` | Whether automatic recall hints and the pending-extraction reminder are on, and the hint threshold |
 | pending | `<store>/archive/<project>/` without a `.processed` marker | Archived sessions recall cannot find until they are extracted |
+| teams | each `[shared.<team>]`: its notes folder, last sync, unpushed commits, sync-conflict copies | A team that stopped syncing or has unpushed notes leaves teammates without them |
 
 ## Output Behavior
 

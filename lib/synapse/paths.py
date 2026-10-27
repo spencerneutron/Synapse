@@ -12,11 +12,15 @@ location; everything asks resolve().
            split all three at once.
   Project  an explicit --project, else the nearest .synapse.toml's `project`,
            else the git root's folder name, else the working directory's name.
+  Team     a [shared.<team>] table in the config: a shared notes folder (git
+           checkout or synced folder) and its local index in
+           <home>/shared/<team>/. Recall on a store includes its teams.
 
 Paths stored inside a store's DB are relative ("archive/<project>/<file>",
 "vault/<Folder>/<file>") so a store can move, or later be shared, intact.
 """
 
+import hashlib
 import os
 import re
 import sys
@@ -55,6 +59,16 @@ vault = "Synapse"
 
 [extract]
 # remind = true        # at session start, mention archived sessions never extracted
+
+# A team shares Decisions and Patterns through a git repo or a synced folder.
+# `synapse shared init` or `synapse shared join` writes this table.
+# [shared.acme]
+# transport = "git"                         # or "folder"
+# remote = "git@github.com:acme/notes.git"  # git only
+# path = "~/Dropbox/acme-synapse"           # folder: required; git: default <home>/shared/acme/notes
+# author = "alex"                           # written into every note you share
+# stores = ["main"]                         # whose recall includes this team; default all
+# auto_sync = true                          # background pull + re-index at session start
 """
 
 
@@ -209,6 +223,77 @@ def resolve(project: str | None = None, cwd: Path | None = None) -> Resolved:
         processed_dir=archive_dir / ".processed",
         db=store_path / "vectors.db",
     )
+
+
+TEAM_NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,39}")
+AUTHOR = re.compile(r"[\w][\w .'-]{0,39}")   # shown in teammates' hints: one short line
+TRANSPORTS = ("git", "folder")
+
+
+@dataclass
+class Team:
+    name: str
+    transport: str
+    notes: Path            # the shared folder: Decisions/, Patterns/, Retracted/
+    db: Path               # local index, rebuilt from notes; never shared
+    remote: str | None
+    author: str
+    stores: list[str] | None   # None: every store's recall includes the team
+    auto_sync: bool
+
+    @property
+    def dir(self) -> Path:
+        return team_dir(self.name)
+
+    @property
+    def state(self) -> Path:
+        return home() / "state" / f"shared-{self.name}.json"
+
+
+def team_dir(name: str) -> Path:
+    return home() / "shared" / name
+
+
+def teams() -> dict[str, Team]:
+    """Every [shared.<team>] in config.toml. Exits with a clear error on a bad
+    table, like settings()."""
+    raw = load_toml(config_path()).get("shared", {})
+    if not isinstance(raw, dict):
+        sys.exit(f"error: [shared] in {config_path()} must hold [shared.<team>] tables")
+    out = {}
+    for name, t in raw.items():
+        where = f"[shared.{name}] in {config_path()}"
+        if not TEAM_NAME.fullmatch(name):
+            sys.exit(f"error: {where}: team names use a-z, 0-9, - and _")
+        if not isinstance(t, dict):
+            sys.exit(f"error: {where} must be a table")
+        transport = t.get("transport", "git")
+        if transport not in TRANSPORTS:
+            sys.exit(f"error: {where}: transport must be \"git\" or \"folder\", got {transport!r}")
+        if transport == "folder" and not t.get("path"):
+            sys.exit(f"error: {where}: a folder team needs path = \"<the synced folder>\"")
+        author, stores, auto = t.get("author"), t.get("stores"), t.get("auto_sync", True)
+        if not isinstance(author, str) or not AUTHOR.fullmatch(author.strip()):
+            sys.exit(f"error: {where}: set author = \"<your name>\" (letters, digits, space, . ' -; 40 at most)")
+        if stores is not None and not (isinstance(stores, list) and all(isinstance(s, str) for s in stores)):
+            sys.exit(f"error: {where}: stores must be a list of store names")
+        if not isinstance(auto, bool):
+            sys.exit(f"error: {where}: auto_sync must be true or false")
+        notes = Path(t["path"]).expanduser() if t.get("path") else team_dir(name) / "notes"
+        out[name] = Team(name=name, transport=transport, notes=notes, db=team_dir(name) / "vectors.db",
+                         remote=t.get("remote"), author=author.strip(), stores=stores, auto_sync=auto)
+    return out
+
+
+def teams_for(store: str) -> list[Team]:
+    """The teams whose notes join recall on this store."""
+    return [t for t in teams().values() if t.stores is None or store in t.stores]
+
+
+def source_id(author: str, stored_path: str) -> str:
+    """A shared note's lineage: the same personal note shared again (edited or
+    renamed in the team folder) replaces its copy. Reveals no path."""
+    return hashlib.sha256(f"{author}\n{stored_path}".encode()).hexdigest()[:16]
 
 
 def configured_stores() -> dict[str, Path]:

@@ -1,7 +1,7 @@
 ---
 name: extract-session
 description: Use after end-session to project the just-archived session into the Obsidian vault and the local vector database. Runs once per session at teardown. Idempotent — safe to re-run.
-allowed-tools: Bash(synapse extract *), Bash(synapse vault *), Bash(synapse where *)
+allowed-tools: Bash(synapse extract *), Bash(synapse vault *), Bash(synapse where *), Bash(synapse shared status*)
 ---
 
 # Extract Session Skill
@@ -362,6 +362,10 @@ Session 2026-04-23-1645 extracted:
   Embedded: 31 archive chunks + 4 note chunks
   Marker: archive/workspace/.processed/2026-04-23-1645.json (in the store)
 ```
+
+If `synapse shared status` lists a team and Decisions or Patterns were
+promoted, end with one line offering `/synapse:share` for them. Never share
+as part of extraction.
 
 ---
 

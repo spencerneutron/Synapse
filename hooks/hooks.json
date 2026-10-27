@@ -1,5 +1,5 @@
 {
-  "description": "Synapse: always-on rules and an extraction reminder at session start; recall hints on prompts; emission-contract check at stop",
+  "description": "Synapse: always-on rules, an extraction reminder, and team sync at session start; recall hints on prompts; emission-contract check at stop",
   "hooks": {
     "SessionStart": [
       {
@@ -17,6 +17,11 @@
           {
             "type": "command",
             "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" pending --hook",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" shared hook",
             "timeout": 10
           }
         ]
