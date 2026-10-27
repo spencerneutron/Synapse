@@ -8,6 +8,8 @@ synapse — command-line entry point for the Synapse plugin.
   synapse archive [--project P]          archive .claude-work/current into the store
   synapse recall "<query>" [...]         semantic search over the active store
   synapse recall-check <golden.toml>     score recall against a golden set
+  synapse recall-hint [--prompt "..."]   the automatic hint (UserPromptSubmit hook)
+  synapse pending [--hook]               archived sessions never extracted
   synapse extract <subcommand> [...]     init | embed-archive | embed-note | status |
                                          upgrade | supersede
   synapse vault <subcommand> [...]       verify | create-note | note-exists | search
@@ -35,6 +37,8 @@ COMMANDS = {
     "archive": "archive",
     "recall": "recall",
     "recall-check": "recall_check",
+    "recall-hint": "hint",
+    "pending": "pending",
     "extract": "extract",
     "vault": "vault_write",
     "backfill": "backfill",

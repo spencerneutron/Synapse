@@ -36,7 +36,10 @@ Use this skill when:
 Do **not** use this skill:
 
 - For information already present in the current `PLAN.md` / `EXECUTION.md`
-- When the same topic was already recalled earlier in this session
+- When the same topic was already recalled earlier in this session, or an
+  automatic hint ("Synapse recall (automatic)") already surfaced it: read
+  that hint's source instead. Run this skill when you need more hits,
+  filters, or a different query than the prompt itself
 - For generic / well-known knowledge (regular reasoning suffices)
 
 ---

@@ -54,6 +54,7 @@ it harvests finished agents' results from disk before anything is relaunched.
 | Skills | `/synapse:setup`, `/synapse:doctor` | Provision the Synapse home; read-only health and conflict report |
 | Agents | `synapse:implementer`, `verifier`, `researcher`, `reviewer`, `scout` | Wave roles with their own models and tool limits; each body carries the rules its job needs, because sub-agents do not receive the `SessionStart` rules |
 | Hooks | `emission_check.py` (Stop) | Blocks a non-compliant final message once and asks for a rewrite; allows the stop on `stop_hook_active` or any internal error |
+| Hooks | `synapse recall-hint` (UserPromptSubmit), `synapse pending --hook` (SessionStart) | Automatic recall hints and the extraction reminder; both fail silently |
 | CLI | `bin/synapse` → `lib/synapse/` | On the Bash PATH from any folder: `where`, `setup`, `doctor`, `archive`, `recall`, `recall-check`, `extract` (incl. `upgrade`, `supersede`), `vault`, `backfill`, `migrate`; `lib/py.sh` finds Python 3.11+ |
 | Resolver | `lib/synapse/paths.py` | The only code that decides locations: home, store, project, archive, DB, vault |
 | Store | `~/.claude/synapse/stores/<store>/archive/<project>/` | Canonical session history |
@@ -172,8 +173,8 @@ triggering could become deterministic, at some cost.
 
 | Seam | 2.0 today | V2 option | Trade-off |
 |------|------------|-----------|-----------|
-| Recall triggering | The core rules ask Claude to recall when work resembles prior work | A prompt-submit hook runs `synapse recall` and injects top-k pointers | Never misses; adds tokens every turn and risks noise on unrelated prompts |
-| Extraction | The user runs `/synapse:extract-session` at teardown | `/synapse:end-session` chains it, or a session-end hook queues it | No forgotten sessions; teardown judgment needs live context, so a detached hook loses quality |
+| Recall triggering | **Done in V2 slice D:** a `UserPromptSubmit` hook adds up to three hints scoring ≥ 0.70, once per session, failing silently | Per-project thresholds | Calibrated on the author's store: 0 of 24 unrelated prompts hinted |
+| Extraction | **Done in V2 slice D:** a session-start reminder lists archived sessions never extracted; the user still runs `/synapse:extract-session` | Auto-embed pending archives without promotion | Nothing is forgotten silently; judgment stays with a live session |
 | Role orchestration | **Done in V2 slice C:** five plugin agents with per-role models, tool limits, and their own rules; measured with an eval suite | Hooks that route work to a role | Right-sizing is config; agent files to maintain |
 | Memory hygiene | **Done in V2 slice 1:** `synapse extract supersede` marks the old decision in the DB and its front matter; recall hides it by default | Detect likely supersessions during extraction | Fewer near-duplicate decisions left active |
 | Retrieval | **Done in V2 slice 1:** hybrid keyword + vector with reciprocal rank fusion; exact, case-insensitive filters inside the search | Tuned chunking; a cross-encoder re-ranker | Measured with `synapse recall-check` |

@@ -63,6 +63,13 @@ def _reexec_under_venv_if_needed() -> None:
         return
 
     os.environ["SYNAPSE_VENV_REEXEC"] = "1"
+    if os.environ.get("SYNAPSE_OPTIONAL"):
+        # An optional hook (recall hint) must fail open even when the venv's
+        # interpreter cannot start (e.g. its base Python was upgraded away):
+        # run it as a child, drop its stderr, and always exit 0.
+        import subprocess
+        subprocess.run([str(venv_python), *sys.argv], stderr=subprocess.DEVNULL)
+        sys.exit(0)
     if sys.platform == "win32":
         # Windows has no real exec: os.execv spawns a child and exits at once,
         # so the shell loses the child's output and exit code. Wait for it.
@@ -84,6 +91,7 @@ if hasattr(sys.stdout, "reconfigure"):
 EMBEDDING_MODEL = "nomic-embed-text"
 EMBEDDING_DIM = 768
 OLLAMA_URL = "http://localhost:11434/api/embeddings"
+EMBED_TIMEOUT_S = 30           # the recall hint lowers this to fit its hook budget
 
 # Chunking targets. Tokens are approximated as words * 1.3 — close enough
 # for boundary decisions; the embedding model has its own tokenizer.
@@ -311,7 +319,7 @@ def embed_text(text: str, input_type: str = "document") -> list[float]:
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=EMBED_TIMEOUT_S) as resp:
             data = json.loads(resp.read())
     except urllib.error.URLError as e:
         sys.exit(

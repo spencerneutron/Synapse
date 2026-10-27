@@ -159,6 +159,39 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(statuses, {"superseded"})
 
 
+    def test_recall_hint_end_to_end_with_session_dedupe(self):
+        import hint
+        (self.tmp / "home" / "config.toml").write_text("[recall]\nmin_score = 0.3\n")
+        first = hint.find_hits("why do ops mail messages get signed", self.tmp, "sess-1", remember=True)
+        self.assertTrue(first)
+        self.assertTrue(all(h["score"] >= 0.3 for h in first))
+        again = hint.find_hits("why do ops mail messages get signed", self.tmp, "sess-1", remember=True)
+        self.assertFalse({h["stored_path"] for h in first} & {h["stored_path"] for h in again})
+        other = hint.find_hits("why do ops mail messages get signed", self.tmp, "sess-2", remember=False)
+        self.assertEqual([h["stored_path"] for h in other], [h["stored_path"] for h in first])
+        off = self.tmp / "home" / "config.toml"
+        off.write_text("[recall]\nauto = false\nmin_score = 0.3\n")
+        self.assertEqual(hint.find_hits("why do ops mail messages get signed", self.tmp, "sess-3", True), [])
+
+    def test_recall_hint_gives_up_on_a_silent_ollama_within_its_budget(self):
+        import socket
+        import time
+        import hint
+        silent = socket.socket()
+        silent.bind(("127.0.0.1", 0))
+        silent.listen(1)  # accepts the connection, never answers
+        saved = (recall.embed_text, extract.OLLAMA_URL, extract.EMBED_TIMEOUT_S)
+        recall.embed_text = self._saved[2]
+        extract.OLLAMA_URL = f"http://127.0.0.1:{silent.getsockname()[1]}/api/embeddings"
+        start = time.monotonic()
+        try:
+            with self.assertRaises((Exception, SystemExit)):
+                hint.find_hits("why do ops mail messages get signed", self.tmp, None, remember=False)
+        finally:
+            recall.embed_text, extract.OLLAMA_URL, extract.EMBED_TIMEOUT_S = saved
+            silent.close()
+        self.assertLess(time.monotonic() - start, hint.EMBED_TIMEOUT_S + 2)
+
 class FrontMatterTests(unittest.TestCase):
     def write(self, text):
         p = Path(tempfile.mkdtemp()) / "n.md"

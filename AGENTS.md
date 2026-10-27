@@ -56,13 +56,30 @@ python3 tools/build_context.py --check
 claude plugin validate . --strict
 ```
 
-Run the eval suite (role agents; costs model calls, so it is not in CI):
+Try the plugin without installing it: `claude --plugin-dir .`.
+
+## Evals (cost money: run only when the user asks)
+
+`evals/` holds a `claude plugin eval` suite of real Claude sessions. "Run the
+tests" means the unit tests above, never the evals. Run evals only when the
+user explicitly asks, and say the cost first (about $1.50-2.00 per full run).
+Use the wrapper, which refuses to start without `--yes`, keeps reports local,
+and caps cost:
 
 ```bash
-claude plugin eval . --runs 2 --ablation none --scaffold --allow-tools Bash Edit Write Agent --trust-plugin --no-publish --max-cost-usd 12 --threshold 0
+tools/run-evals.sh --yes
 ```
 
-Try the plugin without installing it: `claude --plugin-dir .`. Run the CLI
+Never run a bare `claude plugin eval`: by default it runs 3 runs per case in
+two arms and publishes its report to claude.ai.
+
+The `slice-d` cases need a memory: build fixture homes with
+`python3 tools/build_eval_home.py <dir> --triggers on|off` (uses Ollama), then
+run `EVAL_SYNAPSE_HOME=<dir> tools/run-evals.sh --yes --tag slice-d`. Eval runs
+cannot read files outside their workspace, so a hint's snippet is all the
+agent sees of a memory there. Eval traces record `SessionStart` hook output
+but not `UserPromptSubmit` output, so no grader can see a hint: measure it by
+outcome, hints-on home against hints-off home. Run the CLI
 against a throwaway home: `SYNAPSE_HOME=$(mktemp -d) bin/synapse setup`.
 
 ## Release

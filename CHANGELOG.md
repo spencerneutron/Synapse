@@ -1,5 +1,52 @@
 # Changelog
 
+## 2.2.0 — 2026-10-26 — V2 slice D: deterministic triggers
+
+### Added
+
+- **Automatic recall hints.** A `UserPromptSubmit` hook (`synapse
+  recall-hint`) searches the active store for each prompt of four or more
+  words that is not a slash command. Hits scoring at least `[recall]
+  min_score` (0.70) appear as up to `max_hits` (3) pointers, each shown once
+  per session and marked as navigation, not instructions. It is silent when
+  anything is missing or broken (store, schema v2, sqlite-vec, Python 3.11+,
+  a venv whose interpreter cannot start, Ollama down or slower than 3 s),
+  and never blocks a prompt.
+- **Pending-extraction reminder.** A `SessionStart` hook (`synapse pending
+  --hook`) notes, on startup and `/clear`, archived sessions in this project
+  that were never extracted; the session mentions it once and offers
+  `/synapse:extract-session`. `synapse pending` lists them by hand.
+- **Config switches:** `[recall] auto`, `min_score`, `max_hits`, and
+  `[extract] remind` in `config.toml`. A wrong type (for example `auto =
+  "false"`) is an error, never a guess. Doctor reports the switches, the
+  pending count, config errors, and a home taken from `EVAL_SYNAPSE_HOME`.
+- **`tools/run-evals.sh`:** the only documented way to run the eval suite.
+  It refuses to start without `--yes`, keeps reports local, and caps cost.
+- **Four `slice-d` eval cases** with a synthetic fixture memory
+  (`evals/fixtures/memory/`, built by `tools/build_eval_home.py`).
+
+### Changed
+
+- **Core rules:** how to treat an automatic hint (check the source, never
+  present a hint as a decision) and the reminder (mention once; never
+  extract without the user's go-ahead).
+- **`EVAL_SYNAPSE_HOME`** selects the Synapse home when `SYNAPSE_HOME` is
+  unset. It exists for eval runs, which pass only `EVAL_*` variables.
+- **AGENTS.md:** "run the tests" means unit tests; evals run only when the
+  user asks, through the wrapper.
+
+### Measured
+
+- **Threshold** (author's store, 24 unrelated prompts, 17 eligible golden
+  queries): at 0.70, 0 of 24 unrelated prompts get a hint, 16 of 17 golden
+  queries do, and 15 of 17 hints contain the expected source. Warm hook
+  latency: p50 0.18 s, worst 0.19 s.
+- **Agent evals** (Sonnet, 2 runs per case): outcome graders 12/12 with
+  triggers on, 6/12 off. A convention that lives only in memory was applied
+  4/4 on vs 0/4 off; the un-extracted archive was mentioned 2/2 vs 0/2; the
+  unrelated task stayed on task in both arms.
+- **No regression:** the eight slice-C cases match 2.1 grader for grader.
+
 ## 2.1.0 — 2026-10-26 — V2 slice C: role agents
 
 ### Added

@@ -42,6 +42,8 @@ each conflict into a finding and a recommendation the user decides on.
 | old-install | `kb/scripts`, `.claude-work/archive`, `.claude-work/kb` in the project and parents | A V1/v1.5 memory system running beside the plugin |
 | gitignore | the project's git repo | `.claude-work/` working files would be committed |
 | runtime | Python, venv, `vectors.db` and its schema version, Ollama, `obsidian` CLI, the vault | Memory features degrade without them; an old schema needs `synapse setup` |
+| triggers | `[recall]` and `[extract]` in `config.toml` | Whether automatic recall hints and the pending-extraction reminder are on, and the hint threshold |
+| pending | `<store>/archive/<project>/` without a `.processed` marker | Archived sessions recall cannot find until they are extracted |
 
 ## Output Behavior
 

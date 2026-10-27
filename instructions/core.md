@@ -151,6 +151,13 @@ Treat results as navigation hints, not context: read a source only if its
 snippet is relevant, and never paste recall output into planning files. Cite
 the path and paraphrase.
 
+Synapse may add a "Synapse recall (automatic)" hint to a prompt. Treat it the
+same way: check a source before relying on it, ignore hints that do not fit,
+and never present a hint as a decision. It does not replace
+`/synapse:recall` when you need more. If a session starts with a note that
+archived sessions were never extracted, mention it once and offer
+`/synapse:extract-session`; do not extract without the user's go-ahead.
+
 ---
 
 ## Emission

@@ -104,6 +104,9 @@ def check_runtime(rep: Report, r: paths.Resolved) -> None:
     v = sys.version_info
     rep.add("ok", "python", f"{v.major}.{v.minor}.{v.micro} ({sys.executable})")
 
+    if os.environ.get("EVAL_SYNAPSE_HOME") and not os.environ.get("SYNAPSE_HOME"):
+        rep.add("warn", "home", f"{tilde(paths.home())} comes from EVAL_SYNAPSE_HOME, meant for eval runs only",
+                "unset EVAL_SYNAPSE_HOME outside eval runs")
     if paths.config_path().exists():
         rep.add("ok", "config", tilde(paths.config_path()))
     else:
@@ -111,6 +114,19 @@ def check_runtime(rep: Report, r: paths.Resolved) -> None:
 
     rep.add("ok", "store", f"{r.store!r} at {tilde(r.store_path)} (from {tilde(r.store_source)})")
     rep.add("ok", "project", f"{r.project!r} (from {tilde(r.project_source)})")
+
+    try:
+        st = paths.settings()
+        rep.add("ok", "triggers",
+                f"recall hints {'on' if st['recall_auto'] else 'off'} (min_score {st['min_score']}, "
+                f"max_hits {st['max_hits']}); extraction reminder {'on' if st['extract_remind'] else 'off'}")
+    except SystemExit as e:
+        rep.add("error", "triggers", str(e))
+    from archive import discover_sessions
+    pending = [s["id"] for s in discover_sessions(r.archive_dir) if not s["processed"]]
+    if pending:
+        rep.add("info", "pending", f"{len(pending)} archived session(s) in {r.project!r} never extracted "
+                f"(latest {pending[-1]})", "run /synapse:extract-session")
 
     vp = paths.venv_python()
     if not vp.exists():

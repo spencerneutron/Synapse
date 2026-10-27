@@ -5,7 +5,7 @@ execute in small verified steps, archive the working state, and promote
 durable decisions into a local knowledge base the next session can recall.
 It installs once for the whole machine and works in every project.
 
-**Version:** 2.1.0 (2026-10-26). See [CHANGELOG.md](CHANGELOG.md).
+**Version:** 2.2.0 (2026-10-26). See [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
@@ -37,9 +37,11 @@ setup are reported for the user to decide.
 4. **Archive:** `/synapse:end-session` copies the planning files into the
    store and writes session notes.
 5. **Extract:** `/synapse:extract-session` promotes Decisions and Patterns to
-   an Obsidian vault and embeds the session in the vector DB.
+   an Obsidian vault and embeds the session in the vector DB. A new session
+   says so when an archived session was never extracted.
 6. **Recall:** later sessions, in any project, get ranked pointers into that
-   history.
+   history: automatically, when a prompt closely matches something in the
+   store, and on demand with `/synapse:recall`.
 
 ## Where things live
 
@@ -56,16 +58,18 @@ setup are reported for the user to decide.
 .claude-plugin/   plugin.json, marketplace.json (this repo is its own marketplace)
 instructions/     core.md, platform-macos.md, platform-windows.md (each < 10,000 chars)
 agents/           implementer, verifier, researcher, reviewer, scout (synapse:<role> sub-agents)
-hooks/            hooks.json, session_start.sh + context/*.json, emission_check.py
+hooks/            hooks.json (SessionStart, UserPromptSubmit, Stop), session_start.sh,
+                  context/*.json, emission_check.py
 bin/synapse       CLI on the Bash PATH: where, setup, doctor, archive, recall,
-                  recall-check, extract, vault, backfill, migrate
+                  recall-check, recall-hint, pending, extract, vault, backfill, migrate
 lib/              py.sh (finds Python 3.11+), synapse/ (resolver + memory pipeline)
 skills/           plan-session, end-session, recall, extract-session, emission-contract,
                   workflow-recovery, language-sweep, setup, doctor
 templates/        PLAN.md, EXECUTION.md, NOTES.md
-tools/            build_context.py (rebuilds hooks/context from instructions/)
+tools/            build_context.py (rebuilds hooks/context from instructions/),
+                  run-evals.sh (guarded eval runner), build_eval_home.py
 tests/            unit tests (python -m unittest discover -s tests)
-evals/            claude plugin eval suite (role agents; run locally, results gitignored)
+evals/            claude plugin eval suite (role agents, triggers; run locally, results gitignored)
 docs/             architecture.md, design/packaging.md
 examples/         real PLAN/EXECUTION files from a mature project
 ```

@@ -3,7 +3,8 @@
 paths.py — resolve where Synapse keeps its data. No other module hard-codes a
 location; everything asks resolve().
 
-  Home     $SYNAPSE_HOME, else ${CLAUDE_CONFIG_DIR:-~/.claude}/synapse
+  Home     $SYNAPSE_HOME, else $EVAL_SYNAPSE_HOME (eval runs only), else
+           ${CLAUDE_CONFIG_DIR:-~/.claude}/synapse
   Config   <home>/config.toml
   Store    $SYNAPSE_STORE, else the nearest .synapse.toml's `store`, else the
            config's `default_store`, else "main". A store is an archive folder,
@@ -25,6 +26,8 @@ from pathlib import Path
 
 DEFAULT_STORE = "main"
 DEFAULT_VAULT = "Synapse"
+DEFAULT_MIN_SCORE = 0.70   # recall-hint threshold; calibrated in docs/design/v2.md
+DEFAULT_MAX_HITS = 3
 MARKER = ".synapse.toml"
 VAULT_FOLDERS = ("Sessions", "Decisions", "Patterns", "Projects")
 
@@ -44,12 +47,23 @@ vault = "Synapse"
 # [stores.client-x]
 # path = "~/clients/x/synapse-store"
 # vault = "Client X"
+
+[recall]
+# auto = true          # add recall hints to prompts (UserPromptSubmit hook)
+# min_score = 0.70     # cosine score a hit needs to become a hint
+# max_hits = 3
+
+[extract]
+# remind = true        # at session start, mention archived sessions never extracted
 """
 
 
 def home() -> Path:
-    if os.environ.get("SYNAPSE_HOME"):
-        return Path(os.environ["SYNAPSE_HOME"]).expanduser()
+    # EVAL_SYNAPSE_HOME exists for `claude plugin eval`, whose isolated runs
+    # receive only EVAL_* variables; it lets an eval use a fixture home.
+    for var in ("SYNAPSE_HOME", "EVAL_SYNAPSE_HOME"):
+        if os.environ.get(var):
+            return Path(os.environ[var]).expanduser()
     base = os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude"
     return Path(base).expanduser() / "synapse"
 
@@ -76,6 +90,33 @@ def load_toml(path: Path) -> dict:
         return {}
     except tomllib.TOMLDecodeError as e:
         sys.exit(f"error: cannot parse {path}: {e}")
+
+
+def settings() -> dict:
+    """Behaviour switches from config.toml, with defaults. Exits with a clear
+    error on a wrong type, so doctor reports it and the hooks stay silent."""
+    cfg = load_toml(config_path())
+
+    def table(name: str) -> dict:
+        t = cfg.get(name, {})
+        if not isinstance(t, dict):
+            sys.exit(f"error: [{name}] in {config_path()} must be a table")
+        return t
+
+    def value(name: str, key: str, default, ok, want: str):
+        v = table(name).get(key, default)
+        if isinstance(v, bool) != isinstance(default, bool) or not ok(v):
+            sys.exit(f"error: [{name}] {key} in {config_path()} must be {want}, got {v!r}")
+        return v
+
+    return {
+        "recall_auto": value("recall", "auto", True, lambda v: True, "true or false"),
+        "min_score": float(value("recall", "min_score", DEFAULT_MIN_SCORE,
+                                 lambda v: isinstance(v, (int, float)) and 0 <= v <= 1, "a number from 0 to 1")),
+        "max_hits": value("recall", "max_hits", DEFAULT_MAX_HITS,
+                          lambda v: isinstance(v, int) and v >= 0, "a whole number, 0 or more"),
+        "extract_remind": value("extract", "remind", True, lambda v: True, "true or false"),
+    }
 
 
 def find_upwards(start: Path, name: str) -> Path | None:

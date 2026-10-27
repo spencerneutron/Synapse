@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: memory-release-gate
+context:
+  scaffold_script: fixture.sh

@@ -180,13 +180,39 @@ Then run `synapse setup` once to create the new store's archive and
 archive, DB, and vault apply and why. `SYNAPSE_STORE=<name>` overrides both for one
 session.
 
+## Automatic recall and reminders
+
+Two hooks act on their own, and both stay silent when anything they need is
+missing:
+
+- **Recall hints.** On each prompt of four words or more, Synapse searches
+  the active store and, when a past session or note scores at least 0.70,
+  adds up to three pointers to the prompt (about 0.2 s with Ollama warm).
+  Each hint is shown once per session.
+- **Extraction reminder.** At session start, if this project has archived
+  sessions that were never extracted, one line says so.
+
+Both are switches in `~/.claude/synapse/config.toml`:
+
+```toml
+[recall]
+auto = true        # false turns hints off
+min_score = 0.70   # higher means fewer, surer hints
+max_hits = 3
+
+[extract]
+remind = true      # false turns the reminder off
+```
+
+Prompts go only to the local Ollama server.
+
 ## What Synapse writes
 
 | Location | What | Written by |
 |----------|------|------------|
 | `~/.claude/plugins/` | The plugin itself | Claude Code's installer |
 | `~/.claude/settings.json` | `enabledPlugins`, `extraKnownMarketplaces` entries | Claude Code's installer |
-| `~/.claude/synapse/` | Config, stores (archives + `vectors.db`), venv | `synapse setup`, `archive`, `extract`, `migrate` |
+| `~/.claude/synapse/` | Config, stores (archives + `vectors.db`), venv, `state/` (which hints a session has seen; pruned after 7 days) | `synapse setup`, `archive`, `extract`, `migrate`, the recall-hint hook |
 | `<project>/.claude-work/current/` | `PLAN.md`, `EXECUTION.md` | The agent, during structured work |
 | The store's Obsidian vault | `Sessions/`, `Decisions/`, `Patterns/`, `Projects/` notes | `/synapse:extract-session` |
 

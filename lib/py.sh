@@ -15,6 +15,7 @@
 #
 # Usage: bash lib/py.sh <script.py> [args...]
 #        SYNAPSE_MIN_PY=3.9 bash lib/py.sh <script.py>   (lower the floor)
+#        SYNAPSE_OPTIONAL=1 bash lib/py.sh <script.py>   (no Python: exit 0 silently)
 set -e
 export PYTHONUTF8=1
 MIN="${SYNAPSE_MIN_PY:-3.11}"
@@ -49,6 +50,8 @@ for cmd in "python3" "python" "py -3" \
     fi
 done
 
+# Optional hooks (recall hints, reminders) must never surface an error.
+[ -n "${SYNAPSE_OPTIONAL:-}" ] && exit 0
 echo "synapse: no Python $MIN+ found (tried python3, python, py -3, python3.11-3.19)." >&2
 echo "  macOS: brew install python   Windows: install from https://python.org (not the Microsoft Store)" >&2
 exit 1
