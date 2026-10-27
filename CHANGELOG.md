@@ -1,5 +1,23 @@
 # Changelog
 
+## Repository, after 2.3.0 — V2 slice A: eval bench
+
+The plugin is unchanged (no runtime file), so the version stays 2.3.0.
+
+- **`tools/run-bench.sh --yes`** runs every eval case with Synapse and
+  without it (the no-plugin baseline), building the fixture homes it needs;
+  about $6, capped at $13.50, reports local.
+- **`tools/eval-report.py`**: with vs without per case and per grader, or
+  `--compare OLD NEW`. It scores only graders that count in both arms,
+  leaves errored and cost-skipped runs out (and says so), and pairs cases
+  for the mean.
+- **Two core-loop cases** (`verify-before-done`, `answer-first`); the
+  release-gate case now relies on memory alone; `reviewer-minimum` gains a
+  scored `finds-bug` grader.
+- **Measured on 2.3.0:** 1.00 with Synapse vs 0.71 without, over 15 cases.
+  The gain comes from memory (four cases, 0 to 1) and the general-purpose
+  brief rule; the other ten cases tie.
+
 ## 2.3.0 — 2026-10-26 — V2 slice E: shared memory for a small team
 
 No store schema change. Update with `claude plugin marketplace update

@@ -74,6 +74,19 @@ tools/run-evals.sh --yes
 Never run a bare `claude plugin eval`: by default it runs 3 runs per case in
 two arms and publishes its report to claude.ai.
 
+The bench runs every case with Synapse and without it (the no-plugin
+baseline), builds the fixture homes it needs, and prints what Synapse adds
+(about $6, capped at $13.50):
+
+```bash
+tools/run-bench.sh --yes
+```
+
+`python3 tools/eval-report.py RUN.json...` reports with vs without;
+`--compare OLD.json NEW.json` compares two runs. A grader that only means
+something with Synapse (a `synapse:<role>` dispatch, a Synapse rule's
+offer) carries `arm: with-only`, so it is shown but not scored.
+
 The `slice-d` cases need a memory: build fixture homes with
 `python3 tools/build_eval_home.py <dir> --triggers on|off` (uses Ollama), then
 run `EVAL_SYNAPSE_HOME=<dir> tools/run-evals.sh --yes --tag slice-d`. Eval runs

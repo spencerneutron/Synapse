@@ -88,10 +88,11 @@ skills/           plan-session, end-session, recall, extract-session, share, emi
                   workflow-recovery, language-sweep, setup, doctor
 templates/        PLAN.md, EXECUTION.md, NOTES.md
 tools/            build_context.py (rebuilds hooks/context from instructions/),
-                  run-evals.sh (guarded eval runner), build_eval_home.py,
-                  live-check-share.sh
+                  run-evals.sh (guarded eval runner), run-bench.sh (with vs without
+                  Synapse), eval-report.py, build_eval_home.py, live-check-share.sh
 tests/            unit tests (python -m unittest discover -s tests)
-evals/            claude plugin eval suite (role agents, triggers, teams; run locally, results gitignored)
+evals/            claude plugin eval suite with a no-plugin baseline (core loop, role agents,
+                  triggers, teams; run locally, results gitignored)
 docs/             architecture.md, design/packaging.md, design/v2.md
 examples/         real PLAN/EXECUTION files from a mature project
 ```
