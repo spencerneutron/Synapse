@@ -171,7 +171,7 @@ V1 enforces the output contract with a hook but leaves recall, extraction, and
 role selection to instructions. Each row is a place where probabilistic
 triggering could become deterministic, at some cost.
 
-| Seam | 2.0 today | V2 option | Trade-off |
+| Seam | Today (2.3) | Further option | Trade-off |
 |------|------------|-----------|-----------|
 | Recall triggering | **Done in V2 slice D:** a `UserPromptSubmit` hook adds up to three hints scoring ≥ 0.70, once per session, failing silently | Per-project thresholds | Calibrated on the author's store: 0 of 24 unrelated prompts hinted |
 | Extraction | **Done in V2 slice D:** a session-start reminder lists archived sessions never extracted; the user still runs `/synapse:extract-session` | Auto-embed pending archives without promotion | Nothing is forgotten silently; judgment stays with a live session |

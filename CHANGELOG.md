@@ -2,6 +2,10 @@
 
 ## 2.3.0 — 2026-10-26 — V2 slice E: shared memory for a small team
 
+No store schema change. Update with `claude plugin marketplace update
+synapse` and `claude plugin update synapse@synapse`, then start new sessions.
+Teams are opt-in: nothing changes until `synapse shared init` or `join`.
+
 ### Added
 
 - **Teams.** A team shares Decisions and Patterns (never session archives)

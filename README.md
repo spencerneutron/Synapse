@@ -15,6 +15,19 @@ claude plugin install synapse --marketplace spencerneutron/Synapse
 
 Then, in a new Claude Code session, run `/synapse:setup` and `/synapse:doctor`.
 
+To update an installed copy:
+
+```bash
+claude plugin marketplace update synapse
+```
+
+```bash
+claude plugin update synapse@synapse
+```
+
+Then start a new session and run `synapse setup` once (see
+[INSTALL.md](INSTALL.md#update)).
+
 ### Install with Claude Code
 
 Tell Claude: *"Install Synapse from github.com/spencerneutron/Synapse."*
@@ -79,17 +92,20 @@ tools/            build_context.py (rebuilds hooks/context from instructions/),
                   live-check-share.sh
 tests/            unit tests (python -m unittest discover -s tests)
 evals/            claude plugin eval suite (role agents, triggers, teams; run locally, results gitignored)
-docs/             architecture.md, design/packaging.md
+docs/             architecture.md, design/packaging.md, design/v2.md
 examples/         real PLAN/EXECUTION files from a mature project
 ```
 
 ## Learn more
 
-- [INSTALL.md](INSTALL.md): install, provision, migrate, split stores, uninstall
+- [INSTALL.md](INSTALL.md): install, provision, migrate, split stores, share
+  with a team, update, uninstall
 - [docs/architecture.md](docs/architecture.md): lifecycle, components,
   principles, and the V2 roadmap
 - [docs/design/packaging.md](docs/design/packaging.md): why a plugin, and how
   install stays non-destructive
+- [docs/design/v2.md](docs/design/v2.md): the V2 plan, slice by slice, with
+  measurements
 - [AGENTS.md](AGENTS.md): working on this repo
 
 ## License

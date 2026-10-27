@@ -20,7 +20,8 @@ install.
 | Python 3.11+ | `python3 --version` (Windows: `python --version`) | Synapse picks the first 3.11+ it finds |
 | Ollama + `nomic-embed-text` | `ollama list` | Needed for recall and extraction |
 | Obsidian with its CLI on `PATH` | `obsidian --help` | Needed for vault notes |
-| Read access to `spencerneutron/Synapse` | `gh repo view spencerneutron/Synapse` | Public repos need nothing. If the repo is private and the check fails, the **user** runs `gh auth login` and `gh auth setup-git` (the second changes their global git credential helper); an agent cannot complete them |
+| Network access to GitHub | `git ls-remote https://github.com/spencerneutron/Synapse` | The repo is public; installs and updates fetch it from GitHub |
+| git (only for a team shared through git) | `git --version` | Not needed for a single user or a synced-folder team |
 
 Ollama and Obsidian can come later; the session rules, skills, and output
 contract work without them.
@@ -29,12 +30,8 @@ contract work without them.
 
 ## 0. Get this runbook
 
-A web fetch of the raw file works while the repo is public. If it is
-private, read it with the user's GitHub credentials instead:
-
-```bash
-gh api repos/spencerneutron/Synapse/contents/INSTALL.md -H "Accept: application/vnd.github.raw"
-```
+Fetch the raw file:
+`https://raw.githubusercontent.com/spencerneutron/Synapse/main/INSTALL.md`.
 
 ---
 
@@ -83,8 +80,8 @@ Inside a session (Claude Code 2.1.275 or later) the user can type
 `/plugin install synapse --marketplace spencerneutron/Synapse`.
 
 **Expected:** `claude plugin list` shows `synapse@synapse`, enabled, scope
-`user`. **Failure signal:** an authentication error means the user's git
-credentials cannot read the private repo (see Requirements).
+`user`. **Failure signal:** a network or "repository not found" error means
+GitHub was unreachable or the name is mistyped; nothing was installed.
 
 ## 3. Start a new session (hand off to the user)
 
@@ -279,16 +276,33 @@ background sync off.
 ## Update
 
 Third-party marketplaces do not auto-update unless the user enables it in
-`/plugin`. To update by hand:
+`/plugin`. To update by hand, refresh the marketplace, then the plugin:
+
+```bash
+claude plugin marketplace update synapse
+```
 
 ```bash
 claude plugin update synapse@synapse
 ```
 
-After an update, run `synapse setup` once. It upgrades each store's
-`vectors.db` to the current schema in place, writes a
-`vectors.db.bak-<date>` first, and keeps every vector, so nothing is
-re-embedded. Until then, recall stops with a message that says to run it.
+**Expected:** `Plugin "synapse" updated from <old> to <new>`, and `claude
+plugin list` shows the new version. Then:
+
+1. **Start new sessions** (restart Claude Code): running sessions keep the
+   old rules, skills, and hooks.
+2. **Run `synapse setup` once.** It changes nothing when the stores are
+   current. After a release that changes the store schema (see
+   [CHANGELOG.md](CHANGELOG.md)), it upgrades each `vectors.db` in place,
+   writes a `vectors.db.bak-<date>` first, and keeps every vector, so
+   nothing is re-embedded; until then, recall stops with a message that
+   says to run it. A store shared by several machines (a synced folder)
+   needs the new version on all of them before the upgrade: older versions
+   cannot read an upgraded store.
+3. **Run `/synapse:doctor`** to confirm.
+
+New features that need setup of their own (a team, for example) are opt-in
+and described above; an update never turns them on.
 
 ## Uninstall
 
@@ -297,8 +311,9 @@ claude plugin uninstall synapse@synapse
 ```
 
 The rules, skills, and hooks stop loading. `~/.claude/synapse/` stays, because
-it holds the user's archives and knowledge base; deleting it is the user's
-decision.
+it holds the user's archives, knowledge base, and team clones; deleting it is
+the user's decision. A folder team's synced folder is the team's, and stays
+too.
 
 ## Troubleshooting
 
