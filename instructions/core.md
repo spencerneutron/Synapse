@@ -100,35 +100,35 @@ destructive operations, or when batching hides which call produced what.
 
 ## Sub-agents and Waves
 
-Use sub-agents (the Agent tool) for bounded work that would otherwise blow the
-context or run serially: searching several repos for a pattern, extracting the
-relevant parts of a large file, auditing a tree. A sub-agent returns a summary,
-not a transcript. Not a fit: work that needs dialogue with the user, depends on
-this session's full context, or is a single read or grep.
+Sub-agents do not see these rules: they get their own prompt and your brief.
+Prefer Synapse's role agents, which carry the rules for their job:
 
-Once the plan is set and the work splits into independent parts, run it as
-waves of role-specific agents:
+| `subagent_type` | Use for | Model | Writes? |
+|-----------------|---------|-------|---------|
+| `synapse:implementer` | One planned change, validated | Sonnet | Yes — one writer per set of files |
+| `synapse:verifier` | Check claims against evidence; run tests | Sonnet | No |
+| `synapse:researcher` | Answer a question from code, docs, or the web, with sources | Sonnet | No |
+| `synapse:reviewer` | Adversarial review of a change or plan | Inherits yours | No |
+| `synapse:scout` | Mechanical sweeps: inventories, searches | Haiku | No |
 
-| Wave | Job | Writes? |
-|------|-----|---------|
-| Implementation | Make one planned change each | Yes — one writer per set of files |
-| Verification | Build, test, and check the change across affected repos | No |
-| Research | Answer an open question from docs, code, or the web | No |
-| Adversarial review | Try to break the change or the plan with fresh eyes | No |
-
-- Give each agent a self-contained brief: goal, files, what done looks like,
-  and what is already ruled out.
-- Never let two writers touch the same files; use an isolated worktree when
-  edits could overlap.
+- Use sub-agents for bounded work that would blow the context or run
+  serially; a sub-agent returns a summary, not a transcript. Not for dialogue
+  with the user, work that needs this session's full context, or one read.
+- Once the plan is set and the work splits, run it as waves of these roles.
+- Brief every agent: goal, files, what done looks like, what is ruled out. A
+  `general-purpose` agent sees only its brief, so include the rules it needs:
+  smallest change, run path, expected outcome, failure signal.
+- Never let two writers touch the same files; pass `isolation: "worktree"`
+  when edits could overlap.
 - Treat every result as a claim and verify it before reporting it as done.
-- Record what each wave returned in `EXECUTION.md`.
+  Record what each wave returned in `EXECUTION.md`.
 
-**Model right-sizing.** Frontier models plan; right-sized models execute.
-Frontier (Opus, as of 2026-10) for planning, architecture, adversarial review,
-and ambiguous debugging; mid (Sonnet) for implementation and verification
-against a clear brief; small (Haiku) for mechanical search and extraction.
-Pass the tier through the Agent tool's `model` option. Escalate one tier when a
-result fails verification twice.
+**Models.** The agents carry their models. Pass `model` on a call only with a
+reason: escalate one tier after a result fails verification twice, or the
+reviewer minimum. **Reviewer minimum:** the reviewer inherits your model. If
+you run below the frontier tier (Opus, Fable), tell the user once per session
+that reviews work best on a frontier model and offer to pass `model: "opus"`
+or `"fable"`; follow their answer for the rest of the session.
 
 **Interrupted runs.** If a background workflow or fleet stops early, run
 `/synapse:workflow-recovery` before relaunching anything.

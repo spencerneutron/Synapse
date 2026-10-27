@@ -38,6 +38,7 @@ each conflict into a finding and a recommendation the user decides on.
 | stop-hooks | every settings layer, other enabled plugins | Two hooks that block on Stop can both ask for rewrites |
 | output-style | settings `outputStyle` | May contradict the emission contract |
 | hooks | `disableAllHooks`, managed `allowManagedHooksOnly` | Synapse's rules and Stop hook never load |
+| agent-models | `CLAUDE_CODE_SUBAGENT_MODEL` / `_FORCE` in the environment or any settings `env` | A forced sub-agent model silently overrides every role agent's model |
 | old-install | `kb/scripts`, `.claude-work/archive`, `.claude-work/kb` in the project and parents | A V1/v1.5 memory system running beside the plugin |
 | gitignore | the project's git repo | `.claude-work/` working files would be committed |
 | runtime | Python, venv, `vectors.db` and its schema version, Ollama, `obsidian` CLI, the vault | Memory features degrade without them; an old schema needs `synapse setup` |

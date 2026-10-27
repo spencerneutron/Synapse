@@ -1,5 +1,39 @@
 # Changelog
 
+## 2.1.0 — 2026-10-26 — V2 slice C: role agents
+
+### Added
+
+- **Five role agents**, dispatched as `subagent_type: synapse:<role>`:
+  `implementer` (Sonnet; everything but nested agents), `verifier` (Sonnet;
+  read + Bash, never edits), `researcher` (Sonnet; read + search + web,
+  cites every fact), `reviewer` (inherits the session's model; adversarial,
+  never edits), and `scout` (Haiku; exhaustive mechanical sweeps). Each
+  body carries the rules its job needs, because sub-agents do not receive
+  Synapse's `SessionStart` rules (verified live).
+- **Reviewer minimum, suggested:** below the frontier tier, the session
+  offers to run reviews on Opus or Fable once per session; a reviewer on a
+  small model says so first and recommends a re-run.
+- **`evals/`**: an 8-case `claude plugin eval` suite (outcome, discipline,
+  and role-dispatch graders) for role agents.
+- **Doctor** warns when `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` overrides every
+  role's model.
+
+### Changed
+
+- **Core rules:** the waves section names the role agents, says sub-agents do
+  not see these rules, and requires a `general-purpose` brief to carry the
+  rules it needs. Model-tier prose shrinks to "the agents carry their models".
+
+### Measured (2.0.0 vs 2.1.0, final suite, 8 cases × 2 runs, Sonnet sessions)
+
+- Intended role dispatched: 2/16 -> **16/16**. Files left alone where they
+  should be: 12/12 -> 12/12. Outcome graders: 22/24 -> **23/24**; 2.1 matches
+  or beats 2.0 on every outcome grader.
+- On a Haiku session, the offer of a frontier reviewer appeared in 6 of 7
+  runs (2.0: 0 of 4), and the reviewer flagged its own small model in 2 of 3.
+- Cost per suite: $1.61 (2.0) and $1.63 (2.1), effectively equal.
+
 ## 2.0.0 — 2026-10-26 — V2 slice 1: retrieval quality
 
 Store schema v2: older plugin versions cannot use an upgraded store, so

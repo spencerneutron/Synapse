@@ -14,6 +14,8 @@ Synapse gives every session are in `instructions/`, not here.
 | `bin/synapse` | CLI entry on the Bash PATH; runs `lib/synapse/cli.py` through `lib/py.sh` |
 | `lib/synapse/` | `paths.py` (all location logic), the memory pipeline, setup, doctor, archive, migrate |
 | `skills/` | Plugin skills, invoked as `/synapse:<name>` |
+| `agents/` | Role sub-agents, invoked as `subagent_type: synapse:<role>`; each body carries its own rules |
+| `evals/` | `claude plugin eval` cases: fixture script, prompt, graders |
 | `tests/`, `tools/`, `docs/`, `templates/`, `examples/` | As named |
 
 ## Rules for changes
@@ -23,6 +25,10 @@ Synapse gives every session are in `instructions/`, not here.
   characters (Claude Code's SessionStart cap); keep `core.md` under 9,500.
 - **Locations:** only `lib/synapse/paths.py` decides where data lives. Store
   paths in the DB stay relative (`archive/<project>/…`, `vault/<Folder>/…`).
+- **Agents:** sub-agents never see `instructions/`; put the rules a role needs
+  in its body. Allowlist tools with a Bash fallback for search (some Claude
+  Code builds ship no Grep/Glob). Plugin agents ignore `permissionMode`,
+  `hooks`, and `mcpServers`.
 - **Skills call the CLI** (`synapse …`), never script paths. Name new skills
   without a `synapse-` prefix; the plugin namespaces them.
 - **Non-destructive:** nothing may write outside the Synapse home, the
@@ -48,6 +54,12 @@ python3 tools/build_context.py --check
 
 ```bash
 claude plugin validate . --strict
+```
+
+Run the eval suite (role agents; costs model calls, so it is not in CI):
+
+```bash
+claude plugin eval . --runs 2 --ablation none --scaffold --allow-tools Bash Edit Write Agent --trust-plugin --no-publish --max-cost-usd 12 --threshold 0
 ```
 
 Try the plugin without installing it: `claude --plugin-dir .`. Run the CLI

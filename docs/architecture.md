@@ -52,6 +52,7 @@ it harvests finished agents' results from disk before anything is relaunched.
 | Skills | `/synapse:workflow-recovery` | Salvage results from an interrupted multi-agent run |
 | Skills | `/synapse:language-sweep` | Prose cleanup in strict ASD-STE100 or lite marketing-copy mode |
 | Skills | `/synapse:setup`, `/synapse:doctor` | Provision the Synapse home; read-only health and conflict report |
+| Agents | `synapse:implementer`, `verifier`, `researcher`, `reviewer`, `scout` | Wave roles with their own models and tool limits; each body carries the rules its job needs, because sub-agents do not receive the `SessionStart` rules |
 | Hooks | `emission_check.py` (Stop) | Blocks a non-compliant final message once and asks for a rewrite; allows the stop on `stop_hook_active` or any internal error |
 | CLI | `bin/synapse` → `lib/synapse/` | On the Bash PATH from any folder: `where`, `setup`, `doctor`, `archive`, `recall`, `recall-check`, `extract` (incl. `upgrade`, `supersede`), `vault`, `backfill`, `migrate`; `lib/py.sh` finds Python 3.11+ |
 | Resolver | `lib/synapse/paths.py` | The only code that decides locations: home, store, project, archive, DB, vault |
@@ -173,7 +174,7 @@ triggering could become deterministic, at some cost.
 |------|------------|-----------|-----------|
 | Recall triggering | The core rules ask Claude to recall when work resembles prior work | A prompt-submit hook runs `synapse recall` and injects top-k pointers | Never misses; adds tokens every turn and risks noise on unrelated prompts |
 | Extraction | The user runs `/synapse:extract-session` at teardown | `/synapse:end-session` chains it, or a session-end hook queues it | No forgotten sessions; teardown judgment needs live context, so a detached hook loses quality |
-| Role orchestration | Waves and model tiers described in the core rules | Roles as agent definition files with model frontmatter | Right-sizing becomes config, not persuasion; more files to maintain |
+| Role orchestration | **Done in V2 slice C:** five plugin agents with per-role models, tool limits, and their own rules; measured with an eval suite | Hooks that route work to a role | Right-sizing is config; agent files to maintain |
 | Memory hygiene | **Done in V2 slice 1:** `synapse extract supersede` marks the old decision in the DB and its front matter; recall hides it by default | Detect likely supersessions during extraction | Fewer near-duplicate decisions left active |
 | Retrieval | **Done in V2 slice 1:** hybrid keyword + vector with reciprocal rank fusion; exact, case-insensitive filters inside the search | Tuned chunking; a cross-encoder re-ranker | Measured with `synapse recall-check` |
 | Memory scope | Local, single user | Shared team store | Team leverage; poisoned entries propagate and secrets can leak across people. **Gate:** extraction must first scrub session-local references (bare `#17`, "Wave B", "yesterday's session") and user paths or machine ids, generalizing them to context another reader can use |

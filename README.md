@@ -5,7 +5,7 @@ execute in small verified steps, archive the working state, and promote
 durable decisions into a local knowledge base the next session can recall.
 It installs once for the whole machine and works in every project.
 
-**Version:** 2.0.0 (2026-10-26). See [CHANGELOG.md](CHANGELOG.md).
+**Version:** 2.1.0 (2026-10-26). See [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
@@ -29,8 +29,9 @@ setup are reported for the user to decide.
    `EXECUTION.md`, runs the project's session hooks, and calls
    `/synapse:recall` when the work resembles past work.
 2. **Execute:** small steps, each with a run path, an expected outcome, and a
-   failure signal. Independent work runs as waves of sub-agents, with the
-   model sized to each wave.
+   failure signal. Independent work runs as waves of Synapse's role agents
+   (`synapse:implementer`, `verifier`, `researcher`, `reviewer`, `scout`),
+   each carrying its own rules and model.
 3. **Emit:** the `synapse:emission-contract` skill shapes each final message,
    and a Stop hook enforces its mechanical rules.
 4. **Archive:** `/synapse:end-session` copies the planning files into the
@@ -54,6 +55,7 @@ setup are reported for the user to decide.
 ```
 .claude-plugin/   plugin.json, marketplace.json (this repo is its own marketplace)
 instructions/     core.md, platform-macos.md, platform-windows.md (each < 10,000 chars)
+agents/           implementer, verifier, researcher, reviewer, scout (synapse:<role> sub-agents)
 hooks/            hooks.json, session_start.sh + context/*.json, emission_check.py
 bin/synapse       CLI on the Bash PATH: where, setup, doctor, archive, recall,
                   recall-check, extract, vault, backfill, migrate
@@ -63,6 +65,7 @@ skills/           plan-session, end-session, recall, extract-session, emission-c
 templates/        PLAN.md, EXECUTION.md, NOTES.md
 tools/            build_context.py (rebuilds hooks/context from instructions/)
 tests/            unit tests (python -m unittest discover -s tests)
+evals/            claude plugin eval suite (role agents; run locally, results gitignored)
 docs/             architecture.md, design/packaging.md
 examples/         real PLAN/EXECUTION files from a mature project
 ```

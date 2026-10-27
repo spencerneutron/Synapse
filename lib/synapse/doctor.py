@@ -249,6 +249,29 @@ def migrated_count(old_archive: Path, r: paths.Resolved) -> tuple[int, int]:
     return len(sessions), in_store
 
 
+def check_subagent_models(rep: Report, project_dir: Path) -> None:
+    """Settings that override the role agents' own models."""
+    sources = [("environment", dict(os.environ))]
+    managed = MANAGED_SETTINGS.get(sys.platform)
+    for path in (claude_dir() / "settings.json", project_dir / ".claude" / "settings.json",
+                 project_dir / ".claude" / "settings.local.json", *([managed] if managed else [])):
+        env = read_json(path, Report()).get("env") or {}
+        if isinstance(env, dict):
+            sources.append((tilde(path), env))
+    for where, env in sources:
+        model = env.get("CLAUDE_CODE_SUBAGENT_MODEL")
+        forced = str(env.get("CLAUDE_CODE_SUBAGENT_MODEL_FORCE", "")).strip().lower() in {"1", "true", "yes", "on"}
+        if forced:
+            runs_on = f"CLAUDE_CODE_SUBAGENT_MODEL={model}" if model else "the main conversation's model"
+            rep.add("warn", "agent-models", f"{where} forces sub-agent models "
+                    f"(CLAUDE_CODE_SUBAGENT_MODEL_FORCE); every sub-agent runs on {runs_on}, "
+                    "so Synapse's role models are ignored",
+                    "unset it to let synapse:implementer/verifier/researcher/scout use their own models")
+        elif model:
+            rep.add("info", "agent-models", f"{where} sets CLAUDE_CODE_SUBAGENT_MODEL={model}",
+                    "it applies only to agents without their own model; Synapse's roles set theirs")
+
+
 def check_old_installs(rep: Report, project_dir: Path, r: paths.Resolved) -> None:
     try:
         children = [c for c in project_dir.iterdir() if c.is_dir() and not c.name.startswith(".")]
@@ -297,6 +320,7 @@ def run(project_dir: Path) -> Report:
     check_skills(rep, project_dir)
     check_rules(rep, project_dir)
     check_settings(rep, project_dir)
+    check_subagent_models(rep, project_dir)
     check_old_installs(rep, project_dir, r)
     check_gitignore(rep, project_dir)
     return rep
