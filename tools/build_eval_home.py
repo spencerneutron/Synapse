@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-build_eval_home.py — build a fixture Synapse home for the slice-D and slice-E evals.
+build_eval_home.py — build a fixture Synapse home for the slice-D, slice-E, and hard evals.
 
-  python3 tools/build_eval_home.py <home dir> --triggers on|off [--team]
+  python3 tools/build_eval_home.py <home dir> --triggers on|off [--team] [--hard]
 
 Provisions <home> with `synapse setup` (venv, config, DB), points the store's
 vault at a copy of evals/fixtures/memory/vault, embeds those notes (needs
@@ -11,7 +11,10 @@ Ollama), and copies the fixture archive, never extracted, for the project
 that tests it). With --triggers off, [recall] auto and [extract] remind are
 false. With --team (slice E), it also adds a local decision from
 fixtures/memory/vault-e and a folder team "acme" whose shared note, by a
-teammate, contradicts it; this member shares as "alex".
+teammate, contradicts it; this member shares as "alex". With --hard (the
+`hard` cases), it also adds fixtures/hard: its vault notes, embedded, with the
+older webhook decision marked superseded by the newer one, and its archive
+sessions, embedded as if extracted (so no pending reminder fires for them).
 Run the cases with EVAL_SYNAPSE_HOME=<home>.
 """
 import argparse
@@ -23,6 +26,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / "evals" / "fixtures" / "memory"
+HARD = ROOT / "evals" / "fixtures" / "hard"
+SUPERSEDED = [("Retry webhooks with exponential backoff", "Webhooks get three fixed-delay attempts")]
 
 
 def synapse(home: Path, *args: str) -> None:
@@ -36,6 +41,7 @@ def main() -> int:
     parser.add_argument("home", type=Path)
     parser.add_argument("--triggers", choices=["on", "off"], required=True)
     parser.add_argument("--team", action="store_true", help="add the slice-E team and its conflict")
+    parser.add_argument("--hard", action="store_true", help="add the hard cases' notes and archive")
     args = parser.parse_args()
     home = args.home.resolve()
     if home.exists():
@@ -50,14 +56,25 @@ def main() -> int:
     shutil.copytree(FIXTURE / "vault", home / "vault")
     if args.team:
         shutil.copytree(FIXTURE / "vault-e", home / "vault", dirs_exist_ok=True)
+    if args.hard:
+        shutil.copytree(HARD / "vault", home / "vault", dirs_exist_ok=True)
     for note in sorted((home / "vault").rglob("*.md")):
         synapse(home, "extract", "embed-note", str(note))
     shutil.copytree(FIXTURE / "archive", home / "stores" / "main" / "archive", dirs_exist_ok=True)
+    if args.hard:
+        for old, new in SUPERSEDED:
+            synapse(home, "extract", "supersede", old, "--by", new)
+        archive = home / "stores" / "main" / "archive"
+        shutil.copytree(HARD / "archive", archive, dirs_exist_ok=True)
+        for project in sorted(d.name for d in (HARD / "archive").iterdir() if d.is_dir()):
+            sessions = {f.stem.split("_", 1)[1] for f in (archive / project).glob("*_*.md")}
+            for session in sorted(sessions):
+                synapse(home, "extract", "embed-archive", session, "--project", project)
     if args.team:
         synapse(home, "shared", "init", "acme", "--author", "alex", "--path", str(home / "team-notes"))
         shutil.copytree(FIXTURE / "team", home / "team-notes", dirs_exist_ok=True)
         synapse(home, "shared", "sync", "acme")
-    print(f"built {home} (triggers {args.triggers})")
+    print(f"built {home} (triggers {args.triggers}{', hard' if args.hard else ''})")
     return 0
 
 

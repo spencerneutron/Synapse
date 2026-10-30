@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.3.1 — 2026-10-30 — Run the project's documented checks
+
+No store schema change; update with `claude plugin marketplace update
+synapse` and `claude plugin update synapse@synapse`, then start new sessions.
+
+### Changed
+
+- **Core rules:** before calling a change done, run the project's own
+  documented checks (CONTRIBUTING, README, `Makefile` or task-runner
+  targets, CI config), not only the default test runner, and say which
+  ran; if one cannot run, say so instead of calling the change done.
+
+### Measured
+
+- On the hard `hidden-second-suite` case (8 runs each), Synapse's score
+  rose from 0.28 to 0.50 (no plugin: 0.44): `make check` run after the fix
+  0/8 -> 2/8, truthful report 0/8 -> 4/8.
+- No regression on the full bench (18 cases, both arms): the 15 earlier
+  cases score as before; 0.94 with Synapse vs 0.61 without.
+
 ## Repository, after 2.3.0 — V2 slice A: eval bench
 
 The plugin is unchanged (no runtime file), so the version stays 2.3.0.
@@ -17,6 +37,11 @@ The plugin is unchanged (no runtime file), so the version stays 2.3.0.
 - **Measured on 2.3.0:** 1.00 with Synapse vs 0.71 without, over 15 cases.
   The gain comes from memory (four cases, 0 to 1) and the general-purpose
   brief rule; the other ten cases tie.
+- **Hard cases** (`hard` tag, in the bench; `tools/build_eval_home.py
+  --hard`): compound-archived-lesson, superseded-decision,
+  hidden-second-suite. 0.67 with Synapse vs 0.17 without; the
+  hidden-second-suite case shows Synapse's agent skipping a project's
+  documented `make check`. Two fair but easy cases are tagged `guard`.
 
 ## 2.3.0 — 2026-10-26 — V2 slice E: shared memory for a small team
 

@@ -80,6 +80,11 @@ complexity justifies structured planning.
 Every meaningful change carries a way to run or test it, a clear expected
 outcome, and a failure signal if it is wrong.
 
+Before calling a change done, run the project's own documented checks (see
+CONTRIBUTING, the README, `Makefile` or task-runner targets, CI config), not
+only the default test runner, and say which ran. If one cannot run, say so
+instead of calling the change done.
+
 ---
 
 ## Token / Context Discipline

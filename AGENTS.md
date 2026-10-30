@@ -79,7 +79,9 @@ the whole suite through the bench.
 
 The bench runs every case with Synapse and without it (the no-plugin
 baseline), builds the fixture homes it needs, and prints what Synapse adds
-(about $6, capped at $13.50):
+(about $8, capped at $17.50). The `hard` tag holds the cases built so plain
+Sonnet usually fails them; the `guard` tag holds fair cases it passes too,
+left out of the bench (run them by tag):
 
 ```bash
 tools/run-bench.sh --yes
@@ -97,7 +99,10 @@ cannot read files outside their workspace, so a hint's snippet is all the
 agent sees of a memory there. Eval traces record `SessionStart` hook output
 but not `UserPromptSubmit` output, so no grader can see a hint: measure it by
 outcome, hints-on home against hints-off home. The `slice-e` case needs
-`build_eval_home.py <dir> --triggers on --team`.
+`build_eval_home.py <dir> --triggers on --team`, and the `hard` cases
+`--triggers on --hard`. A memory case must be winnable from a hint's
+200-character snippet; after a retrieval change, re-probe its prompt with
+`SYNAPSE_HOME=<home> bin/synapse recall-hint --prompt "..."`.
 
 Eval sessions cannot run the `synapse` CLI (the plugin's `bin/` is not on
 their PATH, and their sandbox blocks the Synapse home), so a CLI-driven skill

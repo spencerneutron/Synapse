@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
 # Run the whole eval suite in two arms, with Synapse and without it, and print
-# what Synapse adds. It spends model calls (about $6 at 2 runs per case), so it
+# what Synapse adds. It spends model calls (about $8 at 2 runs per case), so it
 # refuses to start without --yes.
 #
 #   tools/run-bench.sh --yes [extra claude plugin eval flags, e.g. --runs 1]
 #
 # Builds the fixture homes the memory cases need (Ollama must be running),
 # runs each tag with its home through tools/run-evals.sh (local reports, a
-# cost cap per tag: $13.50 in all), then tools/eval-report.py. Results go to
+# cost cap per tag: $17.50 in all), then tools/eval-report.py. The `guard`
+# tag (fair cases plain Sonnet also passes) is left out. Results go to
 # BENCH_OUT, or a new temp folder; the path is printed at the end.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [ "${1:-}" != "--yes" ]; then
     echo "This runs every eval case twice (with and without Synapse): real Claude sessions," >&2
-    echo "about \$6 at 2 runs per case, capped at \$13.50. Reports stay local. Re-run with --yes." >&2
+    echo "about \$8 at 2 runs per case, capped at \$17.50. Reports stay local. Re-run with --yes." >&2
     exit 2
 fi
 shift
@@ -29,6 +30,7 @@ home() {  # name, build flags: build into a temp folder, keep it only when compl
 }
 home home-d --triggers on
 home home-e --triggers on --team
+home home-h --triggers on --hard
 
 failed=0
 run() {   # tag, Synapse home ("" for none), cost cap
@@ -44,6 +46,7 @@ run slice-c "" 7 "$@"
 run core "" 2 "$@"
 run slice-d "$OUT/home-d" 3 "$@"
 run slice-e "$OUT/home-e" 1.5 "$@"
+run hard "$OUT/home-h" 4 "$@"
 
 shopt -s nullglob
 results=("$OUT"/*.json)
