@@ -52,6 +52,11 @@ otherwise) and is safe to re-run: it keeps an existing config and venv.
    `config.toml` and a `.synapse.toml` with `store = "<name>"` at that
    project's root; confirm with `synapse where` from inside the project.
 
+6. **Teams only on request.** Sharing with a team is opt-in. When the user
+   asks, follow INSTALL.md "Share with a team": `synapse shared init` (one
+   member) or `synapse shared join` (the others), each with `--author`.
+   Creating the remote repo or the synced folder is the user's step.
+
 ---
 
 ## Output Behavior

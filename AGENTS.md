@@ -63,16 +63,19 @@ Try the plugin without installing it: `claude --plugin-dir .`.
 
 `evals/` holds a `claude plugin eval` suite of real Claude sessions. "Run the
 tests" means the unit tests above, never the evals. Run evals only when the
-user explicitly asks, and say the cost first (about $1.50-2.00 per full run).
-Use the wrapper, which refuses to start without `--yes`, keeps reports local,
-and caps cost:
+user explicitly asks, and say the cost first: about $2.50-3.00 for the whole
+suite (15 cases, 2 runs each), much less for one tag or case. Use the
+wrapper, which refuses to start without `--yes`, keeps reports local, and
+caps cost:
 
 ```bash
 tools/run-evals.sh --yes
 ```
 
 Never run a bare `claude plugin eval`: by default it runs 3 runs per case in
-two arms and publishes its report to claude.ai.
+two arms and publishes its report to claude.ai. The `slice-d` and `slice-e`
+cases need a fixture home (below); without one they fail by design, so run
+the whole suite through the bench.
 
 The bench runs every case with Synapse and without it (the no-plugin
 baseline), builds the fixture homes it needs, and prints what Synapse adds

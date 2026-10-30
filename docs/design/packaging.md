@@ -8,6 +8,13 @@ differences from this proposal are listed at the end. Facts below were checked a
 code.claude.com/docs and the plugins installed on the author's Mac
 (Claude Code 2.1.310).
 
+> **This page records the v1.6 packaging design.** The packaging still holds,
+> but later releases added to it: the repo is public; V2 added role agents
+> (`agents/`), a `UserPromptSubmit` hook and two more `SessionStart`
+> handlers, teams under `~/.claude/synapse/shared/`, and more skills and CLI
+> commands. For current behavior read [INSTALL.md](../../INSTALL.md) and
+> [architecture.md](../architecture.md); for V2, [v2.md](v2.md).
+
 ---
 
 ## Why a plugin
@@ -104,8 +111,8 @@ Code" section sends the agent to `INSTALL.md`, a runbook it follows in order:
 Uninstall: `claude plugin uninstall synapse@synapse`. The store stays; deleting
 `~/.claude/synapse/` is the user's call.
 
-While the repo is private, step 2 works only for GitHub accounts with read
-access, through `gh auth setup-git` or an SSH key.
+While the repo was private (through v1.6.1), step 2 worked only for GitHub
+accounts with read access, through `gh auth setup-git` or an SSH key.
 
 ---
 
@@ -177,6 +184,11 @@ Stop hook command.
 MCP memory server and shared stores (behind the scrubbing gate in
 `architecture.md`), Harness Bench on `claude plugin eval`, and manifests for
 other agent tools (Cursor, Codex).
+
+Outcome ([v2.md](v2.md)): shared stores became teams in slice E (2.3.0),
+through a git repo or a synced folder rather than an MCP server; the bench
+became slice A. The MCP server and other agents' manifests are slice F,
+not yet built.
 
 ## As built (v1.6.0)
 

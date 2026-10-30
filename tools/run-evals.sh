@@ -5,13 +5,15 @@
 #   tools/run-evals.sh --yes [extra claude plugin eval flags, e.g. --case review-planted-bug]
 #
 # Always: --no-publish (reports stay local), --max-cost-usd (default 12, set
-# EVAL_MAX_COST_USD to change), --ablation none, --runs 2. A full run is
-# 8+ cases x 2 runs, about $1.50-2.00 at the time of writing.
+# EVAL_MAX_COST_USD to change), --ablation none, --runs 2; later flags (such
+# as --ablation with-without) override these. The whole suite is 15 cases x 2
+# runs, about $2.50-3.00; the memory cases need EVAL_SYNAPSE_HOME, so
+# tools/run-bench.sh is the way to run all of it.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [ "${1:-}" != "--yes" ]; then
-    echo "This runs the eval suite: real Claude sessions that cost money (about \$1.50-2.00 per full run)." >&2
+    echo "This runs the eval suite: real Claude sessions that cost money (about \$2.50-3.00 for all of it)." >&2
     echo "Reports stay local. Re-run with --yes to start, for example:" >&2
     echo "  tools/run-evals.sh --yes" >&2
     echo "  tools/run-evals.sh --yes --case review-planted-bug" >&2
