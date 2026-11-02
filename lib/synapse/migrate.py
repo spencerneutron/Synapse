@@ -245,7 +245,7 @@ def merge_db(src_db: Path, r: paths.Resolved, session_projects: dict, dry: bool)
 # ---------- Entry point ----------
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="synapse migrate", description=__doc__.split("\n\n")[0])
     parser.add_argument("--from", dest="source", type=Path, required=True,
                         help="the old workspace root (holds .claude-work/)")
     parser.add_argument("--project", default=None,

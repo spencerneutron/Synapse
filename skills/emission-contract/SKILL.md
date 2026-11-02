@@ -39,6 +39,9 @@ for a rewrite when the message contains any of these:
 - Tics: delve, tapestry, "testament to", "it's worth noting",
   "in today's … world"
 - Emoji: pictographs, ✅, ❌, ✨
+- Angle-bracket placeholders in prose, such as `<numbers>`: some terminals
+  (PowerShell) show them as `&lt;numbers&gt;`. Write "skip 2", "N", or the
+  real value.
 
 The hook reads prose only. Fenced code (```` ``` ```` or `~~~`), inline code,
 and `>` quotes are skipped; indented code blocks are not. Tic words match in

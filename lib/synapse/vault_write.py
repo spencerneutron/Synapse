@@ -4,8 +4,9 @@ vault_write.py — write structured notes into an Obsidian vault via the CLI.
 
 Subcommands:
   verify                    Check Obsidian CLI is reachable and folders exist.
-  create-note               Create a vault note from a JSON spec
-                            (--from-file <path>, preferred; else stdin).
+  create-note               Create a vault note from a Markdown file with front
+                            matter (--from-md <path>, preferred), a JSON spec
+                            (--from-file <path>), or JSON on stdin.
   note-exists <folder> <name>
                             Check if a note exists in a folder (exit 0 yes, 1 no).
   search <query>            Wrap `obsidian search`, return matching notes as JSON.
@@ -22,6 +23,21 @@ JSON spec for create-note:
   "applies_to": ["python", "retrieval"],    // optional, pattern notes only
   "body": "## Context\\n...\\n## Decision\\n..."
 }
+
+The same spec as Markdown (--from-md): the fields go in front matter and the
+body follows it as plain text, so backslashes and newlines need no escaping.
+Lists are `[a, b]` or `- item` lines; the H1 is added, so leave it out.
+
+---
+type: pattern
+title: Quote Windows paths in Git Bash
+project: workspace
+session_id: 2026-04-23-1645
+related: ["[[2026-04-23-1645]]"]
+applies_to: [windows, shell]
+---
+## Problem
+...
 """
 
 import argparse
@@ -31,6 +47,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.parse
 from datetime import date, datetime
 from pathlib import Path
 
@@ -66,29 +83,63 @@ INVALID_NAME_CHARS = re.compile(r'[<>:"/\\|?*#^\[\]]')
 _obsidian_checked = False
 
 
+def obsidian_running() -> bool | None:
+    """Whether Obsidian is running; None when the check itself cannot run."""
+    if sys.platform == "win32":
+        try:
+            out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Obsidian.exe", "/NH"],
+                                 capture_output=True, timeout=15)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if out.returncode != 0:
+            return None
+        # Bytes: tasklist writes in the console code page, not UTF-8.
+        return b"obsidian.exe" in out.stdout.lower()
+    try:
+        code = subprocess.run(["pgrep", "-x", "Obsidian"], capture_output=True).returncode
+    except OSError:
+        return None
+    return {0: True, 1: False}.get(code)
+
+
+def launch_command() -> list[str]:
+    if sys.platform == "win32":
+        # explorer.exe hands the URI to the running Windows shell, so Obsidian
+        # starts outside this process tree (and any job the caller kills), with
+        # the store's vault open.
+        return ["explorer.exe", "obsidian://open?vault=" + urllib.parse.quote(VAULT_NAME)]
+    return ["open", "-a", "Obsidian"]
+
+
 def ensure_obsidian_running() -> None:
-    """Launch Obsidian detached if it isn't running (macOS only).
+    """Launch Obsidian detached if it isn't running (macOS and Windows).
 
     If the app is not running, the `obsidian` CLI starts it as a CHILD of the
     calling process: the first call then usually times out while the app boots,
     and the app quits again when the caller's shell exits — so the next call
-    finds nothing either. Launching through LaunchServices (`open -a`) hands the
-    app to the session instead, so it outlives this script. Checked once per
-    process.
+    finds nothing either. Launching through LaunchServices (`open -a`) or the
+    Windows shell (`explorer.exe obsidian://…`) hands the app to the user's
+    session instead, so it outlives this script. Checked once per process.
     """
     global _obsidian_checked
-    if _obsidian_checked or sys.platform != "darwin":
+    if _obsidian_checked or sys.platform not in ("darwin", "win32"):
         return
     _obsidian_checked = True
-    running = subprocess.run(["pgrep", "-x", "Obsidian"], capture_output=True).returncode == 0
-    if running:
+    if obsidian_running() is not False:   # running, or the check can't tell: let the CLI try
         return
-    print("Obsidian is not running; launching it detached via `open -a Obsidian`", file=sys.stderr)
-    if subprocess.run(["open", "-a", "Obsidian"], capture_output=True).returncode != 0:
-        sys.exit("error: could not launch Obsidian (`open -a Obsidian` failed). Start it by hand and retry.")
+    cmd = launch_command()
+    print(f"Obsidian is not running; launching it detached via `{' '.join(cmd)}`", file=sys.stderr)
+    try:
+        launched = subprocess.run(cmd, capture_output=True, timeout=15)
+    except (OSError, subprocess.TimeoutExpired):
+        launched = None
+    # explorer.exe exits 1 even when the launch works; the poll below decides.
+    if launched is None or (sys.platform == "darwin" and launched.returncode != 0):
+        sys.exit(f"error: could not launch Obsidian (`{' '.join(cmd)}` failed). "
+                 "Start it by hand and retry.")
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
-        if subprocess.run(["pgrep", "-x", "Obsidian"], capture_output=True).returncode == 0:
+        if obsidian_running():
             time.sleep(5)  # let the CLI server inside the app come up before the first command
             return
         time.sleep(1)
@@ -115,11 +166,14 @@ def run_obsidian(*args: str, capture: bool = True) -> subprocess.CompletedProces
             timeout=30,
         )
     except subprocess.TimeoutExpired:
+        how = "by hand"
+        if sys.platform in ("darwin", "win32"):
+            how = f"with `{' '.join(launch_command())}` or by hand"
         sys.exit(
             "error: obsidian CLI timed out after 30s.\n"
             f"is Obsidian running with the {VAULT_NAME!r} vault open?\n"
             "(If it was just launched by the CLI itself, it runs as a child of this shell "
-            "and quits when the shell exits — start it with `open -a Obsidian` instead.)"
+            f"and quits when the shell exits — start it {how} instead.)"
         )
     return result
 
@@ -276,19 +330,17 @@ def build_frontmatter_fields(spec: dict) -> dict:
     return fields
 
 
+def note_heading(spec: dict) -> str:
+    """The H1 a note gets: the type is shown for decisions and patterns."""
+    prefix = {"decision": "Decision: ", "pattern": "Pattern: "}.get(spec["type"], "")
+    return f"# {prefix}{spec['title']}"
+
+
 def build_note_content(spec: dict) -> str:
     """Compose the full markdown for a vault note: frontmatter + H1 + body."""
     fields = build_frontmatter_fields(spec)
     fm_block = emit_frontmatter(fields)
-
-    note_type = spec["type"]
-    title = spec["title"]
-    if note_type == "decision":
-        h1 = f"# Decision: {title}"
-    elif note_type == "pattern":
-        h1 = f"# Pattern: {title}"
-    else:
-        h1 = f"# {title}"
+    h1 = note_heading(spec)
 
     body = spec.get("body", "").strip()
     parts = [fm_block, "", h1, ""]
@@ -296,6 +348,125 @@ def build_note_content(spec: dict) -> str:
         parts.append(body)
         parts.append("")  # trailing newline
     return "\n".join(parts)
+
+
+# ---------- Markdown specs (--from-md) ----------
+
+LIST_FIELDS = ("tags", "related", "sources", "applies_to")
+WIKILINK = re.compile(r"\[\[[^\[\]]*\]\]")
+WIKILINKS = re.compile(r"\[\[[^\[\]]*\]\](\s*,\s*\[\[[^\[\]]*\]\])*")
+
+
+def _md_scalar(s: str) -> str | None:
+    s = s.strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
+        inner = s[1:-1]
+        if s[0] == "'":
+            return inner.replace("''", "'")
+        # Only \" and \\ are unescaped; any other backslash stays as written.
+        return re.sub(r'\\(["\\])', r"\1", inner)
+    return None if s in ("", "~", "null") else s
+
+
+def _md_flow_list(s: str) -> list[str]:
+    """Split `a, "b", [[c]]` on commas outside quotes and brackets."""
+    items, buf, depth, quote = [], "", 0, None
+    for c in s:
+        if quote:
+            quote = None if c == quote else quote
+        elif c in "\"'" and not buf.strip():   # a quote opens only at an item's start
+            quote = c
+        elif c == "[":
+            depth += 1
+        elif c == "]":
+            depth -= 1
+        elif c == "," and depth == 0:
+            items.append(buf)
+            buf = ""
+            continue
+        buf += c
+    items.append(buf)
+    return [v for v in map(_md_scalar, items) if v is not None]
+
+
+def _md_value(key: str, raw: str):
+    raw = raw.strip()
+    if key not in LIST_FIELDS:
+        return _md_scalar(raw)
+    if WIKILINKS.fullmatch(raw):   # [[a]] or [[a]], [[b]]: links, not a YAML list
+        return WIKILINK.findall(raw)
+    if raw.startswith("[") and raw.endswith("]"):
+        return _md_flow_list(raw[1:-1])
+    value = _md_scalar(raw)
+    return [] if value is None else [value]
+
+
+def parse_md_spec(text: str) -> dict:
+    """A note spec from Markdown: front matter fields, then the body.
+
+    Reads the flat subset of YAML that a spec needs: `key: value`, flow lists
+    `[a, b]`, and block lists of `- item` lines. Values are taken literally
+    (no escape sequences), so Windows paths survive as written."""
+    text = text.removeprefix("\ufeff").replace("\r\n", "\n")
+    text = re.sub(r"\A(?:[ \t]*\n)+", "", text)
+    opener = re.match(r"---[ \t]*\n", text)
+    close = re.compile(r"\n---[ \t]*(?=\n|$)").search(text, opener.end() - 1) if opener else None
+    if not close:
+        raise ValueError("no front matter: the file must start with a `---` line "
+                         "and close the fields with another `---` line")
+    spec: dict = {}
+    key = None
+    for line in text[opener.end():close.start()].split("\n"):
+        item = re.match(r"\s*-\s+(.*)$", line)
+        if item and key in LIST_FIELDS and isinstance(spec.get(key), list):
+            value = _md_scalar(item.group(1))
+            if value is not None:
+                spec[key].append(value)
+            continue
+        m = re.match(r"([A-Za-z_][\w-]*)\s*:(.*)$", line)
+        if not m:
+            if line.strip() and not line.lstrip().startswith("#"):
+                raise ValueError(f"cannot read front-matter line: {line!r}")
+            continue
+        key = m.group(1)
+        spec[key] = _md_value(key, m.group(2))
+    body = text[close.end():].lstrip("\n")
+    if spec.get("type") and spec.get("title"):
+        first, _, rest = body.partition("\n")
+        if first.strip() in (note_heading(spec), f"# {spec['title']}"):   # create-note adds the H1
+            body = rest
+    spec["body"] = body
+    return spec
+
+
+def load_spec(args: argparse.Namespace) -> dict:
+    """The note spec from --from-md, --from-file, or stdin."""
+    if args.from_md:
+        md_path = Path(args.from_md)
+        if not md_path.exists():
+            sys.exit(f"error: note file not found: {md_path}")
+        try:
+            return parse_md_spec(md_path.read_text(encoding="utf-8"))
+        except ValueError as e:
+            sys.exit(f"error: {md_path}: {e}")
+    if args.from_file:
+        spec_path = Path(args.from_file)
+        if not spec_path.exists():
+            sys.exit(f"error: spec file not found: {spec_path}")
+        source, label = spec_path.read_text(encoding="utf-8"), f"in {spec_path}"
+    else:
+        # Fallback: read from stdin. Useful for direct shell piping when
+        # safety prompts aren't a concern.
+        source, label = sys.stdin.read(), "on stdin"
+    try:
+        return json.loads(source)
+    except json.JSONDecodeError as e:
+        hint = ""
+        if "escape" in e.msg:   # Invalid \escape, Invalid \uXXXX escape (C:\users)
+            hint = ("\nhint: a backslash in a JSON string must be written \\\\ "
+                    "(Windows paths can use / instead). Or write the note as Markdown "
+                    "with front matter and pass --from-md, which needs no escaping.")
+        sys.exit(f"error: invalid JSON {label}: {e}{hint}")
 
 
 # ---------- Conflict resolution ----------
@@ -355,27 +526,14 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
 
 def cmd_create_note(args: argparse.Namespace) -> int:
-    """Create a vault note from a JSON spec.
+    """Create a vault note from a Markdown or JSON spec.
 
-    Prefers --from-file because piping multi-line JSON through PowerShell
+    Prefers a file because piping multi-line JSON through PowerShell
     triggers shell-injection heuristics in agentic safety classifiers.
     Reading from a file keeps the invocation simple: a single absolute
-    path argument with no embedded quotes or braces."""
-    if args.from_file:
-        spec_path = Path(args.from_file)
-        if not spec_path.exists():
-            sys.exit(f"error: spec file not found: {spec_path}")
-        try:
-            spec = json.loads(spec_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
-            sys.exit(f"error: invalid JSON in {spec_path}: {e}")
-    else:
-        # Fallback: read from stdin. Useful for direct shell piping when
-        # safety prompts aren't a concern.
-        try:
-            spec = json.loads(sys.stdin.read())
-        except json.JSONDecodeError as e:
-            sys.exit(f"error: invalid JSON on stdin: {e}")
+    path argument with no embedded quotes or braces. Markdown (--from-md)
+    also spares the body JSON escaping, which backslashes in prose break."""
+    spec = load_spec(args)
 
     if not isinstance(spec, dict):
         sys.exit("error: spec JSON must be an object, not an array or scalar.")
@@ -420,11 +578,13 @@ def cmd_create_note(args: argparse.Namespace) -> int:
     except OSError as e:
         sys.exit(f"error: failed to write {target_path}: {e}")
 
+    # Forward slashes: a Windows path with backslashes breaks when an agent
+    # pastes it into a bash loop (`\$f` escapes the `$`).
     print(json.dumps({
         "created": True,
         "folder": folder,
         "name": name,
-        "path": str(target_path),
+        "path": target_path.as_posix(),
         "vault_relative_path": f"{folder}/{name}.md",
     }, indent=2))
     return 0
@@ -454,7 +614,7 @@ def cmd_search(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     global VAULT_NAME
     VAULT_NAME = paths.resolve().vault
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="synapse vault", description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_verify = sub.add_parser("verify",
@@ -462,10 +622,14 @@ def main(argv: list[str] | None = None) -> int:
     p_verify.set_defaults(func=cmd_verify)
 
     p_create = sub.add_parser("create-note",
-                              help="create a vault note from a JSON spec file or stdin")
-    p_create.add_argument("--from-file", default=None,
-                          help="path to a JSON file containing the note spec "
-                               "(preferred over stdin to avoid shell-quoting issues)")
+                              help="create a vault note from a Markdown or JSON spec file, or stdin")
+    source = p_create.add_mutually_exclusive_group()
+    source.add_argument("--from-md", default=None,
+                        help="path to a Markdown file: spec fields in front matter, "
+                             "then the body as plain text (preferred: no escaping)")
+    source.add_argument("--from-file", default=None,
+                        help="path to a JSON file containing the note spec "
+                             "(preferred over stdin to avoid shell-quoting issues)")
     p_create.add_argument("--on-conflict", choices=["error", "suffix"],
                           default="error",
                           help="behavior when a note with this name already exists")

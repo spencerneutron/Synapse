@@ -153,7 +153,7 @@ class RetrievalTests(unittest.TestCase):
         note.parent.mkdir(parents=True)
         note.write_text("---\ntype: decision\nproject: veilmx\nstatus: active\n---\nforward ops mail raw\n")
         with redirect_stdout(StringIO()):
-            extract.cmd_embed_note(Namespace(path=str(note), project=None, db=self.db))
+            extract.cmd_embed_note(Namespace(paths=[str(note)], project=None, db=self.db))
         statuses = {r[0] for r in self.conn.execute(
             "SELECT status FROM chunks WHERE source_path = 'vault/Decisions/Use A.md'")}
         self.assertEqual(statuses, {"superseded"})

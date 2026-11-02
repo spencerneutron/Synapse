@@ -118,7 +118,7 @@ def find_hits(prompt: str, cwd: Path, session_id: str | None, remember: bool) ->
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="synapse recall-hint", description=__doc__.split("\n\n")[0])
     parser.add_argument("--prompt", default=None, help="try a prompt by hand instead of reading hook JSON")
     parser.add_argument("--cwd", type=Path, default=None)
     parser.add_argument("--json", action="store_true", help="with --prompt: print the hits as JSON")

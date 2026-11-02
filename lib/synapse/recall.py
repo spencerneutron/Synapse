@@ -301,11 +301,12 @@ def format_text(results: list[dict], query: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="synapse recall", description=__doc__.split("\n\n")[0])
     parser.add_argument("query", help="natural-language search query")
     parser.add_argument("--db", type=Path, default=None,
                         help="vector DB (default: the active store's vectors.db)")
-    parser.add_argument("--top-k", type=int, default=DEFAULT_TOP_K)
+    parser.add_argument("--top-k", "--limit", "-n", dest="top_k", type=int, default=DEFAULT_TOP_K,
+                        help=f"number of results (default {DEFAULT_TOP_K})")
     parser.add_argument("--project", default=None,
                         help="filter by project (frontmatter project field; case-insensitive)")
     parser.add_argument("--type", dest="source_type", default=None,

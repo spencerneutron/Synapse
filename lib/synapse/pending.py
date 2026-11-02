@@ -40,7 +40,7 @@ def reminder(project: str, ids: list[str]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="synapse pending", description=__doc__.split("\n\n")[0])
     parser.add_argument("--project", default=None)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--hook", action="store_true", help="read SessionStart JSON; print a reminder")

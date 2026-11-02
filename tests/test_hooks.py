@@ -45,6 +45,8 @@ class EmissionCheckTests(unittest.TestCase):
         self.assertTrue(blocks("Let us delve into the logs."))
         self.assertTrue(blocks("It's worth noting the build is slow."))
         self.assertTrue(blocks("Build passed ✅"))
+        self.assertTrue(blocks("Reply **yes**, **no**, or **skip <numbers>**."))
+        self.assertTrue(blocks("Run it with <session-id> filled in."))
 
     def test_reason_names_the_problems(self):
         out = json.loads(run_hook({"last_assistant_message": "Great question!\n\nHope this helps!"}))
@@ -59,6 +61,10 @@ class EmissionCheckTests(unittest.TestCase):
         self.assertFalse(blocks("Renamed it.\n\n```\nlet me know if\n```"))
         self.assertFalse(blocks("> Let me know if\n\nQuoted above; nothing to fix."))
         self.assertFalse(blocks("Attach Delve to the Go process; Apache Tapestry is unaffected."))
+        self.assertFalse(blocks("Run `synapse recall <query>`; see <https://example.com> or <a@b.co>."))
+        self.assertFalse(blocks("Pass when 1 < n and m > 2."))
+        self.assertFalse(blocks("It returns List<String>, Promise<void>, or Vec<u8>; if a<b and c>d."))
+        self.assertFalse(blocks("Press <Enter>. | one <br> two | a <kbd>Ctrl</kbd> key |"))
 
     def test_guard_and_fail_open(self):
         self.assertFalse(blocks("Great question!", stop_hook_active=True))

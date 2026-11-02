@@ -5,7 +5,8 @@ extract.py — chunk, embed, and store session archive content and vault notes.
 Subcommands:
   init                       Create DB schema if missing.
   embed-archive <session-id> Embed PLAN/EXECUTION/NOTES files for one session.
-  embed-note <path>          Embed a single vault note (decision/pattern/session).
+  embed-note <path>...       Embed vault notes (decision/pattern/session); a path
+                             may be vault-relative, e.g. Patterns/<title>.md.
   status <session-id>        Report extraction status for a session.
   upgrade                    Bring the DB to the current schema (backs up first,
                              keeps every vector; also creates a new DB).
@@ -747,25 +748,47 @@ def cmd_embed_archive(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_embed_note(args: argparse.Namespace) -> int:
-    path = Path(args.path)
-    if not path.exists():
-        sys.exit(f"error: {path} not found")
+def note_file(arg: str, r: "paths.Resolved") -> Path:
+    """A note given as a path, or relative to the vault (`Patterns/X.md`,
+    `vault/Patterns/X.md`). A vault-relative path is looked up in the store's
+    vault_path, then in the vault Obsidian reports (where create-note wrote it)."""
+    p = Path(arg).expanduser()
+    rel = Path(arg.replace("\\", "/").removeprefix("vault/"))
+    if p.is_absolute() or not rel.parts or rel.parts[0] not in paths.VAULT_FOLDERS:
+        return p
+    if r.vault_path and (r.vault_path / rel).exists():
+        return r.vault_path / rel
+    import vault_write
+    vault_write.VAULT_NAME = r.vault
+    return vault_write.vault_path() / rel
 
+
+def cmd_embed_note(args: argparse.Namespace) -> int:
+    r = paths.resolve(project=args.project)
+    files = [note_file(a, r) for a in args.paths]
+    missing = [str(f) for f in files if not f.exists()]
+    if missing:
+        sys.exit("error: not found: " + ", ".join(missing))
+
+    conn = db_connect(args.db)
+    db_init(conn, args.db)
+    for path in files:
+        embed_note(conn, path, args.project)
+    return 0
+
+
+def embed_note(conn: sqlite3.Connection, path: Path, project_arg: str | None) -> None:
     content = path.read_text(encoding="utf-8")
     frontmatter, _ = parse_frontmatter(content)
     source_type = frontmatter.get("type", "note")
     session_id = frontmatter.get("session_id") or None
-    r = paths.resolve(project=frontmatter.get("project") or args.project)
+    r = paths.resolve(project=frontmatter.get("project") or project_arg)
     project = r.project
     # A superseded note keeps that status when it is re-embedded.
     status = "superseded" if str(frontmatter.get("status", "")).strip() == "superseded" else "active"
     superseded_by = frontmatter.get("superseded_by") or None
     if superseded_by:  # front matter holds a [[wikilink]]; the DB holds the stored path
         superseded_by = note_ref(str(superseded_by), r, path.parent.name)[0]
-
-    conn = db_connect(args.db)
-    db_init(conn, args.db)
 
     # Always-replace semantics: vault notes can be edited (manually or by
     # re-extraction). Delete any existing chunks for this exact source_path
@@ -799,7 +822,6 @@ def cmd_embed_note(args: argparse.Namespace) -> int:
     inserted, skipped = store_chunks(conn, chunks, status=status, superseded_by=superseded_by)
     print(f"{path.name}: {inserted} new, {skipped} unchanged"
           + (" (superseded)" if status == "superseded" else ""))
-    return 0
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -956,7 +978,7 @@ def cmd_supersede(args: argparse.Namespace) -> int:
 # ---------- Entry point ----------
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="synapse extract", description=__doc__.split("\n\n")[0])
     parser.add_argument("--db", type=Path, default=None,
                         help="vector DB (default: the active store's vectors.db)")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -977,8 +999,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="also embed REPORT_<session-id>.md if present")
     p_arch.set_defaults(func=cmd_embed_archive)
 
-    p_note = sub.add_parser("embed-note", help="embed a single vault note")
-    p_note.add_argument("path")
+    p_note = sub.add_parser("embed-note", help="embed vault notes (re-embeds replace old chunks)")
+    p_note.add_argument("paths", nargs="+", metavar="path",
+                        help="note file, or vault-relative path such as Patterns/<title>.md")
     p_note.add_argument("--project", default=None)
     p_note.set_defaults(func=cmd_embed_note)
 

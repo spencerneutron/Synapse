@@ -1,5 +1,32 @@
 # Changelog
 
+## 2.3.2 — 2026-11-02 — Extraction on Windows without extra turns
+
+No store schema change; update with `claude plugin marketplace update
+synapse` and `claude plugin update synapse@synapse`, then start new sessions.
+
+### Fixed
+
+- **Obsidian starts itself on Windows** (#2). `synapse vault` launches a
+  closed Obsidian detached with the store's vault
+  (`explorer.exe obsidian://open?vault=…`) and waits, as it already did on
+  macOS. `/synapse:extract-session` runs `synapse vault verify` first and no
+  longer asks the user to start Obsidian.
+- **Embedding several notes from Git Bash** (#3). `synapse extract
+  embed-note` takes several notes in one call and accepts vault-relative
+  paths (`Patterns/<title>.md`); `create-note` prints `path` with forward
+  slashes. The skill embeds all new notes in one call, with no shell loop.
+- **Backslashes in a note body** (#4). New `synapse vault create-note
+  --from-md`: fields in front matter, body as plain Markdown, nothing to
+  escape. The extract skill writes notes this way. `--from-file` (JSON)
+  still works, and its `Invalid \escape` error now says how to fix it.
+- **`synapse recall --limit`** (#5). `--limit N` and `-n N` work as
+  aliases of `--top-k N`. Usage and errors of every subcommand name
+  `synapse <command>`, not `cli.py`.
+- **`&lt;numbers&gt;` in PowerShell** (#1). The extract prompt uses real
+  examples instead of angle-bracket placeholders, and the Stop hook asks for
+  a rewrite when a final message has one in prose (`angle-placeholder`).
+
 ## 2.3.1 — 2026-10-30 — Run the project's documented checks
 
 No store schema change; update with `claude plugin marketplace update
