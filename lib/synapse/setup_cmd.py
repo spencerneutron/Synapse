@@ -33,7 +33,7 @@ def step(status: str, what: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    argparse.ArgumentParser(description=__doc__.split("\n\n")[0]).parse_args(argv)
+    argparse.ArgumentParser(prog="synapse setup", description=__doc__.split("\n\n")[0]).parse_args(argv)
     print(f"Synapse setup -> {doctor.tilde(paths.home())}")
 
     paths.home().mkdir(parents=True, exist_ok=True)

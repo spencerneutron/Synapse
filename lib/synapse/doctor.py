@@ -373,7 +373,7 @@ def run(project_dir: Path) -> Report:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="synapse doctor", description=__doc__.split("\n\n")[0])
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--project-dir", type=Path, default=Path.cwd())
     args = parser.parse_args(argv)

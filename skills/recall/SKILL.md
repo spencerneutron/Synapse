@@ -72,8 +72,8 @@ Optional filters when relevant:
 - `--mode hybrid|vector|keyword` — default `hybrid` (meaning and exact words
   together); `keyword` for an exact identifier, file name, or issue number
 - `--include-superseded` — also return replaced decisions, labeled
-- `--top-k N` — default 5; raise to 8–10 for broader scans, lower to 3 for
-  precision-critical lookups
+- `--top-k N` (or `--limit N`, `-n N`) — default 5; raise to 8–10 for
+  broader scans, lower to 3 for precision-critical lookups
 - `--since YYYY-MM-DD` — only chunks embedded on or after that date
 - `--scope all|local|shared` — default `all`: the active store plus its
   teams' shared notes; `local` or `shared` for one side only

@@ -92,7 +92,7 @@ class Members(unittest.TestCase):
         conn = extract.db_connect(r.db)
         extract.db_init(conn, r.db)
         for n in notes:
-            extract.cmd_embed_note(type("A", (), {"path": str(n), "project": None, "db": r.db})())
+            extract.cmd_embed_note(type("A", (), {"paths": [str(n)], "project": None, "db": r.db})())
         return conn, r
 
     def team_hits(self, team: str) -> list:

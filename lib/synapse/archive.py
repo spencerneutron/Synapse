@@ -61,7 +61,7 @@ def free_session_id(archive_dir: Path, base: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="synapse archive", description=__doc__.split("\n\n")[0])
     parser.add_argument("--project", default=None)
     parser.add_argument("--id", dest="session_id", default=None,
                         help="session ID (default: local time, YYYY-MM-DD-HHMM)")

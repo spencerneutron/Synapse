@@ -26,8 +26,13 @@ needs a stable cwd; say briefly why.
   its own venv under the Synapse home; call `synapse ...`, not its scripts.
 - Write JSON to a file and pass `--from-file`. Multi-line JSON piped or passed
   inline through PowerShell breaks on quoting and triggers safety prompts.
+  For `synapse vault create-note`, write Markdown and pass `--from-md`, so
+  backslashes in the note need no escaping.
 
 ## Gotchas
 
-- **Obsidian is not auto-launched here.** Start Obsidian with the vault open
-  before `/synapse:extract-session`.
+- **`synapse vault` starts Obsidian itself.** If Obsidian is closed, it
+  launches it detached with the store's vault and waits. Do not ask the user
+  to start it first; ask only if `synapse vault verify` still fails.
+- **Use forward slashes in paths you pass to bash** (`C:/Obsidian/...`). In
+  Git Bash a backslash before `$` stops the variable from expanding.

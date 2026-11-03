@@ -58,7 +58,7 @@ def summarize(rows: list[dict]) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="synapse recall-check", description=__doc__.split("\n\n")[0])
     parser.add_argument("golden", type=Path)
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--mode", default=None, help="passed to recall when it supports modes")

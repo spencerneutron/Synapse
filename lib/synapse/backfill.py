@@ -27,7 +27,7 @@ from archive import discover_sessions  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="synapse backfill", description=__doc__.split("\n\n")[0])
     parser.add_argument("--project", default=None)
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--include-reports", action="store_true")

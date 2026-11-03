@@ -139,7 +139,7 @@ def cmd_add(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="synapse share", description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
     scrub.add_parsers(sub)
     p = sub.add_parser("add", help="put an approved, scrubbed note into a team folder")

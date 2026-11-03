@@ -35,11 +35,13 @@ the store, its archive, its DB, and its vault, and why it was chosen).
   store's vault open (default `Synapse`; `SYNAPSE_VAULT` overrides), and the
   app must be **up to date** — an out-of-date installer pollutes the CLI output
   and breaks vault-name parsing.
-- **Never rely on the `obsidian` CLI's own auto-launch.** An Obsidian it starts
-  is a child of the calling shell and quits when that shell exits, so the next
-  call finds nothing. On macOS `synapse vault` checks for a running Obsidian
-  and, if needed, launches it detached (`open -a Obsidian`) and waits. On
-  other platforms, start Obsidian by hand before extracting.
+- **`synapse vault` starts Obsidian; never ask the user to first.** An
+  Obsidian that the `obsidian` CLI auto-launches is a child of the calling
+  shell and quits when that shell exits. So on macOS and Windows,
+  `synapse vault` checks for a running Obsidian and, if needed, launches it
+  detached with the store's vault (`open -a Obsidian`; on Windows
+  `explorer.exe obsidian://open?vault=…`) and waits. Ask the user to start
+  Obsidian only if `synapse vault verify` still fails, or on Linux.
 - **Embeddings need Ollama.** The local Ollama server must be running with
   `nomic-embed-text` pulled (`ollama pull nomic-embed-text`).
 
@@ -83,6 +85,9 @@ Do **not** use:
 
 ### 1. Locate the archive
 
+- Run `synapse vault verify` now, in the same batch as the archive lookup.
+  It starts Obsidian if needed, so the vault is ready by the time the user
+  answers step 7 and the extraction costs them no extra turn.
 - Check the project's archive folder (`archive_dir` from
   `synapse where --project <name>`) for files matching the session ID.
 - If `PLAN`, `EXECUTION`, and `NOTES` are all missing, stop and report.
@@ -139,24 +144,22 @@ expected and correct.
 
 ### 5. Build the Session note spec
 
-Always create exactly one Session note per extraction run. Schema:
-
-```json
-{
-  "type": "session",
-  "title": "<one-line description of what the session was about>",
-  "session_id": "<id>",
-  "project": "<name>",
-  "date": "<YYYY-MM-DD from session_id>",
-  "tags": ["session"],
-  "related": [<links to prior session notes if this continued earlier work>],
-  "body": "<see body structure below>"
-}
-```
-
-Body structure for Session notes:
+Always create exactly one Session note per extraction run. Each note spec is
+a Markdown file: the fields in front matter, then the body as plain text (no
+H1; `create-note` adds it). Nothing in it needs escaping, so Windows paths
+and backslashes are written as they are. Lists are `[a, b]` or `- item`
+lines; quote wikilinks inside `[...]`.
 
 ```markdown
+---
+type: session
+title: <one-line description of what the session was about>
+session_id: <id>
+project: <name>
+date: <YYYY-MM-DD from session_id>
+tags: [session]
+related: ["[[<prior session id>]]"]
+---
 ## Objective
 <one sentence — what the session set out to do>
 
@@ -179,6 +182,8 @@ sections, or "_None_" if all clean>
 - Archive: `archive/<project>/NOTES_<id>.md`
 ```
 
+Leave out `related` when the session did not continue earlier work.
+
 If a Decision or Pattern note is created in this run, the Session note's
 body must link to it via `[[Title]]` syntax. Wikilinks are how the vault
 becomes navigable.
@@ -187,39 +192,56 @@ becomes navigable.
 
 For each Decision identified in step 3:
 
-```json
-{
-  "type": "decision",
-  "title": "<concise verb-led title, e.g. 'Use sqlite-vec for local vector store'>",
-  "project": "<name>",
-  "session_id": "<id>",
-  "tags": ["decision"],
-  "related": ["[[<session_id>]]"],
-  "sources": ["[[<session_id>]]"],
-  "supersedes": "[[<title>]]" or null,
-  "body": "## Context\n<2-3 sentences>\n\n## Decision\n<one or two sentences>\n\n## Rationale\n<bullets>\n\n## Alternatives considered\n<bullets, optional>"
-}
+```markdown
+---
+type: decision
+title: <concise verb-led title, e.g. Use sqlite-vec for local vector store>
+project: <name>
+session_id: <id>
+tags: [decision]
+related: ["[[<session_id>]]"]
+sources: ["[[<session_id>]]"]
+supersedes: "[[<title>]]"
+---
+## Context
+<2-3 sentences>
+
+## Decision
+<one or two sentences>
+
+## Rationale
+<bullets>
+
+## Alternatives considered
+<bullets, optional>
 ```
 
 If this decision *replaces* an earlier decision (a recall of similar
 prior work returned a Decision note that this one overturns), set
-`supersedes` to that note's wikilink. Run a recall before promoting a
+`supersedes` to that note's wikilink; otherwise leave the line out. Run a recall before promoting a
 decision if it might be revisiting prior territory.
 
 For each Pattern identified in step 4:
 
-```json
-{
-  "type": "pattern",
-  "title": "<concise title, e.g. 'Store embedding model name with each vector'>",
-  "project": "<name>",
-  "session_id": "<id>",
-  "tags": ["pattern"],
-  "related": ["[[<session_id>]]"],
-  "sources": ["[[<session_id>]]"],
-  "applies_to": ["<domain tags, e.g. 'python', 'retrieval'>"],
-  "body": "## Problem\n<when this comes up>\n\n## Solution\n<what to do>\n\n## Why\n<the underlying reason>"
-}
+```markdown
+---
+type: pattern
+title: <concise title, e.g. Store embedding model name with each vector>
+project: <name>
+session_id: <id>
+tags: [pattern]
+related: ["[[<session_id>]]"]
+sources: ["[[<session_id>]]"]
+applies_to: [<domain tags, e.g. python, retrieval>]
+---
+## Problem
+<when this comes up>
+
+## Solution
+<what to do>
+
+## Why
+<the underlying reason>
 ```
 
 ### 7. Show the user the proposed extractions
@@ -242,14 +264,18 @@ Pattern notes (1):
 
 Embedding: 31 chunks across PLAN/EXECUTION/NOTES files.
 
-Proceed? (yes / no / skip <number>)
+Proceed? Reply yes, no, or the items to skip (for example: skip decision 2).
 ```
+
+Write the prompt with real examples, not angle-bracket placeholders: some
+terminals (PowerShell) show `<numbers>` as `&lt;numbers&gt;`. Obsidian is
+already handled (step 1), so this is the only question.
 
 Wait for the user's response. Three response shapes:
 
 - **yes / proceed / go**: write everything.
 - **no / cancel**: write nothing.
-- **skip <numbers>**: drop the specified items, write the rest.
+- **skip and item numbers**: drop the specified items, write the rest.
   Example: "skip decision 2 and pattern 1" means write decisions 1 and 3
   and the session note only.
 
@@ -266,20 +292,22 @@ title. If those notes don't exist yet when the Session note is created,
 the wikilinks will be unresolved. Writing the referenced notes first
 keeps the vault link graph clean.
 
-For each note, write the spec JSON to a temp file, then invoke
-`synapse vault create-note` with `--from-file`. **Do not pipe JSON through stdin
-or pass it inline as a command-line argument** — multi-line JSON with
-braces and quotes in command lines triggers shell-injection safety
-prompts on every invocation, which makes the skill effectively
-non-runnable.
+For each note, write the Markdown spec to a temp file with your file tool,
+then invoke `synapse vault create-note` with `--from-md`. **Do not pipe a
+spec through stdin or pass it inline as a command-line argument** —
+multi-line text with braces and quotes in command lines triggers
+shell-injection safety prompts on every invocation, which makes the skill
+effectively non-runnable. (`--from-file` still takes the same fields as a
+JSON object, but then every backslash and newline in the body must be
+escaped; use `--from-md`.)
 
 Use a stable temp file path the user can audit if anything goes wrong.
 The recommended pattern:
 
 ```
 # Pseudocode — actual implementation depends on the agent's file tools.
-write JSON spec to: .claude-work/.tmp/extract-<session-id>-<note-slug>.json
-run: synapse vault create-note --from-file <path>
+write the Markdown spec to: .claude-work/.tmp/extract-<session-id>-<note-slug>.md
+run: synapse vault create-note --from-md <path>
 delete the temp file after success
 ```
 
@@ -289,7 +317,7 @@ already exist), pass it as an additional flag.
 Example invocation (one note):
 
 ```
-synapse vault create-note --from-file ".claude-work/.tmp/extract-2026-04-23-1645-decision-1.json"
+synapse vault create-note --from-md ".claude-work/.tmp/extract-2026-04-23-1645-decision-1.md"
 ```
 
 Verify each invocation succeeded (exit code 0 AND output contains the
@@ -332,13 +360,14 @@ extraction metadata.
 
 ### 10. Embed the new vault notes
 
-For each Decision/Pattern note created in step 8, use the **`path`
-field** from `synapse vault create-note`'s JSON output as the path to
-embed. Do not guess where the vault lives — `synapse vault` already
-queried Obsidian for the actual path and reported it.
+Embed every Decision/Pattern note created in step 8 in **one call**, passing
+each note's **`vault_relative_path`** from `synapse vault create-note`'s JSON
+output. `embed-note` finds the vault itself (the store's `vault_path`, else
+the path Obsidian reports), so do not guess where the vault lives, build
+absolute paths, or loop in the shell.
 
 ```
-synapse extract embed-note "<path from create-note output>" --project <name>
+synapse extract embed-note "Decisions/<title 1>.md" "Patterns/<title 2>.md" --project <name>
 ```
 
 This makes the promoted notes discoverable via `/synapse:recall` immediately,
@@ -375,16 +404,16 @@ as part of extraction.
   pipe JSON through stdin or pass it as an inline argument, stop. Every
   invocation will trigger a "brace with quote character" safety prompt
   that the user has to dismiss, which kills the skill's usability.
-  Always write the spec to a temp file first and use `--from-file`.
+  Always write the spec to a temp file first and use `--from-md`.
   This is not optional.
 
 - **`synapse vault verify` fails first.** Always run verify before any
-  write step. If it times out, check whether Obsidian is running (macOS:
-  `pgrep -x Obsidian`). A missing app is the child-process case above: start
-  it detached (macOS: `open -a Obsidian`; elsewhere, by hand), wait, and run verify again
-  (the script does this itself). If Obsidian is running but verify still fails,
-  or the app is out of date (polluted CLI output, broken vault-name parsing),
-  stop and tell the user. Do not attempt writes.
+  write step (step 1). On macOS and Windows it launches a closed Obsidian
+  detached and waits, so a first failure is not a reason to ask the user:
+  run verify once more. If it still fails, or the app is out of date
+  (polluted CLI output, broken vault-name parsing), stop and tell the user,
+  quoting the error. On Linux, ask the user to start Obsidian with the vault
+  open. Do not attempt writes.
 
 - **A vault write fails midway.** If decision notes 1 and 2 wrote
   successfully but decision 3 fails, do not roll back. Report what

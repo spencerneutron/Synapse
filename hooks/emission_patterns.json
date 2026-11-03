@@ -39,6 +39,13 @@
       "message": "uses a banned tic phrase (it's worth noting, in today's ... world)"
     },
     {
+      "id": "angle-placeholder",
+      "where": "anywhere",
+      "regex": "(?<![\\w<])<(?!(?:a|b|i|p|s|u|br|hr|em|kbd|sub|sup|code|pre|div|span|img|strong|details|summary)\\b)[a-z][a-z0-9_]*(?:[ -][a-z0-9_]+)*>",
+      "message": "uses an angle-bracket placeholder in prose, which some terminals show as &lt;word&gt; (write N or the real value, or put it in inline code)",
+      "ignore_case": false
+    },
+    {
       "id": "emoji",
       "where": "anywhere",
       "regex": "[\\U0001F300-\\U0001FAFF\\u2705\\u274C\\u2728]",
