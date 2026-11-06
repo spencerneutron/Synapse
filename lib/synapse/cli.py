@@ -11,6 +11,7 @@ synapse — command-line entry point for the Synapse plugin.
   synapse recall-hint [--prompt "..."]   the automatic hint (UserPromptSubmit hook)
   synapse pending [--hook]               archived sessions never extracted
   synapse facts [--project P] [--hook]   this project's Fact notes (listed at session start)
+  synapse compact-guide --hook           PreCompact: what the compaction summary should keep
   synapse share <subcommand> [...]       scrub | lint | add (share a note with a team)
   synapse shared <subcommand> [...]      init | join | sync | status | retract | push
   synapse extract <subcommand> [...]     init | embed-archive | embed-note | status |
@@ -43,6 +44,7 @@ COMMANDS = {
     "recall-hint": "hint",
     "pending": "pending",
     "facts": "facts",
+    "compact-guide": "compact_guide",
     "share": "share",
     "shared": "shared",
     "extract": "extract",

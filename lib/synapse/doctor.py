@@ -223,8 +223,8 @@ def check_rules(rep: Report, project_dir: Path) -> None:
                     "check it does not contradict Synapse's rules; project rules win where they do")
 
 
-def plugin_stop_hooks(settings: dict) -> list[str]:
-    """Stop hook commands of other enabled plugins."""
+def plugin_stop_hooks(settings: dict, event: str = "Stop") -> list[str]:
+    """Other enabled plugins that have a hook for `event` (default Stop)."""
     found = []
     installed = read_json(claude_dir() / "plugins" / "installed_plugins.json", Report())
     for pid, enabled in settings.get("enabledPlugins", {}).items():
@@ -232,7 +232,7 @@ def plugin_stop_hooks(settings: dict) -> list[str]:
             continue
         for inst in installed.get("plugins", {}).get(pid, []):
             hooks = read_json(Path(inst.get("installPath", "")) / "hooks" / "hooks.json", Report())
-            if hooks.get("hooks", {}).get("Stop"):
+            if hooks.get("hooks", {}).get(event):
                 found.append(pid)
     return found
 
@@ -250,6 +250,10 @@ def check_settings(rep: Report, project_dir: Path) -> None:
             for h in group.get("hooks", []):
                 rep.add("warn", "stop-hooks", f"{tilde(path)} runs a Stop hook: {h.get('command', h)}",
                         "if it can block, it and Synapse's emission check may both ask for rewrites")
+        for group in s.get("hooks", {}).get("PreCompact", []):
+            for h in group.get("hooks", []):
+                rep.add("warn", "precompact-hooks", f"{tilde(path)} runs a PreCompact hook: {h.get('command', h)}",
+                        "each hook's stdout is capped on its own; two sets of compaction instructions can conflict")
         if s.get("outputStyle"):
             rep.add("info", "output-style", f"{tilde(path)} sets outputStyle {s['outputStyle']!r}",
                     "make sure it does not contradict /synapse:emission-contract")
@@ -263,6 +267,9 @@ def check_settings(rep: Report, project_dir: Path) -> None:
             for pid in plugin_stop_hooks(s):
                 rep.add("warn", "stop-hooks", f"plugin {pid} also has a Stop hook",
                         "check it does not also ask for rewrites")
+            for pid in plugin_stop_hooks(s, "PreCompact"):
+                rep.add("warn", "precompact-hooks", f"plugin {pid} also has a PreCompact hook",
+                        "check its compaction instructions do not conflict with Synapse's")
 
 
 def migrated_count(old_archive: Path, r: paths.Resolved) -> tuple[int, int]:

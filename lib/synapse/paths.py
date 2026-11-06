@@ -280,6 +280,11 @@ class Team:
         return home() / "state" / f"shared-{self.name}.json"
 
 
+def work_dir(project_root: Path) -> Path:
+    """The folder holding a project's planning files (PLAN.md, EXECUTION.md, ...)."""
+    return Path(project_root) / ".claude-work" / "current"
+
+
 def team_dir(name: str) -> Path:
     return home() / "shared" / name
 
