@@ -6,7 +6,7 @@
 #
 # Always: --no-publish (reports stay local), --max-cost-usd (default 12, set
 # EVAL_MAX_COST_USD to change), --ablation none, --runs 2; later flags (such
-# as --ablation with-without) override these. The whole suite is 15 cases x 2
+# as --ablation with-without) override these. The whole suite is 22 cases x 2
 # runs, about $2.50-3.00; the memory cases need EVAL_SYNAPSE_HOME, so
 # tools/run-bench.sh is the way to run all of it.
 set -euo pipefail
