@@ -1,5 +1,48 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Context-nudge window is derived per session.** The default of 300000 never
+  fired on 200k-window models. With `[nudge] context_window` unset, the 60%
+  and 90% marks use a rule on the model name: 300000 for 1M-window models
+  (Fable, Opus 4.7 and later, any 5-series model), 150000 for older ones
+  (a bare alias such as `opus` counts as 1M-window). The smallest
+  auto-compaction size seen in the session (a manual `/compact` is ignored;
+  kept in `context-<sid>.json`) lowers that window, never raises it. No
+  model table, so nothing goes stale when models ship. The nudge line names
+  the window and its source, e.g. `(window 150k, from the model)`. An
+  explicit value still wins, and `0` still turns the lines off.
+
+### Added
+
+- **`[continuation] compact_guide = false`** turns the PreCompact guidance
+  off: `synapse compact-guide --hook` then prints nothing. A missing or
+  invalid config leaves it on.
+- **`tools/live-check-compact.sh --arms on|off|both`.** The off arm runs the
+  same planted-item session with the guidance turned off, so the two arms
+  show what the hook adds over Claude Code's default summary (hook stdout is
+  not in transcripts). Each arm first checks that the hook is on or silent
+  as intended, before any paid call. A turn 2 that stops early (budget)
+  after a compaction no longer skips the recall turn. About $0.55 per arm
+  per run.
+- **cp1252 usage-text test** (`tests/test_cli_encoding.py`). Runs every
+  command's usage and `--help`, and every subcommand's `--help`, with stdout
+  forced to cp1252 as on Windows, and fails unless the output is UTF-8.
+
+### Fixed
+
+- `synapse help`, `synapse archive --help` and `synapse compact-guide`
+  (usage) printed their em dash as cp1252 byte 0x97 on Windows; they now
+  write UTF-8, like the 2.5.1 and 2.6.0 fixes for `nudge` and `checkpoint`.
+  `cli.main` now reconfigures stdout and stderr for every command, and the
+  `tools/*.py` scripts do the same, so the fix is no longer per module. The
+  test also covers `tools/*.py` and `hooks/*.py`, so the bug fails locally on
+  any OS instead of on Windows CI (it caught `build_context.py`,
+  `build_eval_home.py` and `eval-report.py`). Installed paths were never
+  affected: `lib/py.sh` sets `PYTHONUTF8=1`.
+
 ## 2.6.0 — 2026-11-06 — Continuation assist
 
 No store schema change; update with `claude plugin marketplace update

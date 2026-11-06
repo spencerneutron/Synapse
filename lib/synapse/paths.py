@@ -62,6 +62,10 @@ vault = "Synapse"
 [nudge]
 # calls = 5            # hands-on calls in a row before the dispatch reminder; 0 turns it off
 # context_window = 300000   # tokens; context nudge at 60% and 90% of it, and the resume-time line; 0 turns both off
+#                           # unset: the session's last auto-compaction, else the model (see README)
+
+[continuation]
+# compact_guide = true     # PreCompact: guidance for the compaction summary; false prints nothing
 
 [extract]
 # remind = true        # at session start, mention archived sessions never extracted
@@ -137,8 +141,11 @@ def settings() -> dict:
                           lambda v: isinstance(v, int) and v >= 0, "a whole number, 0 or more"),
         "nudge_calls": value("nudge", "calls", 5, lambda v: isinstance(v, int) and v >= 0,
                              "a whole number, 0 or more"),
-        "context_window": value("nudge", "context_window", 300000,
-                                lambda v: isinstance(v, int) and v >= 0, "a whole number, 0 or more"),
+        # None (unset): the nudge derives the window per session (continuation.window_for)
+        "context_window": value("nudge", "context_window", None,
+                                lambda v: v is None or (isinstance(v, int) and v >= 0),
+                                "a whole number, 0 or more"),
+        "compact_guide": value("continuation", "compact_guide", True, lambda v: True, "true or false"),
         "extract_remind": value("extract", "remind", True, lambda v: True, "true or false"),
         "facts_at_start": value("recall", "facts", True, lambda v: True, "true or false"),
     }

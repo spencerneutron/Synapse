@@ -366,6 +366,10 @@ def render(results):
 
 
 def main(argv=None):
+    # Windows Python writes pipes in the ANSI code page; force UTF-8 output.
+    for stream, errors in ((sys.stdout, "replace"), (sys.stderr, "backslashreplace")):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors=errors)
     ap = argparse.ArgumentParser(description="Numbers-only token and cost report from transcripts.")
     ap.add_argument("transcripts", nargs="+", help="main transcript .jsonl files")
     ap.add_argument("--json", action="store_true", help="print JSON (includes per-request rows)")

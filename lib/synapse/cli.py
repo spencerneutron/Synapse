@@ -83,6 +83,11 @@ def where(argv: list[str]) -> int:
 
 
 def main(argv: list[str]) -> int:
+    # Windows Python writes pipes in the ANSI code page; help text has em dashes.
+    # errors= keeps an undecodable path from raising on print.
+    for stream, errors in ((sys.stdout, "replace"), (sys.stderr, "backslashreplace")):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors=errors)
     if not argv or argv[0] in ("-h", "--help", "help"):
         print(__doc__.strip())
         return 0

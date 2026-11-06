@@ -147,6 +147,35 @@ class CompactGuideTests(unittest.TestCase):
         (self.root / "CLAUDE.md").write_bytes(b"\xff\xfe\n## Compact instructions\n\xff")
         self.out(self.hook())
 
+    def home_with(self, config):
+        home = self.root / "synhome"
+        home.mkdir(exist_ok=True)
+        (home / "config.toml").write_text(config, encoding="utf-8")
+        return str(home)
+
+    def test_setting_false_prints_nothing(self):
+        r = run(self.hook(), SYNAPSE_HOME=self.home_with("[continuation]\ncompact_guide = false\n"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, b"")
+
+    def test_setting_true_or_unset_prints_guidance(self):
+        for cfg in ("[continuation]\ncompact_guide = true\n", "[nudge]\ncalls = 5\n"):
+            with self.subTest(cfg=cfg):
+                self.assertIn("Worth keeping", self.out(self.hook(), SYNAPSE_HOME=self.home_with(cfg)))
+
+    def test_invalid_config_still_prints_guidance(self):
+        for cfg in ('[continuation]\ncompact_guide = "x"\n', "[continuation\n", "continuation = 3\n"):
+            with self.subTest(cfg=cfg):
+                self.assertIn("Worth keeping", self.out(self.hook(), SYNAPSE_HOME=self.home_with(cfg)))
+
+    def test_usage_output_is_strict_utf8_under_cp1252(self):
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONUTF8"}
+        env["PYTHONIOENCODING"] = "cp1252"
+        r = subprocess.run([sys.executable, str(CLI), "compact-guide"], capture_output=True, env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        text = r.stdout.decode("utf-8")  # strict
+        self.assertIn("\u2014", text)
+
     def test_hooks_json_registers_precompact_without_matcher(self):
         hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text())["hooks"]["PreCompact"]
         self.assertEqual(len(hooks), 1)
