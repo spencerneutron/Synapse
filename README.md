@@ -94,8 +94,12 @@ summary.
 - **Context nudge.** The nudge hook measures the real context size and adds
   one line at 60% and at 90% of `[nudge] context_window` (default 300000
   tokens). If you were away longer than the prompt cache lasts, it also says
-  what the next request will rewrite. Set `context_window = 0` to turn both
-  off. Neither line blocks anything.
+  what the next request will rewrite. Set `context_window` to your
+  auto-compact window: on a 200k-window model the default's 180k mark sits
+  at the compaction point, so lower it (for example 150000) or the lines
+  never show. It is checked after Bash, PowerShell, Edit, Write and Agent
+  calls, not after reads. Set `context_window = 0` to turn both off.
+  Neither line blocks anything.
 
 ## Where things live
 
