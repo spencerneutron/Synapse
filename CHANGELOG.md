@@ -1,28 +1,50 @@
 # Changelog
 
-## 2.4.1 — 2026-11-06 — Extraction checks candidates against prior notes
+## 2.5.0 — 2026-11-06 — The main session conducts, roles work
 
 No store schema change; update with `claude plugin marketplace update
 synapse` and `claude plugin update synapse@synapse`, then start new sessions.
+The sweep behind this release is in `docs/design/cost-sweep.md`.
 
 ### Changed
 
-- **Every candidate is checked against prior notes** (#10).
-  `/synapse:extract-session` has a new step 5b: before it builds note
-  specs, it runs one local recall per Decision, Fact, and Pattern candidate
-  on the candidate's concept, not its title
-  (`synapse recall "..." --type decision --scope local --top-k 3 --format json`).
-  A prior note scoring 0.70 or more on the same concept with a different
-  choice is proposed as `supersedes` in the step 8 summary, with its title
-  and score; the same choice is proposed as a duplicate to drop or link in
-  `related`. Patterns get the duplicate check only. Hits from the session
-  being extracted (a `--force` re-run) are skipped, and hits below 0.70 are
-  not shown. The user can decline a proposed `supersedes` or keep a
-  duplicate. This replaces the conditional "run a recall if it might be
-  revisiting prior territory" and the separate Fact recall in step 7.
-- `--scope local`, because `synapse extract supersede` marks only the
-  user's own notes. `--format json`, because text output does not show a
-  hit's session.
+- **The main session conducts and roles work.** `instructions/core.md` has
+  a rewritten Execution section: work that would take more than about five
+  tool calls or touch more than three files goes to a `synapse:` role, and
+  a failing loop (fix, run, fix again) goes to `synapse:implementer`
+  instead of growing the main context. A fact or decision the user states
+  is written to PLAN.md before the next step. The Obsidian section is one
+  sentence. The core rules shrink from 8,795 to 8,112 characters.
+- **A role per step.** The `EXECUTION.md` template has a role for each
+  step; `/synapse:plan-session` step 7 writes a brief, dispatches the step
+  to its role, and verifies the report; `/synapse:end-session` fills the
+  NOTES `## User-stated facts` section.
+- **Extraction runs in a fresh context.** A sixth role,
+  `synapse:extractor` (Sonnet), does the work of `/synapse:extract-session`,
+  dispatched by that skill. The skill shrinks from 19,064 to 3,985
+  characters.
+- **Every candidate is checked against prior notes** (#10). Extraction
+  recalls each Decision, Fact, and Pattern candidate on its concept, not its
+  title, and proposes `supersedes` or a duplicate for a prior note scoring
+  0.70 or more. Now one batched call, `synapse extract check-candidates`
+  (local scope, so `synapse extract supersede` can mark the hit; hits from
+  the session being extracted are skipped; below 0.70 nothing is shown).
+  This replaces the per-candidate recalls of 2.4.1's step 5b.
+
+### Added
+
+- **PreCompact guidance.** `synapse compact-guide --hook` prints about 1,000
+  characters telling the compaction summary what to keep (objective, active
+  step, decisions, user-stated facts, open questions, work state, planning
+  file paths) and what to drop. It defers to `/compact` text or a CLAUDE.md
+  Compact instructions section, never blocks compaction, and needs no venv,
+  DB, or Ollama. `/synapse:doctor` warns about other PreCompact hooks;
+  INSTALL.md has a preflight row.
+- Dev tooling: `tools/context-cost.py` (context, cache, and cost per
+  session from local transcripts; numbers only), and the eval case
+  `loop-goes-to-implementer`.
+- Design docs: `docs/design/cost-sweep.md` and
+  `docs/design/continuation-assist.md`.
 
 ### Calibration
 
