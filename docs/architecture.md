@@ -28,7 +28,7 @@ hooks enforce what instructions can only request.
    `EXECUTION` into the active store as `archive/<project>/<FILE>_<id>.md`
    under a session ID such as `2026-05-01-1515`; the skill adds `NOTES`.
 5. **Extract** (`/synapse:extract-session`). At teardown, while context is fresh,
-   Claude proposes Decision and Pattern notes and the user confirms once.
+   Claude proposes Decision, Pattern, and Fact notes and the user confirms once.
    Promoted notes and a Session note go to the vault; the archive and new
    notes are embedded; a `.processed/<id>.json` marker records the run.
 6. **Recall** (`/synapse:recall`). Later sessions, in any project, query the
@@ -36,8 +36,9 @@ hooks enforce what instructions can only request.
    pointers into the archive, not loaded context. A `UserPromptSubmit` hook
    also adds up to three such pointers to a prompt when something in the
    store scores at least 0.70, and a session-start note names archived
-   sessions never extracted.
-7. **Share** (`/synapse:share`, optional). Chosen Decisions and Patterns pass
+   sessions never extracted. Another session-start hook lists the project's
+   active Facts from the DB (`synapse facts --hook`).
+7. **Share** (`/synapse:share`, optional). Chosen Decisions, Patterns, and Facts pass
    a scrub gate and the user's approval, then go to a team folder (a git
    repo or a synced folder). Each member's sessions sync it in the
    background and index it locally, so teammates' notes join recall,
@@ -69,8 +70,8 @@ it harvests finished agents' results from disk before anything is relaunched.
 | Resolver | `lib/synapse/paths.py` | The only code that decides locations: home, store, project, archive, DB, vault |
 | Store | `~/.claude/synapse/stores/<store>/archive/<project>/` | Canonical session history |
 | Store | `~/.claude/synapse/stores/<store>/vectors.db` | Schema v2: sqlite-vec vectors with project/type/status metadata filtered inside the search, an FTS5 keyword index, `nomic-embed-text` via Ollama, cosine distance, store-relative source paths, supersession status |
-| Store | The store's Obsidian vault (default `Synapse`) | Flat folders: Sessions, Decisions, Patterns, Projects |
-| Team | A team's notes folder (a clone under `~/.claude/synapse/shared/<team>/`, or a synced folder) | `Decisions/`, `Patterns/`, `Retracted/`: the scrubbed notes members share |
+| Store | The store's Obsidian vault (default `Synapse`) | Flat folders: Sessions, Decisions, Patterns, Facts, Projects |
+| Team | A team's notes folder (a clone under `~/.claude/synapse/shared/<team>/`, or a synced folder) | `Decisions/`, `Patterns/`, `Facts/`, `Retracted/`: the scrubbed notes members share |
 | Team | `~/.claude/synapse/shared/<team>/vectors.db` | Each member's local index of the team folder, rebuilt by content hash; never shared |
 | Evals | `evals/`, `tools/run-bench.sh`, `tools/eval-report.py` | A `claude plugin eval` suite run with and without Synapse; run on demand, never in CI |
 | Runtime | Claude Code, auto mode | Controls live in the harness instead of permission prompts |
@@ -92,6 +93,8 @@ list, or every store by default.
 - Deterministic mechanics in Python, judgment in skills. Scripts never decide what matters.
 - Conservative promotion. A Decision must be a choice, carry rationale, stay
   durable, and be non-obvious. A Pattern must transfer across projects and condense.
+  A Fact must come from the user, be absent from the code, and change what
+  an agent does.
 - Idempotency everywhere: content-hash chunk dedup, `.processed` markers,
   always-replace for edited notes.
 - Fail loud: encoding errors, embedding-model mismatches, and unreachable
@@ -166,7 +169,7 @@ flowchart TD
         ND["/synapse:end-session"] --> AR[("Store archive<br/>canonical")]
         AR --> XS["/synapse:extract-session<br/>propose, confirm once"]
         XS --> GT{"Choice, rationale,<br/>durable, non-obvious?"}
-        GT -- yes --> VT[("Obsidian vault<br/>Decisions, Patterns, Sessions")]
+        GT -- yes --> VT[("Obsidian vault<br/>Decisions, Patterns, Facts, Sessions")]
         GT -- no --> AO["Stays in archive only"]
         AR --> EM["synapse extract"]
         VT --> EM

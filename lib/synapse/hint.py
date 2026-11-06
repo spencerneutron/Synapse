@@ -54,7 +54,7 @@ def wants_hint(prompt: str) -> bool:
 
 
 def state_file(r: paths.Resolved, session_id: str) -> Path:
-    return r.home / "state" / f"hints-{''.join(c for c in session_id if c.isalnum() or c in '-_')}.json"
+    return paths.hint_state(session_id)
 
 
 def prune_state(folder: Path) -> None:

@@ -119,7 +119,8 @@ def check_runtime(rep: Report, r: paths.Resolved) -> None:
         st = paths.settings()
         rep.add("ok", "triggers",
                 f"recall hints {'on' if st['recall_auto'] else 'off'} (min_score {st['min_score']}, "
-                f"max_hits {st['max_hits']}); extraction reminder {'on' if st['extract_remind'] else 'off'}")
+                f"max_hits {st['max_hits']}); extraction reminder {'on' if st['extract_remind'] else 'off'}; "
+                f"facts at session start {'on' if st['facts_at_start'] else 'off'}")
     except SystemExit as e:
         rep.add("error", "triggers", str(e))
     from archive import discover_sessions
@@ -168,14 +169,23 @@ def check_runtime(rep: Report, r: paths.Resolved) -> None:
     else:
         rep.add("warn", "obsidian", "obsidian CLI not on PATH; /synapse:extract-session cannot write notes",
                 "enable Obsidian's command-line interface")
+    if r.vault_path is not None and not (r.vault_path.is_absolute() and r.vault_path.is_dir()):
+        rep.add("error", "vault_path", f"vault_path {tilde(r.vault_path)} is not an existing absolute "
+                "folder, so /synapse:extract-session cannot write notes",
+                f"fix vault_path under [stores.{r.store}] in {tilde(paths.config_path())}")
     vaults = obsidian_vaults()
     if r.vault in vaults:
         detail = f"vault {r.vault!r} found at {tilde(vaults[r.vault])}"
         if r.vault_path is None:
             rep.add("info", "vault", detail,
-                    f"set vault_path = \"{vaults[r.vault]}\" under [stores.{r.store}] so recall prints note paths")
-        else:
+                    f"set vault_path = \"{vaults[r.vault]}\" under [stores.{r.store}]: notes are then written "
+                    "there without asking Obsidian, and recall prints note paths")
+        elif paths.same_path(r.vault_path, vaults[r.vault]):
             rep.add("ok", "vault", detail)
+        else:
+            rep.add("warn", "vault", f"vault_path {tilde(r.vault_path)} is not where Obsidian keeps "
+                    f"{r.vault!r} ({tilde(vaults[r.vault])}); notes are written to vault_path",
+                    f"set vault_path = \"{vaults[r.vault]}\" under [stores.{r.store}]")
     elif vaults:
         rep.add("warn", "vault", f"no Obsidian vault named {r.vault!r} (have: {', '.join(sorted(vaults))})",
                 f"create it, or set vault under [stores.{r.store}] in {tilde(paths.config_path())}")

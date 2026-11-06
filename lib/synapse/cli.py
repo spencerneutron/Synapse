@@ -10,6 +10,7 @@ synapse — command-line entry point for the Synapse plugin.
   synapse recall-check <golden.toml>     score recall against a golden set
   synapse recall-hint [--prompt "..."]   the automatic hint (UserPromptSubmit hook)
   synapse pending [--hook]               archived sessions never extracted
+  synapse facts [--project P] [--hook]   this project's Fact notes (listed at session start)
   synapse share <subcommand> [...]       scrub | lint | add (share a note with a team)
   synapse shared <subcommand> [...]      init | join | sync | status | retract | push
   synapse extract <subcommand> [...]     init | embed-archive | embed-note | status |
@@ -41,6 +42,7 @@ COMMANDS = {
     "recall-check": "recall_check",
     "recall-hint": "hint",
     "pending": "pending",
+    "facts": "facts",
     "share": "share",
     "shared": "shared",
     "extract": "extract",

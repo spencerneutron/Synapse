@@ -33,7 +33,7 @@ DEFAULT_VAULT = "Synapse"
 DEFAULT_MIN_SCORE = 0.70   # recall-hint threshold; calibrated in docs/design/v2.md
 DEFAULT_MAX_HITS = 3
 MARKER = ".synapse.toml"
-VAULT_FOLDERS = ("Sessions", "Decisions", "Patterns", "Projects")
+VAULT_FOLDERS = ("Sessions", "Decisions", "Patterns", "Facts", "Projects")
 
 CONFIG_TEMPLATE = """\
 # Synapse configuration. Written once by `synapse setup`; edit freely.
@@ -46,7 +46,8 @@ default_store = "main"
 [stores.main]
 # path = "~/.claude/synapse/stores/main"   # default
 vault = "Synapse"
-# vault_path = "/path/to/the/vault/folder" # optional; lets recall print note paths
+# vault_path = "/path/to/the/vault/folder" # optional; where notes are written (Obsidian's
+#                                          # path for the vault), and recall prints paths
 
 # [stores.client-x]
 # path = "~/clients/x/synapse-store"
@@ -56,11 +57,12 @@ vault = "Synapse"
 # auto = true          # add recall hints to prompts (UserPromptSubmit hook)
 # min_score = 0.70     # cosine score a hit needs to become a hint
 # max_hits = 3
+# facts = true         # at session start, list this project's Fact notes
 
 [extract]
 # remind = true        # at session start, mention archived sessions never extracted
 
-# A team shares Decisions and Patterns through a git repo or a synced folder.
+# A team shares Decisions, Patterns, and Facts through a git repo or a synced folder.
 # `synapse shared init` or `synapse shared join` writes this table.
 # [shared.acme]
 # transport = "git"                         # or "folder"
@@ -130,7 +132,33 @@ def settings() -> dict:
         "max_hits": value("recall", "max_hits", DEFAULT_MAX_HITS,
                           lambda v: isinstance(v, int) and v >= 0, "a whole number, 0 or more"),
         "extract_remind": value("extract", "remind", True, lambda v: True, "true or false"),
+        "facts_at_start": value("recall", "facts", True, lambda v: True, "true or false"),
     }
+
+
+def repo_name(git: Path) -> str:
+    """The repository's folder name. In a linked worktree (.git is a file
+    pointing into <repo>/.git/worktrees/<name>) it is the main checkout's, so
+    every worktree of a repo is one project."""
+    if git.is_file():
+        try:
+            line = git.read_text(encoding="utf-8").strip()
+        except OSError:
+            return git.parent.name
+        if line.startswith("gitdir:"):
+            gitdir = Path(line[len("gitdir:"):].strip())
+            if not gitdir.is_absolute():
+                gitdir = (git.parent / gitdir).resolve()
+            if len(gitdir.parts) >= 3 and gitdir.parts[-2] == "worktrees":
+                common = gitdir.parent.parent   # <repo>/.git, or a bare <repo>.git
+                return common.parent.name if common.name == ".git" else common.name.removesuffix(".git")
+    return git.parent.name
+
+
+def same_path(a, b) -> bool:
+    """One folder, allowing for symlinks and Windows' case-insensitive paths."""
+    norm = lambda p: os.path.normcase(str(Path(p).expanduser().resolve()))  # noqa: E731
+    return norm(a) == norm(b)
 
 
 def find_upwards(start: Path, name: str) -> Path | None:
@@ -193,6 +221,8 @@ def resolve(project: str | None = None, cwd: Path | None = None) -> Resolved:
     store_path = Path(sc["path"]).expanduser() if sc.get("path") else home() / "stores" / store
     vault = os.environ.get("SYNAPSE_VAULT") or sc.get("vault") or DEFAULT_VAULT
     vault_path = Path(sc["vault_path"]).expanduser() if sc.get("vault_path") else None
+    if vault != (sc.get("vault") or DEFAULT_VAULT):
+        vault_path = None   # SYNAPSE_VAULT names another vault: the configured folder is not its
 
     if project:
         project_source = "argument"
@@ -201,7 +231,7 @@ def resolve(project: str | None = None, cwd: Path | None = None) -> Resolved:
     else:
         git = find_upwards(cwd, ".git")
         if git:
-            project, project_source = git.parent.name, "git root"
+            project, project_source = repo_name(git), "git root"
         else:
             project, project_source = cwd.name, "working directory"
     project = safe_project(project)
@@ -234,7 +264,7 @@ TRANSPORTS = ("git", "folder")
 class Team:
     name: str
     transport: str
-    notes: Path            # the shared folder: Decisions/, Patterns/, Retracted/
+    notes: Path            # the shared folder: Decisions/, Patterns/, Facts/, Retracted/
     db: Path               # local index, rebuilt from notes; never shared
     remote: str | None
     author: str
@@ -252,6 +282,12 @@ class Team:
 
 def team_dir(name: str) -> Path:
     return home() / "shared" / name
+
+
+def hint_state(session_id: str) -> Path:
+    """Stored paths already shown to this session (recall hints, the Facts list)."""
+    safe = "".join(c for c in session_id if c.isalnum() or c in "-_")
+    return home() / "state" / f"hints-{safe}.json"
 
 
 def teams() -> dict[str, Team]:

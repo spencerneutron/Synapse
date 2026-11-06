@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-shared.py — team memory: a shared folder of Decisions and Patterns, changed
+shared.py — team memory: a shared folder of Decisions, Patterns, and Facts, changed
 through git or a synced folder, with a local index per team.
 
   synapse shared init <team> --author NAME (--remote URL | --path DIR [--transport folder])
@@ -36,7 +36,7 @@ if hasattr(sys.stdout, "reconfigure"):
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import paths  # noqa: E402
 
-FOLDERS = ("Decisions", "Patterns")
+FOLDERS = ("Decisions", "Patterns", "Facts")
 RETRACTED = "Retracted"
 MANIFEST = ".synapse-team.toml"
 FORMAT = 1
@@ -159,7 +159,7 @@ def write_layout(notes: Path, team: str) -> list[Path]:
     files = {
         MANIFEST: f'team = "{team}"\nformat = {FORMAT}\n',
         ".gitattributes": "*.md text eol=lf\n",
-        "README.md": (f"# {team}: Synapse team notes\n\nShared Decisions and Patterns. "
+        "README.md": (f"# {team}: Synapse team notes\n\nShared Decisions, Patterns, and Facts. "
                       "Add notes with `/synapse:share`, which scrubs paths, secrets, and "
                       "session-local references first; retract with `synapse shared retract`. "
                       "Each member's index is local and rebuilt from this folder.\n"),
@@ -181,8 +181,8 @@ def title(f: Path) -> str | None:
 
 
 def note_files(notes: Path) -> tuple[list[Path], list[Path], int]:
-    """(notes to index, conflict copies, cloud placeholders) under Decisions/
-    and Patterns/. Retracted/ and dot-files are never indexed."""
+    """(notes to index, conflict copies, cloud placeholders) under Decisions/,
+    Patterns/, and Facts/. Retracted/ and dot-files are never indexed."""
     keep, conflicts, placeholders = [], [], 0
     for folder in FOLDERS:
         base = notes / folder
@@ -485,7 +485,7 @@ def cmd_status(args) -> int:
 
 
 def find_note(team: paths.Team, ref: str) -> Path:
-    """A note in the team's Decisions/ or Patterns/, by name or by a path that
+    """A note in the team's Decisions/, Patterns/, or Facts/, by name or by a path that
     points there. Nothing outside the team folder can be retracted."""
     folders = [(team.notes / f).resolve() for f in FOLDERS]
     p = Path(ref).expanduser()

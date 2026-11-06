@@ -1,7 +1,7 @@
 ---
 name: extract-session
 description: Use after end-session to project the just-archived session into the Obsidian vault and the local vector database. Runs once per session at teardown. Idempotent — safe to re-run.
-allowed-tools: Bash(synapse extract *), Bash(synapse vault *), Bash(synapse where *), Bash(synapse shared status*)
+allowed-tools: Bash(synapse extract *), Bash(synapse vault *), Bash(synapse where *), Bash(synapse recall *), Bash(synapse shared status*)
 ---
 
 # Extract Session Skill
@@ -10,8 +10,8 @@ allowed-tools: Bash(synapse extract *), Bash(synapse vault *), Bash(synapse wher
 
 Promote the durable knowledge from a just-closed session into two places:
 
-1. **Obsidian vault** — atomic, browseable notes for decisions and patterns
-   that future sessions might want to reference.
+1. **Obsidian vault** — atomic, browseable notes for decisions, patterns,
+   and project facts that future sessions might want to reference.
 2. **Local vector DB** — embedded chunks of the archive (and any vault notes
    created here) so `/synapse:recall` can surface them later.
 
@@ -87,7 +87,7 @@ Do **not** use:
 
 - Run `synapse vault verify` now, in the same batch as the archive lookup.
   It starts Obsidian if needed, so the vault is ready by the time the user
-  answers step 7 and the extraction costs them no extra turn.
+  answers step 8 and the extraction costs them no extra turn.
 - Check the project's archive folder (`archive_dir` from
   `synapse where --project <name>`) for files matching the session ID.
 - If `PLAN`, `EXECUTION`, and `NOTES` are all missing, stop and report.
@@ -142,7 +142,28 @@ A piece of content qualifies as a **Pattern note** if it satisfies:
 Patterns are rarer than decisions. Most sessions produce zero. That is
 expected and correct.
 
-### 5. Build the Session note spec
+### 5. Identify Fact notes to promote
+
+A **Fact note** records what is true about the project's world, as the user
+stated or confirmed it. It qualifies only if all four hold:
+
+- **The user stated or confirmed it.** A direct statement, an answer, or
+  pushback on an agent's assumption ("we only deploy this for one
+  company"). The agent's own inference is not a Fact.
+- **The code does not show it.** Deployment, customers, contracts,
+  environments, people, scale, or business rules that live outside the
+  repository, or that the code suggests otherwise (multi-tenant code, one
+  tenant).
+- **It changes what an agent does.** Knowing it would have prevented a
+  wrong assumption or a wasted step, or will prevent one.
+- **It stays true until something outside changes.** Not the status of
+  this session's work. When it changes, a new Fact supersedes the old one.
+
+Facts belong to one project. Every new session in that project starts with
+its Facts listed, so promote only what deserves that place; a correction
+the user had to repeat is a strong signal. Zero Facts is a normal outcome.
+
+### 6. Build the Session note spec
 
 Always create exactly one Session note per extraction run. Each note spec is
 a Markdown file: the fields in front matter, then the body as plain text (no
@@ -172,6 +193,9 @@ related: ["[[<prior session id>]]"]
 ## Patterns surfaced
 - [[<title of each Pattern note created in this run>]]
 
+## Facts recorded
+- [[<title of each Fact note created in this run>]]
+
 ## Open at close
 <copied verbatim from NOTES_<id>.md "Open questions" / "Deferred" / "Blocked"
 sections, or "_None_" if all clean>
@@ -184,11 +208,11 @@ sections, or "_None_" if all clean>
 
 Leave out `related` when the session did not continue earlier work.
 
-If a Decision or Pattern note is created in this run, the Session note's
+If a Decision, Pattern, or Fact note is created in this run, the Session note's
 body must link to it via `[[Title]]` syntax. Wikilinks are how the vault
 becomes navigable.
 
-### 6. Build Decision and Pattern note specs
+### 7. Build Decision, Pattern, and Fact note specs
 
 For each Decision identified in step 3:
 
@@ -244,7 +268,36 @@ applies_to: [<domain tags, e.g. python, retrieval>]
 <the underlying reason>
 ```
 
-### 7. Show the user the proposed extractions
+For each Fact identified in step 5:
+
+```markdown
+---
+type: fact
+title: <the fact as a short statement, e.g. Deployed for one company despite multi-tenant support>
+project: <name>
+session_id: <id>
+tags: [fact]
+related: ["[[<session_id>]]"]
+sources: ["[[<session_id>]]"]
+supersedes: "[[<title>]]"
+---
+## Fact
+<one or two plain sentences: the fact itself>
+
+## Source
+<who stated or confirmed it, and when, e.g. the user on 2026-11-05, correcting a plan that assumed several tenants>
+
+## Implications
+<bullets: what to do or avoid because of it>
+```
+
+`project` is required. The title and the `## Fact` section are what every
+new session in the project sees at start, so each must make sense alone.
+If this Fact replaces an earlier one (check with
+`synapse recall "<topic>" --type fact`), set `supersedes`; otherwise leave
+the line out.
+
+### 8. Show the user the proposed extractions
 
 Before writing anything, display a compact summary:
 
@@ -261,6 +314,9 @@ Decision notes (3):
 
 Pattern notes (1):
   1. Store embedding model name with each vector
+
+Fact notes (1):
+  1. Deployed for one company despite multi-tenant support
 
 Embedding: 31 chunks across PLAN/EXECUTION/NOTES files.
 
@@ -282,12 +338,12 @@ Wait for the user's response. Three response shapes:
 If the user proposes title edits ("rename decision 1 to..."), incorporate
 the changes and re-display the summary once before proceeding.
 
-### 8. Write the vault notes
+### 9. Write the vault notes
 
-For each approved spec, in order: Decision and Pattern notes first,
-Session note last.
+For each approved spec, in order: Decision, Pattern, and Fact notes
+first, Session note last.
 
-Reason: the Session note's body links to the Decision/Pattern notes by
+Reason: the Session note's body links to the Decision, Pattern, and Fact notes by
 title. If those notes don't exist yet when the Session note is created,
 the wikilinks will be unresolved. Writing the referenced notes first
 keeps the vault link graph clean.
@@ -329,8 +385,13 @@ If a note already exists at that title (from a prior run), use
 we get `<session-id>.md`, `<session-id> v2.md`, etc. and don't lose
 history.
 
-**Supersession.** For each Decision note written with `supersedes`, mark the
-old decision once the new note exists:
+**Never suffix a Fact.** Two Facts with one title would both be listed at
+every session start. If a Fact with that title exists, an earlier
+extraction already recorded it: drop it from this run, or, if it changed,
+write the new Fact under a new title with `supersedes` set to the old one.
+
+**Supersession.** For each Decision or Fact note written with `supersedes`,
+mark the old note once the new one exists (add `--folder Facts` for a Fact):
 
 ```
 synapse extract supersede "[[<old title>]]" --by "[[<new title>]]"
@@ -343,7 +404,7 @@ never embedded. If it warns that the front matter was not updated, tell the
 user to set `vault_path` for the store (`/synapse:doctor` shows the value);
 the DB still treats the note as superseded.
 
-### 9. Embed the archive
+### 10. Embed the archive
 
 Run:
 
@@ -358,16 +419,17 @@ chunks.
 The command writes `<archive_dir>/.processed/<id>.json` with the
 extraction metadata.
 
-### 10. Embed the new vault notes
+### 11. Embed the new vault notes
 
-Embed every Decision/Pattern note created in step 8 in **one call**, passing
-each note's **`vault_relative_path`** from `synapse vault create-note`'s JSON
-output. `embed-note` finds the vault itself (the store's `vault_path`, else
-the path Obsidian reports), so do not guess where the vault lives, build
-absolute paths, or loop in the shell.
+Embed every Decision, Pattern, and Fact note created in step 9 in **one
+call**, passing each note's **`vault_relative_path`** from
+`synapse vault create-note`'s JSON output. `embed-note` finds the vault
+itself (the store's `vault_path`, else the path Obsidian reports), so do not
+guess where the vault lives, build absolute paths, or loop in the shell.
+Facts must be embedded to appear in the session-start list.
 
 ```
-synapse extract embed-note "Decisions/<title 1>.md" "Patterns/<title 2>.md" --project <name>
+synapse extract embed-note "Decisions/<title 1>.md" "Patterns/<title 2>.md" "Facts/<title 3>.md" --project <name>
 ```
 
 This makes the promoted notes discoverable via `/synapse:recall` immediately,
@@ -376,7 +438,7 @@ not just on the next session's run.
 The Session note does not need separate embedding — its body content is
 mostly a duplicate of archive content that's already embedded.
 
-### 11. Report
+### 12. Report
 
 When complete, show:
 
@@ -388,12 +450,13 @@ Session 2026-04-23-1645 extracted:
     Decisions/Use nomic-embed-text via Ollama for embeddings.md
     Decisions/Cosine distance metric for vec0 table.md
     Patterns/Store embedding model name with each vector.md
-  Embedded: 31 archive chunks + 4 note chunks
+    Facts/Deployed for one company despite multi-tenant support.md
+  Embedded: 31 archive chunks + 5 note chunks
   Marker: archive/workspace/.processed/2026-04-23-1645.json (in the store)
 ```
 
-If `synapse shared status` lists a team and Decisions or Patterns were
-promoted, end with one line offering `/synapse:share` for them. Never share
+If `synapse shared status` lists a team and Decisions, Patterns, or Facts
+were promoted, end with one line offering `/synapse:share` for them. Never share
 as part of extraction.
 
 ---
@@ -425,20 +488,20 @@ as part of extraction.
   embedding failure clearly. The user can re-run the embed step alone:
   `synapse extract embed-archive <id> --project <name> --force`.
 
-- **No decisions or patterns found.** This is a valid outcome. Create
+- **No decisions, patterns, or facts found.** This is a valid outcome. Create
   the Session note only, embed the archive, and report:
-  "Session 2026-04-23-1645 had no decisions or patterns worth promoting.
+  "Session 2026-04-23-1645 had no decisions, patterns, or facts worth promoting.
   Archive embedded; session note created."
 
 ---
 
 ## Output Behavior
 
-- **Step 7 (proposal)** is the user's main interaction point. Keep it
+- **Step 8 (proposal)** is the user's main interaction point. Keep it
   compact — titles plus one-line summaries. Don't paste the full body of
   each proposed note unless asked.
 
-- **Step 11 (report)** confirms what was done. Brief is fine. The user
+- **Step 12 (report)** confirms what was done. Brief is fine. The user
   doesn't need a recap of the content — they just need to know the run
   succeeded and where things landed.
 

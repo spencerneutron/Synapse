@@ -60,16 +60,18 @@ class SettingsTests(unittest.TestCase):
 
     def test_defaults_and_overrides(self):
         self.assertEqual(paths.settings(), {"recall_auto": True, "min_score": paths.DEFAULT_MIN_SCORE,
-                                            "max_hits": 3, "extract_remind": True})
-        (self.tmp / "config.toml").write_text("[recall]\nauto = false\nmin_score = 0.8\n[extract]\nremind = false\n")
+                                            "max_hits": 3, "extract_remind": True, "facts_at_start": True})
+        (self.tmp / "config.toml").write_text(
+            "[recall]\nauto = false\nmin_score = 0.8\nfacts = false\n[extract]\nremind = false\n")
         s = paths.settings()
-        self.assertEqual((s["recall_auto"], s["min_score"], s["extract_remind"]), (False, 0.8, False))
+        self.assertEqual((s["recall_auto"], s["min_score"], s["extract_remind"], s["facts_at_start"]),
+                         (False, 0.8, False, False))
 
     def test_wrong_types_are_errors_not_guesses(self):
         cfg = self.tmp / "config.toml"
         for text in ('[recall]\nauto = "false"\n', '[recall]\nmin_score = "high"\n', "[recall]\nmin_score = 1.5\n",
                      "[recall]\nmax_hits = -1\n", "[recall]\nmax_hits = true\n", 'recall = "off"\n',
-                     "[extract]\nremind = 1\n"):
+                     "[extract]\nremind = 1\n", '[recall]\nfacts = "yes"\n'):
             cfg.write_text(text)
             with self.assertRaises(SystemExit, msg=text):
                 paths.settings()
