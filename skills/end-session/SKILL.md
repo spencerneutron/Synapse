@@ -66,7 +66,7 @@ Scan the **working** `PLAN.md` and `EXECUTION.md` for anything still in flight. 
 - Steps marked in-progress that never completed
 - Explicit "out-of-scope" or "scope deliberately skipped" items the user may still want to track
 
-If `/synapse:checkpoint` wrote a working `.claude-work/current/NOTES.md`, scan it too.
+If `/synapse:checkpoint` wrote a working `.claude-work/current/NOTES.md`, scan it too, unless its last non-blank line is a `<!-- merged into NOTES_` marker: an earlier end-session already merged it, so it holds nothing new.
 
 Also scan current in-memory task list for tasks still `pending` or `in_progress` — those are deferred by definition.
 
@@ -74,7 +74,7 @@ Be selective: only capture items that a future session would actually act on. Do
 
 ### 4. Write the session notes file
 
-If `.claude-work/current/NOTES.md` exists, start from it: carry each entry into the matching section below (it records facts and rationale from parts of the conversation a `/clear` or `/compact` may have removed), then add what the conversation and files add. After writing the notes file, append one line to that working NOTES.md: `<!-- merged into NOTES_<session-id> -->`, so the next checkpoint starts it fresh.
+If `.claude-work/current/NOTES.md` exists and its last non-blank line is not a `<!-- merged into NOTES_` marker, start from it (a file ending in a marker was already merged by an earlier session: skip it; checkpoint restarts the file after a marker, so a file without a trailing marker is all new): carry each entry into the matching section below (it records facts and rationale from parts of the conversation a `/clear` or `/compact` may have removed), then add what the conversation and files add. After writing the notes file, append one line to that working NOTES.md: `<!-- merged into NOTES_<session-id> -->`, so the next checkpoint starts it fresh.
 
 Write to the `notes_path` that `synapse archive` printed (`archive/<project>/NOTES_<session-id>.md` in the store) with this structure:
 

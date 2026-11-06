@@ -19,7 +19,9 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-HEADING = re.compile(rb"^##\s+Resume\b", re.IGNORECASE)
+HEADING = re.compile(rb"^(?:\xef\xbb\xbf)?##[ \t]+Resume\b", re.IGNORECASE)
+H2 = re.compile(rb"^##[ \t]")
+FENCE = re.compile(rb"^(?:\xef\xbb\xbf)?[ \t]{0,3}(```|~~~)")
 STAMP = re.compile(rb"^Checkpoint written:")
 
 
@@ -29,16 +31,33 @@ def stamp_text(now: datetime | None = None) -> str:
     return f"{now.strftime('%Y-%m-%d %H:%M')} {off[:3]}:{off[3:]}"
 
 
+def outside_fences(lines: list[bytes]) -> list[bool]:
+    """True for each line that is not inside (or on the edge of) a fenced code block."""
+    flags, fence = [], None
+    for l in lines:
+        m = FENCE.match(l)
+        if fence is None:
+            flags.append(m is None)
+            if m:
+                fence = m.group(1)
+        else:
+            flags.append(False)
+            if m and m.group(1) == fence:
+                fence = None
+    return flags
+
+
 def apply(data: bytes, stamp: str) -> bytes | None:
     """Return data with the stamp placed in the Resume section, or None without the heading."""
     lines = data.splitlines(keepends=True)
-    start = next((i for i, l in enumerate(lines) if HEADING.match(l)), None)
+    plain = outside_fences(lines)
+    start = next((i for i, l in enumerate(lines) if plain[i] and HEADING.match(l)), None)
     if start is None:
         return None
-    eol = b"\r\n" if lines[start].endswith(b"\r\n") else b"\n"
+    eol = b"\r\n" if b"\r\n" in data else b"\n"
     end = len(lines)
     for i in range(start + 1, len(lines)):
-        if lines[i].startswith(b"## "):
+        if plain[i] and H2.match(lines[i]):
             end = i
             break
     if not lines[start].endswith((b"\n", b"\r")):
@@ -56,6 +75,8 @@ def main(argv: list[str]) -> int:
     import paths
     cwd = Path.cwd()
     target = paths.find_work_dir(cwd) / "EXECUTION.md"
+    link = target
+    target = Path(os.path.realpath(target)) if target.is_symlink() else target
     try:
         data = target.read_bytes()
     except OSError:
@@ -66,8 +87,9 @@ def main(argv: list[str]) -> int:
     if out is None:
         print(f"error: no '## Resume' section in {target}", file=sys.stderr)
         return 1
-    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".EXECUTION-", suffix=".tmp")
+    tmp = None
     try:
+        fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".EXECUTION-", suffix=".tmp")
         with os.fdopen(fd, "wb") as f:
             f.write(out)
         try:
@@ -75,16 +97,18 @@ def main(argv: list[str]) -> int:
         except OSError:
             pass
         os.replace(tmp, target)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    except OSError as e:
+        if tmp:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        print(f"error: could not write {link}: {e.strerror or e}", file=sys.stderr)
+        return 1
     try:
-        shown = target.relative_to(cwd)
+        shown = link.relative_to(cwd)
     except ValueError:
-        shown = target
+        shown = link
     print(f"Checkpoint stamped: {stamp} in {shown}")
     return 0
 
