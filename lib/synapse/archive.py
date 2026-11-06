@@ -69,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="folder holding .claude-work/current (default: cwd)")
     args = parser.parse_args(argv)
 
-    current = args.workdir / ".claude-work" / "current"
+    current = paths.work_dir(args.workdir)
     sources = {p: current / f"{p}.md" for p in ("PLAN", "EXECUTION", "REPORT")}
     sources = {p: f for p, f in sources.items() if f.is_file()}
     if not sources:

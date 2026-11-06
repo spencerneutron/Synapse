@@ -5,7 +5,7 @@ execute in small verified steps, archive the working state, and promote
 durable decisions into a local knowledge base the next session can recall.
 It installs once for the whole machine and works in every project.
 
-**Version:** 2.4.0 (2026-11-06). See [CHANGELOG.md](CHANGELOG.md).
+**Version:** 2.5.0 (2026-11-06). See [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
@@ -44,7 +44,8 @@ setup are reported for the user to decide.
 2. **Execute:** small steps, each with a run path, an expected outcome, and a
    failure signal. Independent work runs as waves of Synapse's role agents
    (`synapse:implementer`, `verifier`, `researcher`, `reviewer`, `scout`),
-   each carrying its own rules and model.
+   each carrying its own rules and model. A sixth role, `synapse:extractor`,
+   is dispatched by `/synapse:extract-session`.
 3. **Emit:** the `synapse:emission-contract` skill shapes each final message,
    and a Stop hook enforces its mechanical rules.
 4. **Archive:** `/synapse:end-session` copies the planning files into the
@@ -61,6 +62,19 @@ setup are reported for the user to decide.
    Patterns, and Facts, scrubbed of paths, secrets, and session-local references,
    through a git repo or a synced folder. Teammates' notes join recall,
    labeled; your own note wins a tie, and your own decision wins a conflict.
+
+## Long sessions
+
+On a model with a 1M-token window (the Fable models, Sonnet 5 and later,
+Haiku 5.5, Opus 4.7 and later), Claude Code compacts only at about 967k
+tokens by default. Synapse's PreCompact hook, which shapes the compaction
+summary, runs only at compaction, so a session that stays below that point
+never uses it. A long session also re-reads its whole context on every
+request. Consider lowering the auto-compact window to about 300k with
+`/autocompact 300k`, the `autoCompactWindow` setting, or the
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW` environment variable (the variable wins over
+the other two). The trade-off: each compaction is lossy and costs one large
+request. Synapse never changes this setting; `/synapse:doctor` reports it.
 
 ## Where things live
 
@@ -79,11 +93,12 @@ setup are reported for the user to decide.
 ```
 .claude-plugin/   plugin.json, marketplace.json (this repo is its own marketplace)
 instructions/     core.md, platform-macos.md, platform-windows.md (each < 10,000 chars)
-agents/           implementer, verifier, researcher, reviewer, scout (synapse:<role> sub-agents)
-hooks/            hooks.json (SessionStart, UserPromptSubmit, Stop), session_start.sh,
+agents/           implementer, verifier, researcher, reviewer, scout, extractor (synapse:<role> sub-agents)
+hooks/            hooks.json (SessionStart, UserPromptSubmit, PreCompact, Stop), session_start.sh,
                   context/*.json, emission_check.py
 bin/synapse       CLI on the Bash PATH: where, setup, doctor, archive, recall,
-                  recall-check, recall-hint, pending, share, shared, extract, vault,
+                  recall-check, recall-hint, pending, compact-guide, share, shared, extract
+                  (incl. check-candidates), vault,
                   backfill, migrate
 lib/              py.sh (finds Python 3.11+), synapse/ (resolver + memory pipeline)
 skills/           plan-session, end-session, recall, extract-session, share, emission-contract,
@@ -91,7 +106,8 @@ skills/           plan-session, end-session, recall, extract-session, share, emi
 templates/        PLAN.md, EXECUTION.md, NOTES.md
 tools/            build_context.py (rebuilds hooks/context from instructions/),
                   run-evals.sh (guarded eval runner), run-bench.sh (with vs without
-                  Synapse), eval-report.py, build_eval_home.py, live-check-share.sh
+                  Synapse), eval-report.py, build_eval_home.py, live-check-share.sh,
+                  context-cost.py
 tests/            unit tests (python -m unittest discover -s tests)
 evals/            claude plugin eval suite with a no-plugin baseline (core loop, role agents,
                   triggers, teams; run locally, results gitignored)

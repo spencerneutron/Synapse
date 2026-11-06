@@ -16,7 +16,7 @@ rules decide *when*.
 |-------|-------|------|
 | Plan | `/synapse:plan-session` | Starting or resuming structured, multi-step work |
 | Recall | `/synapse:recall` | See "Local Knowledge Recall" below |
-| Execute | (these rules) | Small verified steps, in waves when the work splits |
+| Execute | (these rules) | Briefs to roles; the main session runs what takes a handful of calls |
 | Emit | `synapse:emission-contract` | Before the final user-facing message of every turn |
 | Archive | `/synapse:end-session` | The session itself is closing, not just a task |
 | Extract | `/synapse:extract-session` | After `/synapse:end-session`, once the user agrees |
@@ -24,24 +24,25 @@ rules decide *when*.
 
 ---
 
-## Core Operating Principles
+## Execution
 
-- Always plan before executing.
-- Prefer small, verifiable steps over large speculative changes.
-- Explore the repository before making assumptions.
-- Reuse existing patterns wherever possible.
-- Avoid unnecessary rework or repeated analysis.
+Plan before changing anything: name the objective, search the repository
+for the conventions and similar code it already has, and write the steps.
+Each step is the smallest change that meets the objective, localized and
+observable; reuse what exists before adding structure. No speculative or
+unrelated refactors, and no scope beyond the stated objective. Re-evaluate
+after each step, and stop when uncertainty is high: log the blocker in
+`PLAN.md` instead of widening the work.
 
----
+Every change carries a run path (a test, build, or command), an expected
+outcome, and a failure signal. Before calling a change done, run the
+project's own documented checks (CONTRIBUTING, the README, `Makefile` or
+task-runner targets, CI config), not only the default test runner, and say
+which ran. If one cannot run, say so instead of calling the change done.
 
-## Planning Discipline
-
-Before making changes: identify the objective, explore the repository for
-relevant patterns, write a step-by-step plan, check that it produces an
-observable outcome, and execute only once it is coherent and minimal.
-
-During execution: re-evaluate after each step, update progress explicitly, and
-stop if uncertainty becomes high.
+Batch independent reads, searches, and commands into one call. Do not batch
+when a call depends on an earlier result, for destructive operations, or
+when batching hides which call produced what.
 
 ---
 
@@ -54,6 +55,8 @@ Working files live in the project, under `.claude-work/current/`:
 
 Archives, the vector DB, and the vault belong to the active Synapse store.
 Run `synapse where` to see them; never hard-code those paths.
+The store's Obsidian vault holds durable knowledge; `/synapse:extract-session`
+writes it as summaries, never raw logs or transient output.
 
 - Read `PLAN.md` once at session start, or when direction is unclear.
 - Read `EXECUTION.md` at the start of each task, or when resuming work.
@@ -68,38 +71,14 @@ complexity justifies structured planning.
 
 ---
 
-## Repository Exploration and Execution
-
-- Search for similar functionality and existing conventions first; modify
-  existing structures before introducing new ones.
-- Make the smallest change that achieves the objective. Keep it localized,
-  testable, and observable. No speculative or unrelated refactors.
-
-## Validation Requirements
-
-Every meaningful change carries a way to run or test it, a clear expected
-outcome, and a failure signal if it is wrong.
-
-Before calling a change done, run the project's own documented checks (see
-CONTRIBUTING, the README, `Makefile` or task-runner targets, CI config), not
-only the default test runner, and say which ran. If one cannot run, say so
-instead of calling the change done.
-
----
-
 ## Token / Context Discipline
 
 - Do not restate large documents; load only relevant files and do not re-read
   unchanged ones.
 - Summarize findings before acting.
 - Cache conclusions in `PLAN.md` (Decision Log) instead of recomputing them.
-
-## Parallel Tool Use
-
-Batch independent reads, searches, and commands into one call: exploring a
-repo, gathering evidence across files, checking several sources before a
-decision. Do not batch when later calls depend on earlier output, for
-destructive operations, or when batching hides which call produced what.
+- When the user states a fact or a decision, write it to `PLAN.md` before
+  the next step, creating the file if it does not exist.
 
 ---
 
@@ -116,17 +95,24 @@ Prefer Synapse's role agents, which carry the rules for their job:
 | `synapse:reviewer` | Adversarial review of a change or plan | Inherits yours | No |
 | `synapse:scout` | Mechanical sweeps: inventories, searches | Haiku | No |
 
-- Use sub-agents for bounded work that would blow the context or run
-  serially; a sub-agent returns a summary, not a transcript. Not for dialogue
-  with the user, work that needs this session's full context, or one read.
-- Once the plan is set and the work splits, run it as waves of these roles.
+- The main session conducts: dialogue, decisions, the planning files,
+  briefs, and reading reports. It keeps work that takes a handful of calls.
+  A step that needs more than about five tool calls or three files is a
+  brief for a role, not a step to run here: each main-session call re-reads
+  the whole context. If a step kept here passes five calls, stop and brief
+  the rest.
+- Hand a run-test, read-log, fix loop to `synapse:implementer` with the
+  failing command, the done condition, and an attempt limit; read its
+  report, not the logs.
+- Independent briefs run as a wave.
 - Brief every agent: goal, files, what done looks like, what is ruled out. A
   `general-purpose` agent sees only its brief, so include the rules it needs:
   smallest change, run path, expected outcome, failure signal.
 - Never let two writers touch the same files; pass `isolation: "worktree"`
   when edits could overlap.
-- Treat every result as a claim and verify it before reporting it as done.
-  Record what each wave returned in `EXECUTION.md`.
+- Treat every result as a claim and verify it before reporting it as done:
+  run its validation command once; read the diff only when the report and
+  the run disagree. Record what each wave returned in `EXECUTION.md`.
 
 **Models.** The agents carry their models. Pass `model` on a call only with a
 reason: escalate one tier after a result fails verification twice, or the
@@ -185,18 +171,3 @@ immediately before writing the user-facing message, and follow it for that
 message only. Its rules stay out of the context while the work happens; the
 plugin's Stop hook checks the message and asks for one rewrite if it breaks a
 mechanical rule.
-
-## Knowledge Integration (Obsidian)
-
-The active store's Obsidian vault holds durable knowledge.
-`/synapse:extract-session` is its main writer; use the Obsidian CLI directly
-when persistent knowledge is needed between extractions. Capture decisions,
-reusable patterns, and fixes as summaries, never raw logs or transient output.
-
----
-
-## Failure Handling and Scope
-
-If blocked: re-examine assumptions, search for alternatives, simplify, and log
-the blocker in `PLAN.md`. Do not expand scope beyond the stated objective or
-add unrelated improvements.

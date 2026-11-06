@@ -80,6 +80,18 @@ Write to the `notes_path` that `synapse archive` printed (`archive/<project>/NOT
 **Closed:** <YYYY-MM-DD HH:MM> (local)
 **Archived plans:** `PLAN_<session-id>.md`, `EXECUTION_<session-id>.md`
 
+## User-stated facts
+
+- …one per line, in the user's words…
+
+## Patterns surfaced
+
+- …reusable lessons found this session, one each, with where it applies…
+
+## Decision rationale
+
+- …each decision made in the conversation, one line with its reason…
+
 ## Open questions
 
 - …one per item, with enough context to be actionable cold…
@@ -96,6 +108,10 @@ Write to the `notes_path` that `synapse archive` printed (`archive/<project>/NOT
 
 - …tasks that were in_progress or pending when the session ended…
 ```
+
+Fill `## User-stated facts` from `PLAN.md` (Decision Log, constraints) and the conversation: facts or decisions the user stated or confirmed, one line each, in their words. This is the last chance to record them: the extractor (a sub-agent that reads only the archive on disk) cannot see the conversation.
+
+Fill `## Patterns surfaced` and `## Decision rationale` the same way, from `PLAN.md`, `EXECUTION.md` (Notes / gotchas), and the conversation. For rationale, favor decisions missing from the PLAN.md Decision Log: a why argued only in conversation never reaches the archive otherwise.
 
 Omit any section that has no entries. If all sections are empty, write a single line: `_No open items — session closed clean._`
 

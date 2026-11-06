@@ -280,6 +280,26 @@ class Team:
         return home() / "state" / f"shared-{self.name}.json"
 
 
+def work_dir(project_root: Path) -> Path:
+    """The folder holding a project's planning files (PLAN.md, EXECUTION.md, ...)."""
+    return Path(project_root) / ".claude-work" / "current"
+
+
+def find_work_dir(start: Path, max_levels: int = 20) -> Path:
+    """work_dir() for `start` or the nearest parent that has one. The search
+    stops at the first folder with .claude-work/current, at a folder holding
+    .git, at the filesystem root, or after max_levels folders. With no match,
+    returns work_dir(start)."""
+    folder = Path(start)
+    for _ in range(max_levels):
+        if work_dir(folder).is_dir():
+            return work_dir(folder)
+        if (folder / ".git").exists() or folder.parent == folder:
+            break
+        folder = folder.parent
+    return work_dir(start)
+
+
 def team_dir(name: str) -> Path:
     return home() / "shared" / name
 

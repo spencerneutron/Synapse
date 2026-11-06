@@ -223,8 +223,8 @@ def check_rules(rep: Report, project_dir: Path) -> None:
                     "check it does not contradict Synapse's rules; project rules win where they do")
 
 
-def plugin_stop_hooks(settings: dict) -> list[str]:
-    """Stop hook commands of other enabled plugins."""
+def plugin_stop_hooks(settings: dict, event: str = "Stop") -> list[str]:
+    """Other enabled plugins that have a hook for `event` (default Stop)."""
     found = []
     installed = read_json(claude_dir() / "plugins" / "installed_plugins.json", Report())
     for pid, enabled in settings.get("enabledPlugins", {}).items():
@@ -232,9 +232,37 @@ def plugin_stop_hooks(settings: dict) -> list[str]:
             continue
         for inst in installed.get("plugins", {}).get(pid, []):
             hooks = read_json(Path(inst.get("installPath", "")) / "hooks" / "hooks.json", Report())
-            if hooks.get("hooks", {}).get("Stop"):
+            if hooks.get("hooks", {}).get(event):
                 found.append(pid)
     return found
+
+
+def find_key(obj, key: str):
+    """First value of `key` anywhere in a settings dict (top level, or per model in modelSettings)."""
+    if isinstance(obj, dict):
+        if key in obj:
+            return obj[key]
+        for v in obj.values():
+            found = find_key(v, key)
+            if found is not None:
+                return found
+    return None
+
+
+def check_autocompact(rep: Report, window: tuple[str, object] | None, models: list[str]) -> None:
+    """Read-only: the auto-compact window, and whether a 1M-context model runs on the default."""
+    if window:
+        rep.add("info", "autocompact-window", f"auto-compact window set to {window[1]} ({window[0]})")
+        return
+    big = [m for m in models if "[1m]" in m.lower()]
+    detail = ("no auto-compact window is set, so the default applies "
+              "(about 967k tokens on a native 1M-context model)")
+    fix = "see 'Long sessions' in the README: /autocompact 300k, autoCompactWindow, or CLAUDE_CODE_AUTO_COMPACT_WINDOW"
+    if big:
+        rep.add("warn", "autocompact-window", f"{detail}; model {big[0]!r} has a 1M context, "
+                "so the PreCompact hook rarely runs", fix)
+    else:
+        rep.add("info", "autocompact-window", detail, fix)
 
 
 def check_settings(rep: Report, project_dir: Path) -> None:
@@ -242,14 +270,32 @@ def check_settings(rep: Report, project_dir: Path) -> None:
               project_dir / ".claude" / "settings.json",
               project_dir / ".claude" / "settings.local.json"]
     managed = MANAGED_SETTINGS.get(sys.platform)
+    window = None
+    env_window = os.environ.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW")
+    if env_window:
+        window = ("CLAUDE_CODE_AUTO_COMPACT_WINDOW in the environment", env_window)
+    models = [m for m in [os.environ.get("ANTHROPIC_MODEL")] if m]
     for path in [*layers, managed] if managed else layers:
         s = read_json(path, rep)
         if not s:
             continue
+        env_block = s.get("env") if isinstance(s.get("env"), dict) else {}
+        if window is None:
+            if env_block.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW"):
+                window = (f"env in {tilde(path)}", env_block["CLAUDE_CODE_AUTO_COMPACT_WINDOW"])
+            else:
+                value = find_key(s, "autoCompactWindow")
+                if value is not None:
+                    window = (tilde(path), value)
+        models += [m for m in (s.get("model"), env_block.get("ANTHROPIC_MODEL")) if isinstance(m, str)]
         for group in s.get("hooks", {}).get("Stop", []):
             for h in group.get("hooks", []):
                 rep.add("warn", "stop-hooks", f"{tilde(path)} runs a Stop hook: {h.get('command', h)}",
                         "if it can block, it and Synapse's emission check may both ask for rewrites")
+        for group in s.get("hooks", {}).get("PreCompact", []):
+            for h in group.get("hooks", []):
+                rep.add("warn", "precompact-hooks", f"{tilde(path)} runs a PreCompact hook: {h.get('command', h)}",
+                        "each hook's stdout is capped on its own; two sets of compaction instructions can conflict")
         if s.get("outputStyle"):
             rep.add("info", "output-style", f"{tilde(path)} sets outputStyle {s['outputStyle']!r}",
                     "make sure it does not contradict /synapse:emission-contract")
@@ -263,6 +309,10 @@ def check_settings(rep: Report, project_dir: Path) -> None:
             for pid in plugin_stop_hooks(s):
                 rep.add("warn", "stop-hooks", f"plugin {pid} also has a Stop hook",
                         "check it does not also ask for rewrites")
+            for pid in plugin_stop_hooks(s, "PreCompact"):
+                rep.add("warn", "precompact-hooks", f"plugin {pid} also has a PreCompact hook",
+                        "check its compaction instructions do not conflict with Synapse's")
+    check_autocompact(rep, window, models)
 
 
 def migrated_count(old_archive: Path, r: paths.Resolved) -> tuple[int, int]:

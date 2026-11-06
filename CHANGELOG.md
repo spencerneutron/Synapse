@@ -1,5 +1,94 @@
 # Changelog
 
+## 2.5.0 — 2026-11-06 — The main session conducts, roles work
+
+No store schema change; update with `claude plugin marketplace update
+synapse` and `claude plugin update synapse@synapse`, then start new sessions.
+The sweep behind this release is in `docs/design/cost-sweep.md`.
+
+### Changed
+
+- **The main session conducts and roles work.** `instructions/core.md` has
+  a rewritten Execution section: a step that needs more than about five
+  tool calls or three files goes to a `synapse:` role, a step kept in the
+  main session that passes five calls stops and briefs the rest, and a
+  failing loop (fix, run, fix again) goes to `synapse:implementer` instead
+  of growing the main context. A report is verified by running its
+  validation command once, not by re-reading its diff. A fact or decision
+  the user states is written to PLAN.md (created if missing) before the
+  next step. The Obsidian section is one sentence. The core rules shrink
+  from 8,795 to 8,288 characters.
+- **The implementer finishes loops.** It stops at the brief's attempt limit
+  (two when the brief gives none), and a run that fails on a new error
+  after a fix counts as progress, not a failed attempt.
+- **A role per step.** The `EXECUTION.md` template has a role for each
+  step; `/synapse:plan-session` step 7 writes a brief, dispatches the step
+  to its role, and verifies the report; `/synapse:end-session` fills the
+  NOTES sections `## User-stated facts`, `## Patterns surfaced`, and
+  `## Decision rationale` from `PLAN.md` and the conversation.
+- **Extraction runs in a fresh context.** A sixth role,
+  `synapse:extractor` (Sonnet), does the work of `/synapse:extract-session`,
+  dispatched by that skill, reading the archive from disk (NOTES carries
+  what the conversation held). Note specs go to the project's
+  `.claude-work/.tmp/extract-SESSION_ID/`, removed after the write or a
+  "no". The skill shrinks from 19,064 to 3,986 characters.
+- **Every candidate is checked against prior notes** (#10). Extraction
+  recalls each Decision, Fact, and Pattern candidate on its concept, not its
+  title, and proposes `supersedes` or a duplicate for a prior note scoring
+  0.70 or more. It is one batched call, `synapse extract check-candidates`
+  (local scope, so `synapse extract supersede` can mark the hit; hits from
+  the session being extracted are skipped; below 0.70 nothing is shown).
+  Hits are ranked by score and carry `project`; a prior note from another
+  project is never proposed as superseded.
+
+### Added
+
+- **PreCompact guidance, for when a session compacts.** `synapse
+  compact-guide --hook` prints about 1,000 characters telling the
+  compaction summary what to keep (objective, active step, decisions,
+  user-stated facts, open questions, work state, planning file paths) and
+  what to drop. It defers to `/compact` text or a CLAUDE.md Compact
+  instructions section, never blocks compaction, and needs no venv, DB, or
+  Ollama. It saves nothing by itself: on a 1M-window model auto-compaction
+  triggers near 967k, so the README's "Long sessions" section recommends a
+  window of about 300k (`/autocompact 300k`, `autoCompactWindow`, or
+  `CLAUDE_CODE_AUTO_COMPACT_WINDOW`). Synapse never changes it;
+  `/synapse:doctor` reports it and warns about other PreCompact hooks, and
+  INSTALL.md has preflight rows for both.
+- Dev tooling: `tools/context-cost.py` (context, cache, and cost per
+  session from local transcripts; numbers only), and the eval case
+  `loop-goes-to-implementer`.
+- Design docs: `docs/design/cost-sweep.md` and
+  `docs/design/continuation-assist.md`.
+
+### Calibration
+
+The 0.70 threshold (the recall-hint default) was checked with
+`synapse recall-check` and top-3 `synapse recall` over the hybrid ranking
+on the author's store
+(68 Decision notes, 2 projects; no Fact notes yet): 30 concept queries
+whose prior Decision exists (22 naming the topic only, 8 naming the choice
+the old note rejected) and 16 concepts with no prior Decision, half of them
+close to the store's projects. These numbers were measured with top-3
+recall during development; `check-candidates` looks at up to 50 chunks per
+candidate, keeps one per note, and ranks by score, so it sees more
+candidates. They are indicative for it, not re-measured.
+
+| Threshold | Prior Decision shown | Unrelated concept shown a hit |
+|-----------|----------------------|-------------------------------|
+| 0.65 | 29/30 | 4/16 |
+| 0.675 | 27/30 | 0/16 |
+| **0.70** | **26/30** | **0/16** |
+| 0.75 | 19/30 | 0/16 |
+
+Unrelated concepts scored 0.54 to 0.66, prior Decisions 0.67 to 0.83
+(median 0.77); top-3 retrieval found the prior Decision for 29 of 30. 0.70
+stays: 0.675 adds one case with a 0.02 margin over the top unrelated score.
+One positive's top hit at 0.70 was a different concept, so the step asks
+the agent to read the snippet, not to trust the score alone. The check
+would have caught a duplicate pair the store already holds: a concept query
+for one note returns the other at 0.73 to 0.80.
+
 ## 2.4.0 — 2026-11-06 — Fact notes; create-note stays inside the vault
 
 No store schema change; update with `claude plugin marketplace update
