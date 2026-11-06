@@ -14,11 +14,12 @@
 # then counts compact_boundary lines in the transcript (exit 3 if none: the
 # retention was not tested). Turn 3 resumes and asks, without reading any file,
 # for the three items; the reply is graded by grep. It also reports, by count
-# only, the summary's size, the session's cost, and whether a "Synapse: work
-# in progress" line appeared (expected 0: the fixture
-# has no EXECUTION.md). Read each printed reply.
+# only, the summary's size and the session's cost. Read each printed reply.
 #
 # Exit 0 only when compaction happened and every planted item was recalled.
+# Otherwise the worst code over all runs: 1 (an item missing or the transcript
+# not found), else 3 (no compaction), else 4 (a claude turn failed, e.g. over
+# budget). Usage errors exit 2.
 # The installed Synapse is disabled for the claude runs. macOS and Linux only.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -80,20 +81,31 @@ if [ "$SETUP_ONLY" = 1 ]; then
     echo "planned commands (not run):"
     echo "  turn 1: claude -p <plant prompt> --session-id $SID --plugin-dir $ROOT --settings '$SETTINGS' --model sonnet --allowedTools ${TOOLS[*]} --max-budget-usd 0.5 --output-format json"
     echo "  turn 2: CLAUDE_CODE_AUTO_COMPACT_WINDOW=$WINDOW claude -p <read filler1-4> --resume $SID ... (same flags)"
-    echo "  check : count type=system subtype=compact_boundary in ~/.claude/projects/*/$SID.jsonl (none: exit 3)"
+    echo "  check : count type=system subtype=compact_boundary in ${CLAUDE_CONFIG_DIR:-~/.claude}/projects/*/$SID.jsonl (none: exit 3)"
     echo "  turn 3: claude -p <recall prompt> --resume $SID ... (same flags, no small window); grep KESTREL-7 Fridays SQLite offline Postgres CSV Parquet"
     exit 0
 fi
 
+# Worst exit code over the runs: any 1 -> 1, else any 3 -> 3, else any 4 -> 4.
 fail=0
+note() {
+    local c="$1" rank_new rank_old
+    rank() { case "$1" in 1) echo 3 ;; 3) echo 2 ;; 4) echo 1 ;; *) echo 0 ;; esac; }
+    rank_new="$(rank "$c")"; rank_old="$(rank "$fail")"
+    [ "$rank_new" -le "$rank_old" ] || fail="$c"
+}
 for i in $(seq 1 "$RUNS"); do
     build
     SID="$(python3 -c 'import uuid; print(uuid.uuid4())')"
-    claude_turn "$TURN1" --session-id "$SID" >/dev/null
-    CLAUDE_CODE_AUTO_COMPACT_WINDOW="$WINDOW" claude_turn "$TURN2" --resume "$SID" >/dev/null
+    if ! claude_turn "$TURN1" --session-id "$SID" >/dev/null; then
+        echo "== run $i: turn 1 (plant) failed" >&2; note 4; continue
+    fi
+    if ! CLAUDE_CODE_AUTO_COMPACT_WINDOW="$WINDOW" claude_turn "$TURN2" --resume "$SID" >/dev/null; then
+        echo "== run $i: turn 2 (filler reads) failed" >&2; note 4; continue
+    fi
 
-    T="$(find "$HOME/.claude/projects" -name "$SID.jsonl" 2>/dev/null | head -n 1)"
-    if [ -z "$T" ]; then echo "== run $i: transcript for $SID not found" >&2; fail=1; continue; fi
+    T="$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects" -name "$SID.jsonl" 2>/dev/null | head -n 1)"
+    if [ -z "$T" ]; then echo "== run $i: transcript for $SID not found" >&2; note 1; continue; fi
     # Counts and trigger only; never message content.
     info="$(python3 - "$T" <<'PY'
 import json, sys
@@ -113,18 +125,20 @@ PY
     n_compact="${info%% *}"; trigger="${info#* }"
     if [ "$n_compact" = 0 ]; then
         echo "== run $i: NO COMPACTION: retention not tested"
-        fail=3; continue
+        note 3; continue
     fi
 
-    reply="$(claude_turn "$TURN3" --resume "$SID" | reply_of)"
+    if ! out="$(claude_turn "$TURN3" --resume "$SID")"; then
+        echo "== run $i: turn 3 (recall) failed" >&2; note 4; continue
+    fi
+    reply="$(printf '%s' "$out" | reply_of)"
     echo "== run $i: compactions: $n_compact (trigger: $trigger)"
     missing=0
     for w in KESTREL-7 Fridays SQLite offline Postgres CSV Parquet; do
         if printf '%s' "$reply" | grep -qi -- "$w"; then echo "  found:   $w"; else echo "  missing: $w"; missing=1; fi
     done
-    # Hook stdout (the PreCompact guidance) is not recorded in transcripts, so
-    # report the summary's size and the session cost instead.
-    wip="$(grep -c 'Synapse: work in progress' "$T" || true)"
+    # Hook output is not recorded in transcripts; report the summary's size
+    # and the session cost.
     python3 - "$T" <<'PY'
 import json, sys
 chars, cost = 0, None
@@ -140,8 +154,7 @@ for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
         cost = e["totalCostUSD"]
 print(f"  compaction summary: {chars} characters; session cost: " + ("unknown" if cost is None else f"${cost:.2f}"))
 PY
-    echo "  'work in progress' lines in transcript: $wip (expected 0: no EXECUTION.md)"
     printf '%s\n\n' "$reply"
-    [ "$missing" = 0 ] || { [ "$fail" = 3 ] || fail=1; }
+    [ "$missing" = 0 ] || note 1
 done
 exit "$fail"

@@ -22,13 +22,14 @@ import argparse
 import json
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 W_READ, W_WRITE_5M, W_WRITE_1H, W_OUT = 0.1, 1.25, 2.0, 5.0
 TTL_5M, TTL_1H, COLD_MIN_WRITE = 300, 3600, 1000
 MODEL_OK = re.compile(r"^[A-Za-z0-9._\[\]-]{1,64}$")
-CHECKPOINT = "synapse:checkpoint"
+CHECKPOINT_SKILLS = ("synapse:checkpoint", "checkpoint")
+CHECKPOINT_COMMAND = re.compile(r"<command-name>\s*/?(?:synapse:)?checkpoint\s*</command-name>")
 
 
 def _int(v):
@@ -41,9 +42,16 @@ def _time(v):
     if not isinstance(v, str):
         return None
     try:
-        return datetime.fromisoformat(v.replace("Z", "+00:00")).isoformat()
+        dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
     except ValueError:
         return None
+    if dt.tzinfo is None:  # naive stamps are UTC
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat()
+
+
+def _sort_key(r):
+    return datetime.fromisoformat(r["time"]) if r["time"] else datetime.min.replace(tzinfo=timezone.utc)
 
 
 def _lines(path):
@@ -134,20 +142,25 @@ def _is_checkpoint_call(entry):
         if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") == "Skill":
             inp = b.get("input")
             skill = inp.get("skill") if isinstance(inp, dict) else None
-            if isinstance(skill, str) and CHECKPOINT in skill:
+            if skill in CHECKPOINT_SKILLS:
                 n += 1
     return n
 
 
 def _is_checkpoint_prompt(entry):
+    """A real /synapse:checkpoint command; not meta entries, compaction
+    summaries or prose that mentions the name."""
+    if entry.get("isMeta") or entry.get("isCompactSummary"):
+        return 0
     msg = entry.get("message")
     content = msg.get("content") if isinstance(msg, dict) else None
     if isinstance(content, str):
-        return int(CHECKPOINT in content)
+        return int(bool(CHECKPOINT_COMMAND.search(content)))
     if isinstance(content, list):
         for b in content:
             if isinstance(b, dict) and b.get("type") == "text" \
-                    and isinstance(b.get("text"), str) and CHECKPOINT in b["text"]:
+                    and isinstance(b.get("text"), str) \
+                    and CHECKPOINT_COMMAND.search(b["text"]):
                 return 1
     return 0
 
@@ -245,7 +258,7 @@ def cold_resumes(reqs):
             by_file.setdefault(r["file"], []).append(r)
     found = []
     for rows in by_file.values():
-        rows.sort(key=lambda r: r["time"])
+        rows.sort(key=_sort_key)
         ttl, prev = TTL_5M, None
         for r in rows:
             if prev is not None:
@@ -257,7 +270,7 @@ def cold_resumes(reqs):
             if r["ttl"]:
                 ttl = r["ttl"]
             prev = r
-    found.sort(key=lambda x: x[0]["time"])
+    found.sort(key=lambda x: _sort_key(x[0]))
     rs = [r for r, _ in found]
     return {
         "count": len(found),
@@ -286,7 +299,7 @@ def analyze(main_path):
     for f in sub_files:
         read_file(f, "subagent", requests, events)
     sub_with_requests = {k[0] for k, v in requests.items() if v["role"] == "subagent"}
-    reqs = sorted(requests.values(), key=lambda r: r["time"] or "")
+    reqs = sorted(requests.values(), key=_sort_key)
     main = [r for r in reqs if r["role"] == "main"]
     sub = [r for r in reqs if r["role"] == "subagent"]
     sm, ss, sa = stats(main), stats(sub), stats(reqs)

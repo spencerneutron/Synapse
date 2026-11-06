@@ -56,9 +56,11 @@ The design is `docs/design/continuation-assist.md`.
   entries into the same transcript; on a 203 MB local transcript
   compactions went from 6 to 5. An unreadable transcript path is an error
   (exit 1, stderr names the path) instead of an all-zero report, and a file
-  with no requests prints a numbers-only diagnostic on stderr. Known limit:
-  checkpoints are also counted from prompts that only name
-  `synapse:checkpoint`.
+  with no requests prints a numbers-only diagnostic on stderr. Sub-agent
+  transcripts are read recursively (Workflow agents), skipping
+  `journal.jsonl`. Checkpoints count only real invocations (the slash
+  command or a Skill call), not prose or compaction summaries that name
+  it. Timestamps without an offset are read as UTC.
 
 ### Correction to earlier figures
 

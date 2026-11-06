@@ -91,7 +91,7 @@ class ContextCostTests(unittest.TestCase):
              "compactMetadata": {"trigger": "auto", "preTokens": 900, "postTokens": 100}},
             {"type": "system", "subtype": "other"},
             asst("m1", content=[{"type": "tool_use", "name": "Skill", "input": {"skill": "synapse:checkpoint"}}]),
-            {"type": "user", "message": {"content": "run synapse:checkpoint now"}},
+            {"type": "user", "message": {"content": "<command-name>/synapse:checkpoint</command-name>"}},
         ])
         r = cc.analyze(self.main)
         self.assertEqual(r["checkpoints"], 2)
@@ -105,7 +105,7 @@ class ContextCostTests(unittest.TestCase):
               "compactMetadata": {"trigger": "auto", "preTokens": 900, "postTokens": 100}}
         nouuid = {k: v for k, v in cb.items() if k != "uuid"}
         other = dict(cb, uuid="u2", timestamp="2026-01-01T01:00:00Z")
-        ck = {"type": "user", "uuid": "c1", "message": {"content": "synapse:checkpoint"}}
+        ck = {"type": "user", "uuid": "c1", "message": {"content": "<command-name>/synapse:checkpoint</command-name>"}}
         write(self.main, [cb, cb, nouuid, nouuid, other, ck, ck])
         r = cc.analyze(self.main)
         self.assertEqual(len(r["compactions"]), 3)  # u1, no-uuid key, u2
@@ -184,6 +184,29 @@ class ContextCostTests(unittest.TestCase):
         self.assertEqual(r["subagent_files"], 2)  # journal and request-less files excluded
         self.assertEqual(r["subagent"]["requests"], 2)
         self.assertEqual(r["subagent"]["cache_reads"], 500)
+
+    def test_checkpoint_false_positives_not_counted(self):
+        cmd = "<command-name>/synapse:checkpoint</command-name>"
+        write(self.main, [
+            {"type": "user", "message": {"content": "please run synapse:checkpoint later"}},
+            {"type": "user", "isCompactSummary": True, "message": {"content": cmd}},
+            {"type": "user", "isMeta": True, "message": {"content": cmd}},
+            {"type": "user", "message": {"content": [{"type": "text", "text": "see " + cmd}]}},  # counts
+            asst("m1", content=[{"type": "tool_use", "name": "Skill", "input": {"skill": "checkpoint"}}]),
+            asst("m2", content=[{"type": "tool_use", "name": "Skill", "input": {"skill": "synapse:end-session"}}]),
+        ])
+        self.assertEqual(cc.analyze(self.main)["checkpoints"], 2)
+
+    def test_mixed_naive_and_aware_timestamps(self):
+        write(self.main, [
+            asst("a", 0, 100, 0, 1, ts="2026-01-01T00:00:00Z"),
+            asst("b", 0, 100, 5000, 1, ts="2026-01-01T02:00:00"),            # naive = UTC
+            asst("c", 0, 100, 5000, 1, ts="2026-01-01T05:00:00+02:00"),       # 03:00 UTC, before 04:30
+            asst("d", 0, 100, 5000, 1, ts="2026-01-01T04:30:00Z"),
+        ])
+        r = cc.analyze(self.main)
+        self.assertEqual([x["time"][11:16] for x in r["request_list"]], ["00:00", "02:00", "03:00", "04:30"])
+        self.assertEqual(r["cold_resumes"]["main"]["count"], 3)
 
     def test_mean_and_p90_context(self):
         write(self.main, [asst(f"m{i}", i * 10, 0, 0, 0) for i in range(1, 11)])  # 10..100
