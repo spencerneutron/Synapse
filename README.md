@@ -69,11 +69,14 @@ setup are reported for the user to decide.
 ## Long sessions
 
 On a model with a 1M-token window (the Fable models, Sonnet 5 and later,
-Haiku 5.5, Opus 4.7 and later), Claude Code compacts only at about 967k
-tokens by default. Synapse's PreCompact hook, which shapes the compaction
-summary, runs only at compaction, so a session that stays below that point
-never uses it. A long session also re-reads its whole context on every
-request. Consider lowering the auto-compact window to about 300k with
+Haiku 5.5, Opus 4.7 and later), Claude Code's default auto-compact threshold
+is about 967k tokens, and in practice compactions on the maintainer's
+machines ran anywhere from 307k to 968k. Synapse's PreCompact hook, which
+shapes the compaction summary, runs only at compaction, so a session that
+stays below the threshold does not use it. A long session also re-reads its
+whole context on every request: across seven measured sessions on two
+machines, the main session was 79 to 100 percent of cost (100 where no
+sub-agents ran). Consider lowering the auto-compact window to about 300k, which makes compaction predictable with
 `/autocompact 300k`, the `autoCompactWindow` setting, or the
 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` environment variable (the variable wins over
 the other two). The trade-off: each compaction is lossy and costs one large

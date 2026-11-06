@@ -60,6 +60,25 @@ The design is `docs/design/continuation-assist.md`.
   checkpoints are also counted from prompts that only name
   `synapse:checkpoint`.
 
+### Correction to earlier figures
+
+- The figures for issue #11 in `docs/design/cost-sweep.md` and
+  `docs/design/continuation-assist.md` were overstated about 2.4 times: the issue body counted
+  transcript lines, and Claude Code repeats one response's usage on 2 to 3
+  lines. Corrected (maintainer's re-measurement, #11 comments, 2026-11-06
+  21:28 UTC): Session A 317 main requests (not 757), 114.4M main cache
+  reads (not 275M), mean context 366k (not 364k), main share of cost
+  85.6%; Session B 187 requests (not 452), 47.6M (not 114M), 79.3%. Two
+  more sessions: C 91.0% and D 95.6%, each auto-compacted once (385k and
+  307k). The finding stands: the main session re-reading its context is 79
+  to 96 percent of cost in six sessions on two machines that used
+  sub-agents (this Mac's three largest: 94.8%, 88.5%, and 100% in one
+  with none). The design
+  docs are fixed; older entries below are not rewritten.
+- Auto-compaction does not run only near 967k: observed runs on the
+  maintainer's machines were at 307k, 385k, 393k, 461k, 854k and 968k. The
+  300k recommendation stays as the setting that makes it predictable.
+
 ### Measured
 
 - **Hook latency** on macOS (20 runs, 206 MB synthetic transcript), median
