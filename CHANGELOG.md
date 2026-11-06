@@ -9,20 +9,29 @@ The sweep behind this release is in `docs/design/cost-sweep.md`.
 ### Changed
 
 - **The main session conducts and roles work.** `instructions/core.md` has
-  a rewritten Execution section: work that would take more than about five
-  tool calls or touch more than three files goes to a `synapse:` role, and
-  a failing loop (fix, run, fix again) goes to `synapse:implementer`
-  instead of growing the main context. A fact or decision the user states
-  is written to PLAN.md before the next step. The Obsidian section is one
-  sentence. The core rules shrink from 8,795 to 8,112 characters.
+  a rewritten Execution section: a step that needs more than about five
+  tool calls or three files goes to a `synapse:` role, a step kept in the
+  main session that passes five calls stops and briefs the rest, and a
+  failing loop (fix, run, fix again) goes to `synapse:implementer` instead
+  of growing the main context. A report is verified by running its
+  validation command once, not by re-reading its diff. A fact or decision
+  the user states is written to PLAN.md (created if missing) before the
+  next step. The Obsidian section is one sentence. The core rules shrink
+  from 8,795 to 8,288 characters.
+- **The implementer finishes loops.** It stops at the brief's attempt limit
+  (two when the brief gives none), and a run that fails on a new error
+  after a fix counts as progress, not a failed attempt.
 - **A role per step.** The `EXECUTION.md` template has a role for each
   step; `/synapse:plan-session` step 7 writes a brief, dispatches the step
   to its role, and verifies the report; `/synapse:end-session` fills the
-  NOTES `## User-stated facts` section.
+  NOTES sections `## User-stated facts`, `## Patterns surfaced`, and
+  `## Decision rationale` from `PLAN.md` and the conversation.
 - **Extraction runs in a fresh context.** A sixth role,
   `synapse:extractor` (Sonnet), does the work of `/synapse:extract-session`,
-  dispatched by that skill. The skill shrinks from 19,064 to 3,985
-  characters.
+  dispatched by that skill, reading the archive from disk (NOTES carries
+  what the conversation held). Note specs go to the project's
+  `.claude-work/.tmp/extract-SESSION_ID/`, removed after the write or a
+  "no". The skill shrinks from 19,064 to 3,986 characters.
 - **Every candidate is checked against prior notes** (#10). Extraction
   recalls each Decision, Fact, and Pattern candidate on its concept, not its
   title, and proposes `supersedes` or a duplicate for a prior note scoring
@@ -34,13 +43,18 @@ The sweep behind this release is in `docs/design/cost-sweep.md`.
 
 ### Added
 
-- **PreCompact guidance.** `synapse compact-guide --hook` prints about 1,000
-  characters telling the compaction summary what to keep (objective, active
-  step, decisions, user-stated facts, open questions, work state, planning
-  file paths) and what to drop. It defers to `/compact` text or a CLAUDE.md
-  Compact instructions section, never blocks compaction, and needs no venv,
-  DB, or Ollama. `/synapse:doctor` warns about other PreCompact hooks;
-  INSTALL.md has a preflight row.
+- **PreCompact guidance, for when a session compacts.** `synapse
+  compact-guide --hook` prints about 1,000 characters telling the
+  compaction summary what to keep (objective, active step, decisions,
+  user-stated facts, open questions, work state, planning file paths) and
+  what to drop. It defers to `/compact` text or a CLAUDE.md Compact
+  instructions section, never blocks compaction, and needs no venv, DB, or
+  Ollama. It saves nothing by itself: on a 1M-window model auto-compaction
+  triggers near 967k, so the README's "Long sessions" section recommends a
+  window of about 300k (`/autocompact 300k`, `autoCompactWindow`, or
+  `CLAUDE_CODE_AUTO_COMPACT_WINDOW`). Synapse never changes it;
+  `/synapse:doctor` reports it and warns about other PreCompact hooks, and
+  INSTALL.md has preflight rows for both.
 - Dev tooling: `tools/context-cost.py` (context, cache, and cost per
   session from local transcripts; numbers only), and the eval case
   `loop-goes-to-implementer`.
