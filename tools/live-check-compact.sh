@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Live check of what survives an automatic compaction, in a real headless
-# session with this repo as the plugin. Costs about $0.30 per run (to be
-# corrected after measuring), so it refuses to start without --yes.
+# session with this repo as the plugin. Costs about $0.55 per run (measured
+# 2026-11-06: $0.52 on Sonnet), so it refuses to start without --yes.
 #
 #   tools/live-check-compact.sh --yes [runs]
 #   tools/live-check-compact.sh --setup-only      (free: builds the fixture, no claude call)
@@ -14,8 +14,8 @@
 # then counts compact_boundary lines in the transcript (exit 3 if none: the
 # retention was not tested). Turn 3 resumes and asks, without reading any file,
 # for the three items; the reply is graded by grep. It also reports, by count
-# only, whether Synapse's PreCompact guidance reached the transcript and
-# whether a "Synapse: work in progress" line appeared (expected 0: the fixture
+# only, the summary's size, the session's cost, and whether a "Synapse: work
+# in progress" line appeared (expected 0: the fixture
 # has no EXECUTION.md). Read each printed reply.
 #
 # Exit 0 only when compaction happened and every planted item was recalled.
@@ -26,7 +26,7 @@ SETUP_ONLY=0; RUNS=1
 case "${1:-}" in
     --yes) RUNS="${2:-1}" ;;
     --setup-only) SETUP_ONLY=1 ;;
-    *) echo "usage: tools/live-check-compact.sh --yes [runs]   (about \$0.30 per run)" >&2
+    *) echo "usage: tools/live-check-compact.sh --yes [runs]   (about \$0.55 per run)" >&2
        echo "       tools/live-check-compact.sh --setup-only   (free; no claude call)" >&2
        exit 2 ;;
 esac
@@ -122,9 +122,24 @@ PY
     for w in KESTREL-7 Fridays SQLite offline Postgres CSV Parquet; do
         if printf '%s' "$reply" | grep -qi -- "$w"; then echo "  found:   $w"; else echo "  missing: $w"; missing=1; fi
     done
-    guide="$(grep -c 'Guidance for this compaction summary' "$T" || true)"
+    # Hook stdout (the PreCompact guidance) is not recorded in transcripts, so
+    # report the summary's size and the session cost instead.
     wip="$(grep -c 'Synapse: work in progress' "$T" || true)"
-    echo "  PreCompact guidance lines in transcript: $guide (expected >= 1)"
+    python3 - "$T" <<'PY'
+import json, sys
+chars, cost = 0, None
+for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+    try:
+        e = json.loads(line)
+    except ValueError:
+        continue
+    if e.get("isCompactSummary"):
+        c = e.get("message", {}).get("content")
+        chars = len(c if isinstance(c, str) else json.dumps(c))
+    if e.get("type") == "cost-state" and isinstance(e.get("totalCostUSD"), (int, float)):
+        cost = e["totalCostUSD"]
+print(f"  compaction summary: {chars} characters; session cost: " + ("unknown" if cost is None else f"${cost:.2f}"))
+PY
     echo "  'work in progress' lines in transcript: $wip (expected 0: no EXECUTION.md)"
     printf '%s\n\n' "$reply"
     [ "$missing" = 0 ] || { [ "$fail" = 3 ] || fail=1; }
