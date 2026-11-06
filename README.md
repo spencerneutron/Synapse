@@ -72,7 +72,8 @@ On a model with a 1M-token window (the Fable models, Sonnet 5 and later,
 Haiku 5.5, Opus 4.7 and later), Claude Code's default auto-compact threshold
 is about 967k tokens, and in practice compactions on the maintainer's
 machines ran anywhere from 307k to 968k. Synapse's PreCompact hook, which
-shapes the compaction summary, runs only at compaction, so a session that
+shapes the compaction summary (`[continuation] compact_guide = false` turns it
+off), runs only at compaction, so a session that
 stays below the threshold does not use it. A long session also re-reads its
 whole context on every request: across seven measured sessions on two
 machines, the main session was 66 to 100 percent of cost (100 where no
@@ -92,13 +93,17 @@ summary.
   one line that names the `## Resume` section and when it was written. It
   only points; you or Claude read the file.
 - **Context nudge.** The nudge hook measures the real context size and adds
-  one line at 60% and at 90% of `[nudge] context_window` (default 300000
-  tokens). If you were away longer than the prompt cache lasts, it also says
-  what the next request will rewrite. Set `context_window` to your
-  auto-compact window: on a 200k-window model the default's 180k mark sits
-  at the compaction point, so lower it (for example 150000) or the lines
-  never show. It is checked after Bash, PowerShell, Edit, Write and Agent
-  calls, not after reads. Set `context_window = 0` to turn both off.
+  one line at 60% and at 90% of the context window. The window is
+  `[nudge] context_window` if you set it; otherwise the model's window, by
+  name: 300000 for 1M-window models (Fable, Opus 4.7 and later, any
+  5-series model), 150000 for older ones (so 90k and 135k on a 200k window),
+  lowered to the smallest auto-compaction size seen in the session if that is
+  smaller (manual `/compact` does not count). A `[1m]` opt-in on an older
+  model does not show in the name, so set `context_window` there. The line
+  says which source it used. If you were away longer than the prompt cache lasts, it also says
+  what the next request will rewrite. It is checked after Bash, PowerShell,
+  Edit, Write and Agent calls, not after reads. Set `context_window = 0` to
+  turn both off.
   Neither line blocks anything.
 
 ## Where things live

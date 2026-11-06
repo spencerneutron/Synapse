@@ -14,7 +14,9 @@ nudge.py — hook-time reminders for the main session, in one process.
 2. Context nudge. After each matched tool call (Bash, PowerShell, Edit, Write,
    MultiEdit, NotebookEdit, Agent, Task; Read, Grep and MCP calls do not run
    the hook) it reads the transcript tail and, at 60%
-   and 90% of [nudge] context_window (default 300000; 0 turns 2 and 3 off),
+   and 90% of the window (from [nudge] context_window; unset: 300000 for 1M-window
+   models and 150000 for older ones, by model name, lowered by the smallest
+   auto-compaction seen in the session; 0 turns 2 and 3 off),
    suggests /synapse:checkpoint. At most 3 times per session; re-armed when the
    context drops below 60% (after a compaction).
 3. Resume-time line. On a new prompt, if the last request was longer ago than
@@ -147,7 +149,7 @@ def handle(data: dict) -> str:
         return emit(event, first, second)
     elif event == "UserPromptSubmit":
         reset(paths, sid)
-        return emit(event, continuation.resume_time_line(paths, data))
+        return emit(event, continuation.resume_time_line(paths, data, sid))
     elif event == "SessionStart":
         prune(paths, sid)
         return emit(event, continuation.resume_pointer(paths, data))

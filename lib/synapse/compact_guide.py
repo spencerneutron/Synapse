@@ -83,18 +83,30 @@ def build(data: dict) -> str:
     return "\n".join(parts)
 
 
+def enabled() -> bool:
+    """[continuation] compact_guide in config.toml (default on). Any failure
+    reading it, including paths.settings() exiting on a bad config, counts as on."""
+    try:
+        import paths
+        return paths.settings()["compact_guide"] is not False
+    except (Exception, SystemExit):
+        return True
+
+
 def main(argv: list[str]) -> int:
     try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
         if "--hook" not in argv:
             print(__doc__.strip())
             return 0
         sys.path.insert(0, str(Path(__file__).resolve().parent))
+        if not enabled():
+            return 0
         try:
             text = build(read_input())
         except Exception:
             text = KEEP
-        if hasattr(sys.stdout, "reconfigure"):
-            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
         print(text[:9000])
     except Exception:
         pass
