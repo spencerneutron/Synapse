@@ -99,6 +99,51 @@ class ContextCostTests(unittest.TestCase):
         c = r["compactions"][0]
         self.assertEqual((c["trigger"], c["pre_tokens"], c["post_tokens"]), ("auto", 900, 100))
 
+    def test_duplicate_compact_boundary_counted_once(self):
+        cb = {"type": "system", "subtype": "compact_boundary", "uuid": "u1",
+              "timestamp": "2026-01-01T00:00:00Z",
+              "compactMetadata": {"trigger": "auto", "preTokens": 900, "postTokens": 100}}
+        nouuid = {k: v for k, v in cb.items() if k != "uuid"}
+        other = dict(cb, uuid="u2", timestamp="2026-01-01T01:00:00Z")
+        ck = {"type": "user", "uuid": "c1", "message": {"content": "synapse:checkpoint"}}
+        write(self.main, [cb, cb, nouuid, nouuid, other, ck, ck])
+        r = cc.analyze(self.main)
+        self.assertEqual(len(r["compactions"]), 3)  # u1, no-uuid key, u2
+        self.assertEqual(r["checkpoints"], 1)
+
+    def test_cold_resumes(self):
+        def ts(minutes):
+            return f"2026-01-01T{minutes // 60:02d}:{minutes % 60:02d}:00Z"
+        def a(mid, read, write, minutes, hour=False):
+            return asst(mid, 0, read, write, 1, ts=ts(minutes), split=(write, 0) if hour else (0, write))
+        write(self.main, [
+            a("a0", 5000, 100, 0),
+            a("a1", 5000, 3000, 2),                # (a) warm: 2 min gap
+            a("a2", 100, 5000, 12),                # (b) 10 min on 5m TTL, writes >> reads: cold
+            a("a3", 100, 5000, 22, hour=True),     # cold (TTL known 5m); switches to 1h
+            a("a4", 100, 5000, 32, hour=True),     # (c) 10 min on 1h TTL: not cold
+            a("a5", 100, 5000, 152, hour=True),    # (d) 2 h on 1h TTL, writes >> reads: cold
+            a("a6", 9000, 2000, 400, hour=True),   # (e) gap > TTL but reads >> writes
+            a("a7", 100, 500, 700, hour=True),     # writes under 1000: not cold
+        ])
+        cr = cc.analyze(self.main)["cold_resumes"]["main"]
+        self.assertEqual([e["time"][11:16] for e in cr["events"]], ["00:12", "00:22", "02:32"])
+        self.assertEqual([e["gap_min"] for e in cr["events"]], [10.0, 10.0, 120.0])
+        self.assertEqual(cr["count"], 3)
+        self.assertEqual(cr["cache_write_tokens"], 15000)
+        self.assertEqual(cr["events"][0]["context"], 5100)
+        # per request: read 100 * 0.1 + out 1 * 5 = 15; writes 5000 at 1.25 (5m) or 2.0 (1h)
+        self.assertEqual(cr["cost_base_equiv"], 45 + 5000 * 1.25 + 2 * 5000 * 1.25)
+        self.assertEqual(cr["cost_base_equiv_1h2x"], 45 + 5000 * 1.25 + 2 * 5000 * 2.0)
+        self.assertEqual(cc.analyze(self.main)["cold_resumes"]["subagent"]["count"], 0)
+
+    def test_cold_resume_gap_is_per_file(self):
+        write(self.main, [asst("m1", 0, 5000, 100, 1, ts="2026-01-01T00:00:00Z")])
+        write(self.dir / "sess" / "subagents" / "a.jsonl",
+              [asst("s1", 0, 100, 5000, 1, ts="2026-01-01T03:00:00Z")])  # first in its file
+        r = cc.analyze(self.main)["cold_resumes"]
+        self.assertEqual(r["all"]["count"], 0)
+
     def test_mean_and_p90_context(self):
         write(self.main, [asst(f"m{i}", i * 10, 0, 0, 0) for i in range(1, 11)])  # 10..100
         r = cc.analyze(self.main)
