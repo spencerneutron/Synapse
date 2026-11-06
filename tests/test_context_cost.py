@@ -144,6 +144,35 @@ class ContextCostTests(unittest.TestCase):
         r = cc.analyze(self.main)["cold_resumes"]
         self.assertEqual(r["all"]["count"], 0)
 
+    def run_tool(self, *paths):
+        return subprocess.run([sys.executable, str(TOOL), *map(str, paths)],
+                              capture_output=True, text=True)
+
+    def test_missing_path_is_an_error(self):
+        write(self.main, [asst("m1", 1, 1, 0, 1)])
+        missing = self.dir / "nope.jsonl"
+        for flags in ((), ("--json",)):
+            p = subprocess.run([sys.executable, str(TOOL), str(self.main), str(missing), *flags],
+                               capture_output=True, text=True)
+            self.assertEqual(p.returncode, 1)
+            self.assertIn("error: cannot read transcript: " + str(missing), p.stderr)
+            self.assertEqual(p.stdout, "")
+
+    def test_zero_request_diagnostic(self):
+        empty = self.dir / "empty.jsonl"
+        write(empty, [])
+        p = self.run_tool(empty)
+        self.assertEqual(p.returncode, 0)
+        self.assertIn("lines 0, json objects 0, assistant entries 0, entries with message.usage 0", p.stderr)
+        odd = self.dir / "odd.jsonl"
+        write(odd, [{"type": "assistant", "message": {"id": "x"}}, {"type": "user", "message": {"usage": {}}},
+                    {"a": 1}], extra_raw=["not json", "[1]"])
+        p = self.run_tool(odd)
+        self.assertIn("lines 5, json objects 3, assistant entries 1, entries with message.usage 1", p.stderr)
+        self.assertNotIn(SECRET, p.stdout + p.stderr)
+        write(self.main, [asst("m1", 1, 1, 0, 1)])
+        self.assertEqual(self.run_tool(self.main).stderr, "")
+
     def test_mean_and_p90_context(self):
         write(self.main, [asst(f"m{i}", i * 10, 0, 0, 0) for i in range(1, 11)])  # 10..100
         r = cc.analyze(self.main)

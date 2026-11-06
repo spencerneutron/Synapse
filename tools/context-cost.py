@@ -59,6 +59,28 @@ def _lines(path):
         return
 
 
+def count_lines(path):
+    """Numbers for a diagnostic when a transcript yields no requests."""
+    n = {"lines": 0, "objects": 0, "assistant": 0, "usage": 0}
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for raw in fh:
+                n["lines"] += 1
+                try:
+                    obj = json.loads(raw)
+                except ValueError:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+                n["objects"] += 1
+                n["assistant"] += obj.get("type") == "assistant"
+                msg = obj.get("message")
+                n["usage"] += isinstance(msg, dict) and isinstance(msg.get("usage"), dict)
+    except OSError:
+        pass
+    return n
+
+
 def _request(entry):
     """Return (id, request dict) for an assistant entry, or None."""
     msg = entry.get("message")
@@ -330,7 +352,24 @@ def main(argv=None):
     ap.add_argument("transcripts", nargs="+", help="main transcript .jsonl files")
     ap.add_argument("--json", action="store_true", help="print JSON (includes per-request rows)")
     args = ap.parse_args(argv)
+    bad = False
+    for p in args.transcripts:
+        try:
+            with open(p, encoding="utf-8", errors="replace") as fh:
+                fh.read(1)
+        except OSError as exc:
+            print(f"error: cannot read transcript: {p} ({exc.strerror or type(exc).__name__})",
+                  file=sys.stderr)
+            bad = True
+    if bad:
+        return 1  # nothing on stdout: no partial report for the good paths
     results = [analyze(p) for p in args.transcripts]
+    for p, r in zip(args.transcripts, results):
+        if r["main"]["requests"] == 0:
+            n = count_lines(p)
+            print(f"note: no requests found in {p}: lines {n['lines']}, json objects {n['objects']}, "
+                  f"assistant entries {n['assistant']}, entries with message.usage {n['usage']}",
+                  file=sys.stderr)
     if args.json:
         print(json.dumps(results, indent=1))
     else:
