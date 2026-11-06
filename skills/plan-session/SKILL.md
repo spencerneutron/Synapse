@@ -71,11 +71,18 @@ Use this skill when:
    - resolve inconsistencies
    - confirm the plan reflects what the session hooks surfaced
 
-7. Execute in short loops:
+7. Run each step by its role:
 
-   - perform one step
-   - validate result
-   - update EXECUTION.md progress
+   - write the brief: goal, files, done condition, what is ruled out, run
+     path, attempt limit
+   - dispatch it to the step's role (`synapse:implementer`, `verifier`,
+     `researcher`, `reviewer`, `scout`)
+   - verify the report; treat it as a claim
+   - log the result in `EXECUTION.md` under `## Progress log`
+   - the main session keeps dialogue, decisions, planning files, and steps of
+     a handful of calls; a step needing more than about five tool calls or
+     three files is a brief
+   - if steps in `EXECUTION.md` carry no role, add one when you read it
 
 8. Update PLAN.md only when:
 
@@ -87,10 +94,8 @@ Use this skill when:
 
 ## Execution Rules
 
-- Do not reload planning files unnecessarily
-- Do not restate their contents unless needed
-- Prefer smallest viable step
-- Re-evaluate after each step
+- Do not reload or restate planning files unnecessarily
+- Prefer the smallest viable step
 - Stop if uncertainty becomes high
 
 ---
@@ -102,4 +107,5 @@ When invoked:
 - provide a short summary of:
   - current objective
   - next step
+  - who runs the next step
 - proceed with execution without unnecessary verbosity

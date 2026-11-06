@@ -7,6 +7,10 @@ _No open items — session closed clean._ -->
 **Closed:** <YYYY-MM-DD HH:MM> (local)
 **Archived plans:** `PLAN_<session-id>.md`, `EXECUTION_<session-id>.md`
 
+## User-stated facts
+
+- <One per line, in the user's words>
+
 ## Open questions
 
 - <One per item, with enough context to act on cold>

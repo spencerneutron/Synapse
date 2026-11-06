@@ -1,7 +1,9 @@
 # EXECUTION — <active task> (<YYYY-MM-DD>)
 
 <!-- The active task and its immediate steps. Update often. Standing rules and
-decisions live in PLAN.md. -->
+decisions live in PLAN.md. Each step names who runs it: implementer, verifier,
+researcher, reviewer, scout (the synapse: roles), or main. A step without a
+role is a brief to write, not a step to run. -->
 
 ## Status
 
@@ -14,8 +16,9 @@ branch/stack/build.>
 
 ## Next
 
-1. [ ] <Next concrete step — owner if it is not the agent>
-2. [ ] <...>
+1. [ ] <Next concrete step> — implementer
+2. [ ] <Check that the step worked> — verifier
+3. [ ] <Decision to make with the user> — main
 
 ## Notes / gotchas
 
