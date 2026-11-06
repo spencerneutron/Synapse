@@ -78,7 +78,7 @@ complexity justifies structured planning.
 - Summarize findings before acting.
 - Cache conclusions in `PLAN.md` (Decision Log) instead of recomputing them.
 - When the user states a fact or a decision, write it to `PLAN.md` before
-  the next step.
+  the next step, creating the file if it does not exist.
 
 ---
 
@@ -95,11 +95,12 @@ Prefer Synapse's role agents, which carry the rules for their job:
 | `synapse:reviewer` | Adversarial review of a change or plan | Inherits yours | No |
 | `synapse:scout` | Mechanical sweeps: inventories, searches | Haiku | No |
 
-- Once the plan is set, the main session conducts: dialogue, decisions, the
-  planning files, briefs, and reading reports. It keeps work that takes a
-  handful of calls. A step that needs more than about five tool calls or
-  three files is a brief for a role, not a step to run here: each
-  main-session call re-reads the whole context.
+- The main session conducts: dialogue, decisions, the planning files,
+  briefs, and reading reports. It keeps work that takes a handful of calls.
+  A step that needs more than about five tool calls or three files is a
+  brief for a role, not a step to run here: each main-session call re-reads
+  the whole context. If a step kept here passes five calls, stop and brief
+  the rest.
 - Hand a run-test, read-log, fix loop to `synapse:implementer` with the
   failing command, the done condition, and an attempt limit; read its
   report, not the logs.
@@ -109,8 +110,9 @@ Prefer Synapse's role agents, which carry the rules for their job:
   smallest change, run path, expected outcome, failure signal.
 - Never let two writers touch the same files; pass `isolation: "worktree"`
   when edits could overlap.
-- Treat every result as a claim and verify it before reporting it as done.
-  Record what each wave returned in `EXECUTION.md`.
+- Treat every result as a claim and verify it before reporting it as done:
+  run its validation command once; read the diff only when the report and
+  the run disagree. Record what each wave returned in `EXECUTION.md`.
 
 **Models.** The agents carry their models. Pass `model` on a call only with a
 reason: escalate one tier after a result fails verification twice, or the
