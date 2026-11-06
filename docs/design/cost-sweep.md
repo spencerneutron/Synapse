@@ -13,9 +13,9 @@ land in. It does not repeat PR #13's platform research; it cites it.
 ## Problem
 
 Issue #11 measured two parallel Opus sessions: main contexts of 605k and
-431k tokens, main-session cache reads at 85.6% and 79.3% of each session's
-cost (the maintainer's re-measurement in the #11 comments, 2026-11-06 21:28
-UTC; the issue body overstated absolute figures about 2.4 times), and the
+431k tokens, the main session at 85.6% and 66.5% of each session's cost
+(the maintainer's re-measurement in the #11 comments, 2026-11-06 21:28 UTC,
+with B's workflow agents added at 21:38 UTC; the issue body overstated absolute figures about 2.4 times), and the
 hands-on work done in the main context (197 Bash, 43 Edit, and 42
 PowerShell calls in one session). Every one of those calls re-read the
 whole context.
@@ -76,7 +76,7 @@ open question below.
 
 Goals:
 
-- The main session's share of cost falls from 79 to 100 percent (seven
+- The main session's share of cost falls from 66 to 100 percent (seven
   sessions, two machines) to under half, measured by `tools/context-cost.py` on long sessions.
 - Nothing the user said is lost at compaction, `/clear`, or extraction.
 - The end of a session needs no more user turns than today (one: step 8
@@ -303,7 +303,7 @@ only if users do not checkpoint on their own; Change 5.
 
 | What | Tool | Before | After |
 |------|------|--------|-------|
-| Main share of cache reads | `tools/context-cost.py` | #11's two sessions (85.6%, 79.3%) | The next two long sessions on 2.5.0; target under 50% |
+| Main share of cache reads | `tools/context-cost.py` | #11's two sessions (90.6%, 74.6%) | The next two long sessions on 2.5.0; target under 50% |
 | Mean context per main request | same | 366k, 261k | Reported; no target until a baseline exists |
 | Retrieval unchanged | `synapse recall-check` | golden set | identical |
 | Rules hold | the evals named under Change 1 | current pass rate | no regression; the new case passes with Synapse |

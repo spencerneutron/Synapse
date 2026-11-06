@@ -42,9 +42,11 @@ allowance. Their transcripts show:
 - Main contexts grew to 605k and 431k tokens (366k and 261k average per
   request, 317 and 187 main requests). Neither session compacted or
   restarted.
-- Main-session cache reads were 114.4M and 47.6M tokens: 85.6% and 79.3% of
-  each session's cost. Subagents were the minority. The main session
-  re-reading its context is 79 to 96 percent of cost in the six sessions
+- Main-session cache reads were 114.4M and 47.6M tokens (90.6% and 74.6% of
+  cache reads); the main session was 85.6% and 66.5% of each session's
+  cost, B's six workflow agents included (#11 comment, 2026-11-06 21:38
+  UTC). The main session re-reading its context is 66 to 96 percent of
+  cost in the six sessions
   on two machines that used sub-agents (A to D here; this Mac's three
   largest sessions, measured 2026-11-06, at 94.8% and 88.5%), and 100
   percent in one that used none.
@@ -573,7 +575,7 @@ Medium: these change behavior on every session.
 ### Measurement
 
 - Main-session tool calls per session by tool (Bash, Edit, PowerShell) and
-  the main share of cost, before and after (#11's 85.6% and 79.3%).
+  the main share of cost, before and after (#11's 85.6% and 66.5%).
 - An eval case with a failing test to fix: a grader checks for a
   `synapse:implementer` dispatch (`arm: with-only`) and caps main-session
   Bash calls. Run the `hard` and `guard` tags to check for regressions.

@@ -75,7 +75,7 @@ machines ran anywhere from 307k to 968k. Synapse's PreCompact hook, which
 shapes the compaction summary, runs only at compaction, so a session that
 stays below the threshold does not use it. A long session also re-reads its
 whole context on every request: across seven measured sessions on two
-machines, the main session was 79 to 100 percent of cost (100 where no
+machines, the main session was 66 to 100 percent of cost (100 where no
 sub-agents ran). Consider lowering the auto-compact window to about 300k, which makes compaction predictable with
 `/autocompact 300k`, the `autoCompactWindow` setting, or the
 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` environment variable (the variable wins over

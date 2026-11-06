@@ -70,9 +70,11 @@ The design is `docs/design/continuation-assist.md`.
   lines. Corrected (maintainer's re-measurement, #11 comments, 2026-11-06
   21:28 UTC): Session A 317 main requests (not 757), 114.4M main cache
   reads (not 275M), mean context 366k (not 364k), main share of cost
-  85.6%; Session B 187 requests (not 452), 47.6M (not 114M), 79.3%. Two
+  85.6%; Session B 187 requests (not 452), 47.6M (not 114M), 66.5% once
+  its six workflow agents are counted (21:38 UTC comment; the issue body's
+  "9-agent workflow plus 3 Opus reviews" was 9 agents in all). Two
   more sessions: C 91.0% and D 95.6%, each auto-compacted once (385k and
-  307k). The finding stands: the main session re-reading its context is 79
+  307k). The finding stands: the main session re-reading its context is 66
   to 96 percent of cost in six sessions on two machines that used
   sub-agents (this Mac's three largest: 94.8%, 88.5%, and 100% in one
   with none). The design
