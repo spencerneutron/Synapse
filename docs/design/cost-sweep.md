@@ -1,6 +1,6 @@
 # The 2.5.0 sweep: cost and memory hygiene (design)
 
-Status: **draft, for review.** No code. Written 2026-11-06.
+Status: **approved 2026-11-06 and implemented in 2.5.0.**
 
 Issues: [#10](https://github.com/spencerneutron/Synapse/issues/10)
 (PR #12, candidate recall before promoting) and

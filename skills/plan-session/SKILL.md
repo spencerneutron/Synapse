@@ -73,15 +73,16 @@ Use this skill when:
 
 7. Run each step by its role:
 
-   - write the brief: goal, files, done condition, what is ruled out, run
-     path, attempt limit
+   - a step whose role is `main` (dialogue, decisions, planning files, a
+     handful of calls) runs in the main session
+   - every other step gets a brief: goal, files, done condition, what is
+     ruled out, run path, attempt limit
    - dispatch it to the step's role (`synapse:implementer`, `verifier`,
      `researcher`, `reviewer`, `scout`)
    - verify the report; treat it as a claim
    - log the result in `EXECUTION.md` under `## Progress log`
-   - the main session keeps dialogue, decisions, planning files, and steps of
-     a handful of calls; a step needing more than about five tool calls or
-     three files is a brief
+   - a step needing more than about five tool calls or three files is not
+     `main`; give it a role and a brief
    - if steps in `EXECUTION.md` carry no role, add one when you read it
 
 8. Update PLAN.md only when:

@@ -27,8 +27,11 @@ hooks enforce what instructions can only request.
 4. **Archive** (`/synapse:end-session`). `synapse archive` copies `PLAN` and
    `EXECUTION` into the active store as `archive/<project>/<FILE>_<id>.md`
    under a session ID such as `2026-05-01-1515`; the skill adds `NOTES`.
-5. **Extract** (`/synapse:extract-session`). At teardown, while context is fresh,
-   Claude proposes Decision, Pattern, and Fact notes and the user confirms once.
+5. **Extract** (`/synapse:extract-session`). At teardown, the
+   `synapse:extractor` sub-agent reads the archive on disk, without the
+   conversation, and proposes Decision, Pattern, and Fact notes; the user
+   confirms once. Facts the user stated reach it through NOTES
+   `## User-stated facts`.
    Promoted notes and a Session note go to the vault; the archive and new
    notes are embedded; a `.processed/<id>.json` marker records the run.
 6. **Recall** (`/synapse:recall`). Later sessions, in any project, query the
@@ -199,7 +202,7 @@ role selection to instructions. V2 took each seam below in a measured slice
 | Seam | Today (2.5) | Further option | Trade-off |
 |------|------------|-----------|-----------|
 | Recall triggering | **Done in V2 slice D:** a `UserPromptSubmit` hook adds up to three hints scoring ≥ 0.70, once per session, failing silently | Per-project thresholds | Calibrated on the author's store: 0 of 24 unrelated prompts hinted |
-| Extraction | **Done in V2 slice D:** a session-start reminder lists archived sessions never extracted; the user still runs `/synapse:extract-session` | Auto-embed pending archives without promotion | Nothing is forgotten silently; judgment stays with a live session |
+| Extraction | **Done in V2 slice D:** a session-start reminder lists archived sessions never extracted; the user still runs `/synapse:extract-session` | Auto-embed pending archives without promotion | Nothing is forgotten silently; the user still confirms every note |
 | Role orchestration | **Done in V2 slice C:** six plugin agents with per-role models, tool limits, and their own rules; measured with an eval suite | Hooks that route work to a role | Right-sizing is config; agent files to maintain |
 | Memory hygiene | **Done in V2 slice 1:** `synapse extract supersede` marks the old decision in the DB and its front matter; recall hides it by default. **2.5.0:** extraction recalls every candidate by concept and proposes `supersedes` or a duplicate for hits ≥ 0.70 | Find conflicts among notes already active | Fewer near-duplicate decisions left active |
 | Retrieval | **Done in V2 slice 1:** hybrid keyword + vector with reciprocal rank fusion; exact, case-insensitive filters inside the search | Tuned chunking; a cross-encoder re-ranker | Measured with `synapse recall-check` |

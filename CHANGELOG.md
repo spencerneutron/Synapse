@@ -26,10 +26,11 @@ The sweep behind this release is in `docs/design/cost-sweep.md`.
 - **Every candidate is checked against prior notes** (#10). Extraction
   recalls each Decision, Fact, and Pattern candidate on its concept, not its
   title, and proposes `supersedes` or a duplicate for a prior note scoring
-  0.70 or more. Now one batched call, `synapse extract check-candidates`
+  0.70 or more. It is one batched call, `synapse extract check-candidates`
   (local scope, so `synapse extract supersede` can mark the hit; hits from
   the session being extracted are skipped; below 0.70 nothing is shown).
-  This replaces the per-candidate recalls of 2.4.1's step 5b.
+  Hits are ranked by score and carry `project`; a prior note from another
+  project is never proposed as superseded.
 
 ### Added
 
@@ -49,11 +50,15 @@ The sweep behind this release is in `docs/design/cost-sweep.md`.
 ### Calibration
 
 The 0.70 threshold (the recall-hint default) was checked with
-`synapse recall-check` and the step's exact recall on the author's store
+`synapse recall-check` and top-3 `synapse recall` over the hybrid ranking
+on the author's store
 (68 Decision notes, 2 projects; no Fact notes yet): 30 concept queries
 whose prior Decision exists (22 naming the topic only, 8 naming the choice
 the old note rejected) and 16 concepts with no prior Decision, half of them
-close to the store's projects.
+close to the store's projects. These numbers were measured with top-3
+recall during development; `check-candidates` looks at up to 50 chunks per
+candidate, keeps one per note, and ranks by score, so it sees more
+candidates. They are indicative for it, not re-measured.
 
 | Threshold | Prior Decision shown | Unrelated concept shown a hit |
 |-----------|----------------------|-------------------------------|
