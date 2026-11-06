@@ -16,7 +16,15 @@ EXPECTED = {
     "researcher": ("sonnet", {"Read", "Grep", "Glob", "Bash", "WebFetch", "WebSearch", "ToolSearch"}, set()),
     "reviewer": ("inherit", {"Read", "Grep", "Glob", "Bash"}, set()),
     "scout": ("haiku", {"Read", "Grep", "Glob", "Bash"}, set()),
+    "extractor": ("sonnet", {"Read", "Grep", "Glob", "Bash"}, set()),
 }
+
+# The extractor carries the extraction rules (sub-agents never see skills), so
+# its body gets its own, larger cap.
+BODY_CAP = 3000
+BODY_CAP_OVERRIDE = {"extractor": 7500}
+# Only the extract-session skill dispatches it; core.md's role table omits it.
+NOT_IN_CORE = {"extractor"}
 
 
 def frontmatter(path):
@@ -35,7 +43,7 @@ def tool_set(value):
 
 
 class AgentTests(unittest.TestCase):
-    def test_exactly_the_five_roles_ship(self):
+    def test_exactly_the_six_roles_ship(self):
         self.assertEqual({p.stem for p in AGENTS.glob("*.md")}, set(EXPECTED))
 
     def test_each_role_has_its_contract(self):
@@ -50,7 +58,7 @@ class AgentTests(unittest.TestCase):
                 self.assertEqual(tool_set(fields.get("disallowedTools")) or set(), disallowed)
                 self.assertIn("## Report", body)
                 self.assertIn("session rules are not in your context", " ".join(body.split()))
-                self.assertLess(len(body), 3000)
+                self.assertLess(len(body), BODY_CAP_OVERRIDE.get(role, BODY_CAP))
 
     def test_only_the_implementer_can_edit(self):
         for role in EXPECTED:
@@ -78,10 +86,19 @@ class AgentTests(unittest.TestCase):
         core = (ROOT / "instructions" / "core.md").read_text(encoding="utf-8")
         shown = {"sonnet": "Sonnet", "haiku": "Haiku", "inherit": "Inherits yours"}
         for role, (model, _, _) in EXPECTED.items():
+            if role in NOT_IN_CORE:
+                continue
             row = next((line for line in core.splitlines() if f"`synapse:{role}`" in line and line.startswith("|")), None)
             with self.subTest(role=role):
                 self.assertIsNotNone(row, "no table row in core.md")
                 self.assertIn(shown[model], row)
+
+    def test_extract_session_skill_dispatches_the_extractor(self):
+        skill = (ROOT / "skills" / "extract-session" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertLess(len(skill), 4000)
+        self.assertIn("synapse:extractor", skill)
+        _, body = frontmatter(AGENTS / "extractor.md")
+        self.assertIn("check-candidates", body)
 
 
 if __name__ == "__main__":
