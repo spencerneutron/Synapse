@@ -13,6 +13,12 @@
 # that session and checks that the reply names the prior note as superseded,
 # ends with the "Proceed?" question, and that nothing was written to the vault
 # before approval. Read each printed reply. Needs Ollama with nomic-embed-text.
+#
+# The real Obsidian app is never asked: `synapse vault verify` would see the
+# user's own vault open, not the fixture's. For the claude run only, stand-ins
+# for `obsidian` (answers the vault name and path) and `pgrep` (reports the app
+# running, so nothing is launched) go first on PATH. macOS and Linux only: on
+# Windows, Python does not find an extensionless `obsidian` stand-in.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SETUP_ONLY=0; RUNS=1
@@ -32,15 +38,21 @@ fi
 
 PROJECT="flagship"; SESSION="2026-11-06-1200"
 PRIOR="Run the e2e workflow nightly on a schedule"
+REAL_PGREP="$(command -v pgrep || echo /usr/bin/pgrep)"
 TMPS=()
 cleanup() { [ "${#TMPS[@]}" -eq 0 ] || rm -rf "${TMPS[@]}"; }
 trap cleanup EXIT
 
 syn() { SYNAPSE_HOME="$H" "$ROOT/bin/synapse" "$@"; }
 
-# Builds $H (home) and $W (scratch project) for one run.
+# Builds $H (home), $W (scratch project) and $S (Obsidian stand-ins) for one run.
 build() {
-    H="$(mktemp -d)"; W="$(mktemp -d)"; TMPS+=("$H" "$W")
+    H="$(mktemp -d)"; W="$(mktemp -d)"; S="$(mktemp -d)"; TMPS+=("$H" "$W" "$S")
+    printf '#!/bin/sh\n# Fixture stand-in for the Obsidian CLI.\nfor a in "$@"; do\n  case "$a" in\n    info=name) echo Fixture; exit 0 ;;\n    info=path) echo "%s"; exit 0 ;;\n  esac\ndone\necho "fixture obsidian stand-in: unsupported call: $*" >&2\nexit 1\n' \
+        "$H/vault" > "$S/obsidian"
+    printf '#!/bin/sh\n[ "$1" = "-x" ] && [ "$2" = "Obsidian" ] && exit 0\nexec "%s" "$@"\n' \
+        "$REAL_PGREP" > "$S/pgrep"
+    chmod +x "$S/obsidian" "$S/pgrep"
     rm -rf "$H"  # setup wants a new folder
     syn setup >/dev/null
     printf 'default_store = "main"\n\n[stores.main]\nvault = "Fixture"\nvault_path = "%s"\n\n[recall]\nauto = false\n' \
@@ -112,6 +124,8 @@ sys.exit(0 if any(h["score"]>=0.70 for h in hits) else 1)'
 if [ "$SETUP_ONLY" = 1 ]; then
     build
     score_check || { echo "FAIL: the planted note scored below 0.70" >&2; exit 1; }
+    (cd "$W" && PATH="$S:$PATH" SYNAPSE_HOME="$H" "$ROOT/bin/synapse" vault verify) \
+        || { echo "FAIL: vault verify did not pass with the stand-ins" >&2; exit 1; }
     echo "setup ok: home $H, archive $A (removed on exit)"
     exit 0
 fi
@@ -121,7 +135,7 @@ for i in $(seq 1 "$RUNS"); do
     build
     score_check >/dev/null || { echo "== run $i: setup failed, planted note scores below 0.70" >&2; fail=1; continue; }
     before="$(ls "$H/vault/Decisions" | wc -l)"
-    out="$(cd "$W" && SYNAPSE_HOME="$H" claude -p \
+    out="$(cd "$W" && PATH="$S:$PATH" SYNAPSE_HOME="$H" claude -p \
         "Extract session $SESSION for project $PROJECT." \
         --plugin-dir "$ROOT" --settings '{"enabledPlugins":{"synapse@synapse":false}}' \
         --allowedTools "Bash(synapse *)" "Bash(mktemp *)" "Bash(cat *)" "Bash(ls *)" Read Write Skill Agent Task \
