@@ -99,8 +99,8 @@ Prefer Synapse's role agents, which carry the rules for their job:
   briefs, and reading reports. It keeps work that takes a handful of calls.
   A step that needs more than about five tool calls or three files is a
   brief for a role, not a step to run here: each main-session call re-reads
-  the whole context. If a step kept here passes five calls, stop and brief
-  the rest.
+  the whole context. If a step kept here reaches five hands-on calls (a Synapse
+  hook says so), stop and brief the rest.
 - Hand a run-test, read-log, fix loop to `synapse:implementer` with the
   failing command, the done condition, and an attempt limit; read its
   report, not the logs.

@@ -1,5 +1,53 @@
 # Changelog
 
+## 2.5.1 — 2026-11-06 — A hook for the dispatch rule
+
+No store schema change; update with `claude plugin marketplace update
+synapse` and `claude plugin update synapse@synapse`, then start new sessions.
+
+### Added
+
+- **A nudge hook for the dispatch rule.** A PostToolUse hook,
+  `synapse nudge --hook`, counts consecutive hands-on tool calls in the
+  main session (Bash, PowerShell, Edit, Write, MultiEdit, NotebookEdit).
+  A sub-agent dispatch (Agent or Task) resets the count, and so does each
+  new user prompt; a sub-agent's own calls are ignored. At 5 calls, then at
+  10 and 20, it adds one line of context telling the main session to brief
+  the rest to a role: `synapse:implementer` for changes, `synapse:scout`
+  or `synapse:researcher` for searches. Synapse's own CLI calls and edits
+  under `.claude-work/` do not count. It never blocks. Set `[nudge] calls`
+  in `config.toml` to change the first point; `0` turns it off. Counters
+  live in `<home>/state/`, and SessionStart prunes any idle over a day.
+- **Why.** 2.5.0's rule, as text alone, measured 0 of 2 dispatches in
+  `evals/loop-goes-to-implementer`, twice. The emission contract only held
+  once a Stop hook enforced it; the dispatch rule gets the same treatment.
+- **Doctor lists other PostToolUse hooks** (every settings layer and other
+  enabled plugins) as info rows, and INSTALL.md's preflight table has a
+  matching row. Another PostToolUse hook conflicts only if it blocks or
+  adds its own context on the same calls.
+- **Latency:** about 44 ms per matched call on macOS (bash, `lib/py.sh`,
+  and Python startup; the counter itself is two syscalls). Windows is not
+  measured.
+- **Measured** (Sonnet, 2 runs per arm, $3.00 of evals in all). On the
+  new `evals/long-loop-goes-to-implementer` (ten serial rounds, seven of
+  them visible only at run time), with the hook off the main session ran
+  the loop itself in 19 and 17 hands-on calls. With it on, both runs
+  dispatched `synapse:implementer` right after the fifth call and made 6
+  in all; `suite-passes` 2 of 2 in both arms. On the boundary case
+  `evals/loop-goes-to-implementer` (5-8 calls to finish), 1 of 4 runs
+  dispatched, against 0 of 4 on 2.5.0; `suite-passes` 4 of 4. Five short-task cases (`answer-first`,
+  `scope-discipline`, `implement-with-validation`, `delegate-and-verify`,
+  `verify-before-done`, once each, $0.63) all pass, and none reached five
+  hands-on calls, so the nudge never fired on them.
+
+### Changed
+
+- **Evals.** `loop-goes-to-implementer`'s `few-main-session-calls` grader
+  passes a dispatch that follows the nudge (at most six hands-on calls
+  before it, two after). A new `guard` case, `long-loop-goes-to-implementer`,
+  has ten serial fix rounds, seven of them visible only at run time.
+- `instructions/core.md` says Synapse's hook reminds at five calls.
+
 ## 2.5.0 — 2026-11-06 — The main session conducts, roles work
 
 No store schema change; update with `claude plugin marketplace update

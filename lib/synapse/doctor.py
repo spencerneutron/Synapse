@@ -120,7 +120,8 @@ def check_runtime(rep: Report, r: paths.Resolved) -> None:
         rep.add("ok", "triggers",
                 f"recall hints {'on' if st['recall_auto'] else 'off'} (min_score {st['min_score']}, "
                 f"max_hits {st['max_hits']}); extraction reminder {'on' if st['extract_remind'] else 'off'}; "
-                f"facts at session start {'on' if st['facts_at_start'] else 'off'}")
+                f"facts at session start {'on' if st['facts_at_start'] else 'off'}; "
+                f"nudge {'off' if not st['nudge_calls'] else 'at %d calls' % st['nudge_calls']}")
     except SystemExit as e:
         rep.add("error", "triggers", str(e))
     from archive import discover_sessions
@@ -265,6 +266,10 @@ def check_autocompact(rep: Report, window: tuple[str, object] | None, models: li
         rep.add("info", "autocompact-window", detail, fix)
 
 
+POSTTOOLUSE_FIX = ("Synapse's nudge hook runs here too; another PostToolUse hook only conflicts if it "
+                   "blocks (decision: block) or adds its own context on the same calls")
+
+
 def check_settings(rep: Report, project_dir: Path) -> None:
     layers = [claude_dir() / "settings.json",
               project_dir / ".claude" / "settings.json",
@@ -296,6 +301,10 @@ def check_settings(rep: Report, project_dir: Path) -> None:
             for h in group.get("hooks", []):
                 rep.add("warn", "precompact-hooks", f"{tilde(path)} runs a PreCompact hook: {h.get('command', h)}",
                         "each hook's stdout is capped on its own; two sets of compaction instructions can conflict")
+        for group in s.get("hooks", {}).get("PostToolUse", []):
+            for h in group.get("hooks", []):
+                rep.add("info", "posttooluse-hooks", f"{tilde(path)} runs a PostToolUse hook: {h.get('command', h)}",
+                        POSTTOOLUSE_FIX)
         if s.get("outputStyle"):
             rep.add("info", "output-style", f"{tilde(path)} sets outputStyle {s['outputStyle']!r}",
                     "make sure it does not contradict /synapse:emission-contract")
@@ -312,6 +321,8 @@ def check_settings(rep: Report, project_dir: Path) -> None:
             for pid in plugin_stop_hooks(s, "PreCompact"):
                 rep.add("warn", "precompact-hooks", f"plugin {pid} also has a PreCompact hook",
                         "check its compaction instructions do not conflict with Synapse's")
+            for pid in plugin_stop_hooks(s, "PostToolUse"):
+                rep.add("info", "posttooluse-hooks", f"plugin {pid} also has a PostToolUse hook", POSTTOOLUSE_FIX)
     check_autocompact(rep, window, models)
 
 
