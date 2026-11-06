@@ -1,5 +1,53 @@
 # Changelog
 
+## 2.4.1 — 2026-11-06 — Extraction checks candidates against prior notes
+
+No store schema change; update with `claude plugin marketplace update
+synapse` and `claude plugin update synapse@synapse`, then start new sessions.
+
+### Changed
+
+- **Every candidate is checked against prior notes** (#10).
+  `/synapse:extract-session` has a new step 5b: before it builds note
+  specs, it runs one local recall per Decision, Fact, and Pattern candidate
+  on the candidate's concept, not its title
+  (`synapse recall "..." --type decision --scope local --top-k 3 --format json`).
+  A prior note scoring 0.70 or more on the same concept with a different
+  choice is proposed as `supersedes` in the step 8 summary, with its title
+  and score; the same choice is proposed as a duplicate to drop or link in
+  `related`. Patterns get the duplicate check only. Hits from the session
+  being extracted (a `--force` re-run) are skipped, and hits below 0.70 are
+  not shown. The user can decline a proposed `supersedes` or keep a
+  duplicate. This replaces the conditional "run a recall if it might be
+  revisiting prior territory" and the separate Fact recall in step 7.
+- `--scope local`, because `synapse extract supersede` marks only the
+  user's own notes. `--format json`, because text output does not show a
+  hit's session.
+
+### Calibration
+
+The 0.70 threshold (the recall-hint default) was checked with
+`synapse recall-check` and the step's exact recall on the author's store
+(68 Decision notes, 2 projects; no Fact notes yet): 30 concept queries
+whose prior Decision exists (22 naming the topic only, 8 naming the choice
+the old note rejected) and 16 concepts with no prior Decision, half of them
+close to the store's projects.
+
+| Threshold | Prior Decision shown | Unrelated concept shown a hit |
+|-----------|----------------------|-------------------------------|
+| 0.65 | 29/30 | 4/16 |
+| 0.675 | 27/30 | 0/16 |
+| **0.70** | **26/30** | **0/16** |
+| 0.75 | 19/30 | 0/16 |
+
+Unrelated concepts scored 0.54 to 0.66, prior Decisions 0.67 to 0.83
+(median 0.77); top-3 retrieval found the prior Decision for 29 of 30. 0.70
+stays: 0.675 adds one case with a 0.02 margin over the top unrelated score.
+One positive's top hit at 0.70 was a different concept, so the step asks
+the agent to read the snippet, not to trust the score alone. The check
+would have caught a duplicate pair the store already holds: a concept query
+for one note returns the other at 0.73 to 0.80.
+
 ## 2.4.0 — 2026-11-06 — Fact notes; create-note stays inside the vault
 
 No store schema change; update with `claude plugin marketplace update
