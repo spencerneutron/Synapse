@@ -5,7 +5,7 @@ execute in small verified steps, archive the working state, and promote
 durable decisions into a local knowledge base the next session can recall.
 It installs once for the whole machine and works in every project.
 
-**Version:** 2.5.0 (2026-11-06). See [CHANGELOG.md](CHANGELOG.md).
+**Version:** 2.6.0 (2026-11-06). See [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
@@ -48,17 +48,20 @@ setup are reported for the user to decide.
    is dispatched by `/synapse:extract-session`.
 3. **Emit:** the `synapse:emission-contract` skill shapes each final message,
    and a Stop hook enforces its mechanical rules.
-4. **Archive:** `/synapse:end-session` copies the planning files into the
+4. **Checkpoint (any time):** `/synapse:checkpoint` writes a `## Resume`
+   section in `EXECUTION.md` and the working `NOTES.md`, and work goes on.
+   `/synapse:end-session` later archives them.
+5. **Archive:** `/synapse:end-session` copies the planning files into the
    store and writes session notes.
-5. **Extract:** `/synapse:extract-session` promotes Decisions, Patterns,
+6. **Extract:** `/synapse:extract-session` promotes Decisions, Patterns,
    and Facts (what the user stated about the project) to an Obsidian vault
    and embeds the session in the vector DB. A new session lists the
    project's Facts, and says so when an archived session was never
    extracted.
-6. **Recall:** later sessions, in any project, get ranked pointers into that
+7. **Recall:** later sessions, in any project, get ranked pointers into that
    history: automatically, when a prompt closely matches something in the
    store, and on demand with `/synapse:recall`.
-7. **Share (optional):** `/synapse:share` gives a team chosen Decisions,
+8. **Share (optional):** `/synapse:share` gives a team chosen Decisions,
    Patterns, and Facts, scrubbed of paths, secrets, and session-local references,
    through a git repo or a synced folder. Teammates' notes join recall,
    labeled; your own note wins a tie, and your own decision wins a conflict.
@@ -66,15 +69,37 @@ setup are reported for the user to decide.
 ## Long sessions
 
 On a model with a 1M-token window (the Fable models, Sonnet 5 and later,
-Haiku 5.5, Opus 4.7 and later), Claude Code compacts only at about 967k
-tokens by default. Synapse's PreCompact hook, which shapes the compaction
-summary, runs only at compaction, so a session that stays below that point
-never uses it. A long session also re-reads its whole context on every
-request. Consider lowering the auto-compact window to about 300k with
+Haiku 5.5, Opus 4.7 and later), Claude Code's default auto-compact threshold
+is about 967k tokens, and in practice compactions on the maintainer's
+machines ran anywhere from 307k to 968k. Synapse's PreCompact hook, which
+shapes the compaction summary, runs only at compaction, so a session that
+stays below the threshold does not use it. A long session also re-reads its
+whole context on every request: across seven measured sessions on two
+machines, the main session was 66 to 100 percent of cost (100 where no
+sub-agents ran). Consider lowering the auto-compact window to about 300k, which makes compaction predictable with
 `/autocompact 300k`, the `autoCompactWindow` setting, or the
 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` environment variable (the variable wins over
 the other two). The trade-off: each compaction is lossy and costs one large
 request. Synapse never changes this setting; `/synapse:doctor` reports it.
+
+Before a long session gets heavy, run `/synapse:checkpoint`. It saves what
+the work needs to continue (a `## Resume` section and the session's notes)
+and does not end the turn. After a checkpoint, `/clear` is free: the next
+session starts from the files. `/compact` is lossy, because it keeps only a
+summary.
+
+- **Resume pointer.** After `/clear` or a compaction, the session start adds
+  one line that names the `## Resume` section and when it was written. It
+  only points; you or Claude read the file.
+- **Context nudge.** The nudge hook measures the real context size and adds
+  one line at 60% and at 90% of `[nudge] context_window` (default 300000
+  tokens). If you were away longer than the prompt cache lasts, it also says
+  what the next request will rewrite. Set `context_window` to your
+  auto-compact window: on a 200k-window model the default's 180k mark sits
+  at the compaction point, so lower it (for example 150000) or the lines
+  never show. It is checked after Bash, PowerShell, Edit, Write and Agent
+  calls, not after reads. Set `context_window = 0` to turn both off.
+  Neither line blocks anything.
 
 ## Where things live
 
@@ -94,20 +119,20 @@ request. Synapse never changes this setting; `/synapse:doctor` reports it.
 .claude-plugin/   plugin.json, marketplace.json (this repo is its own marketplace)
 instructions/     core.md, platform-macos.md, platform-windows.md (each < 10,000 chars)
 agents/           implementer, verifier, researcher, reviewer, scout, extractor (synapse:<role> sub-agents)
-hooks/            hooks.json (SessionStart, UserPromptSubmit, PreCompact, Stop), session_start.sh,
+hooks/            hooks.json (SessionStart, UserPromptSubmit, PreCompact, PostToolUse, Stop), session_start.sh,
                   context/*.json, emission_check.py
 bin/synapse       CLI on the Bash PATH: where, setup, doctor, archive, recall,
-                  recall-check, recall-hint, pending, compact-guide, share, shared, extract
+                  recall-check, recall-hint, pending, compact-guide, nudge, checkpoint, share, shared, extract
                   (incl. check-candidates), vault,
                   backfill, migrate
 lib/              py.sh (finds Python 3.11+), synapse/ (resolver + memory pipeline)
-skills/           plan-session, end-session, recall, extract-session, share, emission-contract,
+skills/           plan-session, checkpoint, end-session, recall, extract-session, share, emission-contract,
                   workflow-recovery, language-sweep, setup, doctor
 templates/        PLAN.md, EXECUTION.md, NOTES.md
 tools/            build_context.py (rebuilds hooks/context from instructions/),
                   run-evals.sh (guarded eval runner), run-bench.sh (with vs without
                   Synapse), eval-report.py, build_eval_home.py, live-check-share.sh,
-                  context-cost.py
+                  live-check-extract.sh, live-check-compact.sh, context-cost.py
 tests/            unit tests (python -m unittest discover -s tests)
 evals/            claude plugin eval suite with a no-plugin baseline (core loop, role agents,
                   triggers, teams; run locally, results gitignored)

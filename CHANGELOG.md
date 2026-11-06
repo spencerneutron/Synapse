@@ -1,5 +1,110 @@
 # Changelog
 
+## 2.6.0 — 2026-11-06 — Continuation assist
+
+No store schema change; update with `claude plugin marketplace update
+synapse` and `claude plugin update synapse@synapse`, then start new sessions.
+The design is `docs/design/continuation-assist.md`.
+
+### Added
+
+- **`/synapse:checkpoint`.** Writes `## Resume` in
+  `.claude-work/current/EXECUTION.md` and appends to the working
+  `.claude-work/current/NOTES.md`: facts the user stated, patterns, decision
+  rationale, open questions, deferred and blocked work. It does not end the
+  turn and is safe to run twice. At the end it says once that `/clear` costs
+  nothing after a checkpoint and `/compact` loses detail, then work goes on.
+  `synapse checkpoint --stamp` writes `Checkpoint written: YYYY-MM-DD HH:MM
+  +HH:MM` in the Resume section, because the model does not know the clock
+  time and the resume pointer needs a stamp it can parse. Without a stamp
+  the pointer uses the file's modification time.
+- **Resume pointer.** On SessionStart after `compact` or `clear`, one line
+  names `.claude-work/current/EXECUTION.md` `## Resume` and when it was
+  written. It is silent for other sources. It points; it inlines nothing.
+- **Context-size nudge.** The nudge hook reads the exact context from the
+  last assistant `usage` in the transcript (input + cache read + cache
+  creation), from the tail of the file only (64 KiB chunks, 2 MiB cap). At
+  60% and at 90% of `[nudge] context_window` (default 300000; `0` turns it
+  off) it adds one line. It fires again only after the context has dropped
+  below 60% (after a compaction), at most 3 times per session, in the main
+  session only.
+- **Resume-time line.** On UserPromptSubmit, when the last request is older
+  than the cache lifetime in use (1 hour or 5 minutes, from
+  `usage.cache_creation`; unknown counts as 1 hour) and the context is at
+  least 60% of the window, one line states the idle time, that the cache
+  expired, about how many tokens the next request rewrites, and that a
+  checkpoint before stepping away keeps `/clear` free.
+- All three context features run inside the existing `synapse nudge --hook`
+  process (`lib/synapse/continuation.py`). There is no new hook entry, no
+  new matcher, and no new process start. The hook still exits 0, never
+  blocks or returns a decision, stays silent on any error, and uses no
+  Ollama or database.
+- `tools/live-check-compact.sh` (paid, `--yes`, about $0.55 per run) checks
+  what survives automatic compaction in a headless session.
+
+### Changed
+
+- `/synapse:end-session` step 4 starts from the working `NOTES.md` and
+  appends `<!-- merged into NOTES_<id> -->`; the next checkpoint starts the
+  file fresh. No archive or extractor code changed, and there is no
+  `CHECKPOINTS.md`.
+- `instructions/core.md` has a Checkpoint row in Session Lifecycle and one
+  Token / Context bullet (8,323 to 8,615 characters).
+- `tools/context-cost.py` counts cold resumes (gap longer than the cache
+  lifetime, cache writes above reads, at least 1,000 writes) with their
+  cost. It now dedupes entries by uuid, because Claude Code copies earlier
+  entries into the same transcript; on a 203 MB local transcript
+  compactions went from 6 to 5. An unreadable transcript path is an error
+  (exit 1, stderr names the path) instead of an all-zero report, and a file
+  with no requests prints a numbers-only diagnostic on stderr. Sub-agent
+  transcripts are read recursively (Workflow agents), skipping
+  `journal.jsonl`. Checkpoints count only real invocations (the slash
+  command or a Skill call), not prose or compaction summaries that name
+  it. Timestamps without an offset are read as UTC.
+
+### Correction to earlier figures
+
+- The figures for issue #11 in `docs/design/cost-sweep.md` and
+  `docs/design/continuation-assist.md` were overstated about 2.4 times: the issue body counted
+  transcript lines, and Claude Code repeats one response's usage on 2 to 3
+  lines. Corrected (maintainer's re-measurement, #11 comments, 2026-11-06
+  21:28 UTC): Session A 317 main requests (not 757), 114.4M main cache
+  reads (not 275M), mean context 366k (not 364k), main share of cost
+  85.6%; Session B 187 requests (not 452), 47.6M (not 114M), 66.5% once
+  its six workflow agents are counted (21:38 UTC comment; the issue body's
+  "9-agent workflow plus 3 Opus reviews" was 9 agents in all). Two
+  more sessions: C 91.0% and D 95.6%, each auto-compacted once (385k and
+  307k). The finding stands: the main session re-reading its context is 66
+  to 96 percent of cost in six sessions on two machines that used
+  sub-agents (this Mac's three largest: 94.8%, 88.5%, and 100% in one
+  with none). The design
+  docs are fixed; older entries below are not rewritten.
+- Auto-compaction does not run only near 967k: observed runs on the
+  maintainer's machines were at 307k, 385k, 393k, 461k, 854k and 968k. The
+  300k recommendation stays as the setting that makes it predictable.
+
+### Measured
+
+- **Hook latency** on macOS (20 runs, 206 MB synthetic transcript), median
+  and max in ms, after the review fixes: PostToolUse 55 and 56,
+  UserPromptSubmit 56 and 58, SessionStart `compact` 53 and 57. The 2.5.1
+  baseline was 48 ms median on the same transcript.
+- **Compaction retention** (`tools/live-check-compact.sh`, one run, Sonnet,
+  $0.52, 2026-11-06). Auto compaction went from 76,614 to 21,121 tokens. All
+  7 planted words (a stated fact, a decision with its rationale, an open
+  question) were recalled afterwards. The planted turn was not among the
+  messages compaction keeps word for word, so the 5,037-character summary
+  carried them. Hook stdout, including the PreCompact guidance, is not
+  recorded in transcripts, so this checks retention, not the hook's effect
+  on it.
+
+### Unverified
+
+- Hook latency on Windows.
+- The effect on real long sessions. After installing, run
+  `tools/context-cost.py` on your own transcripts to measure it.
+- The checkpoint skill's live behavior. There is no eval case for it yet.
+
 ## 2.5.1 — 2026-11-06 — A hook for the dispatch rule
 
 No store schema change; update with `claude plugin marketplace update

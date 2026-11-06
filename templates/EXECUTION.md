@@ -1,6 +1,7 @@
 # EXECUTION — <active task> (<YYYY-MM-DD>)
 
-<!-- The active task and its immediate steps. Update often. Standing rules and
+<!-- /synapse:checkpoint writes a "## Resume" section right after the title.
+The active task and its immediate steps. Update often. Standing rules and
 decisions live in PLAN.md. Each step names who runs it: implementer, verifier,
 researcher, reviewer, scout (the synapse: roles), or main. A step without a
 role is a brief to write, not a step to run. -->

@@ -61,6 +61,7 @@ vault = "Synapse"
 
 [nudge]
 # calls = 5            # hands-on calls in a row before the dispatch reminder; 0 turns it off
+# context_window = 300000   # tokens; context nudge at 60% and 90% of it, and the resume-time line; 0 turns both off
 
 [extract]
 # remind = true        # at session start, mention archived sessions never extracted
@@ -136,6 +137,8 @@ def settings() -> dict:
                           lambda v: isinstance(v, int) and v >= 0, "a whole number, 0 or more"),
         "nudge_calls": value("nudge", "calls", 5, lambda v: isinstance(v, int) and v >= 0,
                              "a whole number, 0 or more"),
+        "context_window": value("nudge", "context_window", 300000,
+                                lambda v: isinstance(v, int) and v >= 0, "a whole number, 0 or more"),
         "extract_remind": value("extract", "remind", True, lambda v: True, "true or false"),
         "facts_at_start": value("recall", "facts", True, lambda v: True, "true or false"),
     }
@@ -319,6 +322,12 @@ def nudge_state(session_id: str) -> Path:
     """Count of consecutive hands-on main-session tool calls (one byte per call)."""
     safe = "".join(c for c in session_id if c.isalnum() or c in "-_")
     return home() / "state" / f"nudge-{safe}.count"
+
+
+def context_state(session_id: str) -> Path:
+    """Context-size nudge state for a session: fired levels and fire count (JSON)."""
+    safe = "".join(c for c in session_id if c.isalnum() or c in "-_")
+    return home() / "state" / f"context-{safe}.json"
 
 
 def teams() -> dict[str, Team]:

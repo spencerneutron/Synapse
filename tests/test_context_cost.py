@@ -91,13 +91,122 @@ class ContextCostTests(unittest.TestCase):
              "compactMetadata": {"trigger": "auto", "preTokens": 900, "postTokens": 100}},
             {"type": "system", "subtype": "other"},
             asst("m1", content=[{"type": "tool_use", "name": "Skill", "input": {"skill": "synapse:checkpoint"}}]),
-            {"type": "user", "message": {"content": "run synapse:checkpoint now"}},
+            {"type": "user", "message": {"content": "<command-name>/synapse:checkpoint</command-name>"}},
         ])
         r = cc.analyze(self.main)
         self.assertEqual(r["checkpoints"], 2)
         self.assertEqual(len(r["compactions"]), 1)
         c = r["compactions"][0]
         self.assertEqual((c["trigger"], c["pre_tokens"], c["post_tokens"]), ("auto", 900, 100))
+
+    def test_duplicate_compact_boundary_counted_once(self):
+        cb = {"type": "system", "subtype": "compact_boundary", "uuid": "u1",
+              "timestamp": "2026-01-01T00:00:00Z",
+              "compactMetadata": {"trigger": "auto", "preTokens": 900, "postTokens": 100}}
+        nouuid = {k: v for k, v in cb.items() if k != "uuid"}
+        other = dict(cb, uuid="u2", timestamp="2026-01-01T01:00:00Z")
+        ck = {"type": "user", "uuid": "c1", "message": {"content": "<command-name>/synapse:checkpoint</command-name>"}}
+        write(self.main, [cb, cb, nouuid, nouuid, other, ck, ck])
+        r = cc.analyze(self.main)
+        self.assertEqual(len(r["compactions"]), 3)  # u1, no-uuid key, u2
+        self.assertEqual(r["checkpoints"], 1)
+
+    def test_cold_resumes(self):
+        def ts(minutes):
+            return f"2026-01-01T{minutes // 60:02d}:{minutes % 60:02d}:00Z"
+        def a(mid, read, write, minutes, hour=False):
+            return asst(mid, 0, read, write, 1, ts=ts(minutes), split=(write, 0) if hour else (0, write))
+        write(self.main, [
+            a("a0", 5000, 100, 0),
+            a("a1", 5000, 3000, 2),                # (a) warm: 2 min gap
+            a("a2", 100, 5000, 12),                # (b) 10 min on 5m TTL, writes >> reads: cold
+            a("a3", 100, 5000, 22, hour=True),     # cold (TTL known 5m); switches to 1h
+            a("a4", 100, 5000, 32, hour=True),     # (c) 10 min on 1h TTL: not cold
+            a("a5", 100, 5000, 152, hour=True),    # (d) 2 h on 1h TTL, writes >> reads: cold
+            a("a6", 9000, 2000, 400, hour=True),   # (e) gap > TTL but reads >> writes
+            a("a7", 100, 500, 700, hour=True),     # writes under 1000: not cold
+        ])
+        cr = cc.analyze(self.main)["cold_resumes"]["main"]
+        self.assertEqual([e["time"][11:16] for e in cr["events"]], ["00:12", "00:22", "02:32"])
+        self.assertEqual([e["gap_min"] for e in cr["events"]], [10.0, 10.0, 120.0])
+        self.assertEqual(cr["count"], 3)
+        self.assertEqual(cr["cache_write_tokens"], 15000)
+        self.assertEqual(cr["events"][0]["context"], 5100)
+        # per request: read 100 * 0.1 + out 1 * 5 = 15; writes 5000 at 1.25 (5m) or 2.0 (1h)
+        self.assertEqual(cr["cost_base_equiv"], 45 + 5000 * 1.25 + 2 * 5000 * 1.25)
+        self.assertEqual(cr["cost_base_equiv_1h2x"], 45 + 5000 * 1.25 + 2 * 5000 * 2.0)
+        self.assertEqual(cc.analyze(self.main)["cold_resumes"]["subagent"]["count"], 0)
+
+    def test_cold_resume_gap_is_per_file(self):
+        write(self.main, [asst("m1", 0, 5000, 100, 1, ts="2026-01-01T00:00:00Z")])
+        write(self.dir / "sess" / "subagents" / "a.jsonl",
+              [asst("s1", 0, 100, 5000, 1, ts="2026-01-01T03:00:00Z")])  # first in its file
+        r = cc.analyze(self.main)["cold_resumes"]
+        self.assertEqual(r["all"]["count"], 0)
+
+    def run_tool(self, *paths):
+        return subprocess.run([sys.executable, str(TOOL), *map(str, paths)],
+                              capture_output=True, text=True)
+
+    def test_missing_path_is_an_error(self):
+        write(self.main, [asst("m1", 1, 1, 0, 1)])
+        missing = self.dir / "nope.jsonl"
+        for flags in ((), ("--json",)):
+            p = subprocess.run([sys.executable, str(TOOL), str(self.main), str(missing), *flags],
+                               capture_output=True, text=True)
+            self.assertEqual(p.returncode, 1)
+            self.assertIn("error: cannot read transcript: " + str(missing), p.stderr)
+            self.assertEqual(p.stdout, "")
+
+    def test_zero_request_diagnostic(self):
+        empty = self.dir / "empty.jsonl"
+        write(empty, [])
+        p = self.run_tool(empty)
+        self.assertEqual(p.returncode, 0)
+        self.assertIn("lines 0, json objects 0, assistant entries 0, entries with message.usage 0", p.stderr)
+        odd = self.dir / "odd.jsonl"
+        write(odd, [{"type": "assistant", "message": {"id": "x"}}, {"type": "user", "message": {"usage": {}}},
+                    {"a": 1}], extra_raw=["not json", "[1]"])
+        p = self.run_tool(odd)
+        self.assertIn("lines 5, json objects 3, assistant entries 1, entries with message.usage 1", p.stderr)
+        self.assertNotIn(SECRET, p.stdout + p.stderr)
+        write(self.main, [asst("m1", 1, 1, 0, 1)])
+        self.assertEqual(self.run_tool(self.main).stderr, "")
+
+    def test_nested_workflow_agents_and_journal(self):
+        sub = self.dir / "sess" / "subagents"
+        write(self.main, [asst("m1", 0, 100, 0, 1)])
+        write(sub / "a.jsonl", [asst("s1", 0, 200, 0, 1)])
+        write(sub / "workflows" / "run-1" / "agent-1.jsonl", [asst("w1", 0, 300, 0, 1)])
+        write(sub / "workflows" / "run-1" / "journal.jsonl", [asst("j1", 0, 9999, 0, 1)])
+        write(sub / "workflows" / "run-1" / "empty.jsonl", [{"type": "user", "message": {"content": "x"}}])
+        r = cc.analyze(self.main)
+        self.assertEqual(r["subagent_files"], 2)  # journal and request-less files excluded
+        self.assertEqual(r["subagent"]["requests"], 2)
+        self.assertEqual(r["subagent"]["cache_reads"], 500)
+
+    def test_checkpoint_false_positives_not_counted(self):
+        cmd = "<command-name>/synapse:checkpoint</command-name>"
+        write(self.main, [
+            {"type": "user", "message": {"content": "please run synapse:checkpoint later"}},
+            {"type": "user", "isCompactSummary": True, "message": {"content": cmd}},
+            {"type": "user", "isMeta": True, "message": {"content": cmd}},
+            {"type": "user", "message": {"content": [{"type": "text", "text": "see " + cmd}]}},  # counts
+            asst("m1", content=[{"type": "tool_use", "name": "Skill", "input": {"skill": "checkpoint"}}]),
+            asst("m2", content=[{"type": "tool_use", "name": "Skill", "input": {"skill": "synapse:end-session"}}]),
+        ])
+        self.assertEqual(cc.analyze(self.main)["checkpoints"], 2)
+
+    def test_mixed_naive_and_aware_timestamps(self):
+        write(self.main, [
+            asst("a", 0, 100, 0, 1, ts="2026-01-01T00:00:00Z"),
+            asst("b", 0, 100, 5000, 1, ts="2026-01-01T02:00:00"),            # naive = UTC
+            asst("c", 0, 100, 5000, 1, ts="2026-01-01T05:00:00+02:00"),       # 03:00 UTC, before 04:30
+            asst("d", 0, 100, 5000, 1, ts="2026-01-01T04:30:00Z"),
+        ])
+        r = cc.analyze(self.main)
+        self.assertEqual([x["time"][11:16] for x in r["request_list"]], ["00:00", "02:00", "03:00", "04:30"])
+        self.assertEqual(r["cold_resumes"]["main"]["count"], 3)
 
     def test_mean_and_p90_context(self):
         write(self.main, [asst(f"m{i}", i * 10, 0, 0, 0) for i in range(1, 11)])  # 10..100

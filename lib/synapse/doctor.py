@@ -121,7 +121,11 @@ def check_runtime(rep: Report, r: paths.Resolved) -> None:
                 f"recall hints {'on' if st['recall_auto'] else 'off'} (min_score {st['min_score']}, "
                 f"max_hits {st['max_hits']}); extraction reminder {'on' if st['extract_remind'] else 'off'}; "
                 f"facts at session start {'on' if st['facts_at_start'] else 'off'}; "
-                f"nudge {'off' if not st['nudge_calls'] else 'at %d calls' % st['nudge_calls']}")
+                f"nudge {'off' if not st['nudge_calls'] else 'at %d calls' % st['nudge_calls']}; "
+                + ("context nudge off" if not st['context_window'] else
+                   "context nudge at %dk/%dk (set [nudge] context_window to your "
+                   "auto-compact window)" % (st['context_window'] * 0.6 / 1000,
+                                             st['context_window'] * 0.9 / 1000)))
     except SystemExit as e:
         rep.add("error", "triggers", str(e))
     from archive import discover_sessions

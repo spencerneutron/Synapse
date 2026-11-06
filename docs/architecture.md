@@ -24,24 +24,32 @@ hooks enforce what instructions can only request.
 3. **Emit** (every turn end). The `synapse:emission-contract` skill loads just before
    the user-facing message. A Stop hook checks the message and forces one
    rewrite on a violation.
-4. **Archive** (`/synapse:end-session`). `synapse archive` copies `PLAN` and
+4. **Checkpoint** (`/synapse:checkpoint`, any time). Writes `## Resume` in
+   `EXECUTION.md` and appends to the working `NOTES.md` (stated facts,
+   patterns, decision rationale, open questions, deferred and blocked work)
+   without ending the turn; idempotent. After it, `/clear` loses nothing
+   and `/compact` is lossy. `synapse checkpoint --stamp` records the time.
+   After `/clear` or a compaction, SessionStart adds a one-line pointer to
+   the Resume section.
+5. **Archive** (`/synapse:end-session`). `synapse archive` copies `PLAN` and
    `EXECUTION` into the active store as `archive/<project>/<FILE>_<id>.md`
-   under a session ID such as `2026-05-01-1515`; the skill adds `NOTES`.
-5. **Extract** (`/synapse:extract-session`). At teardown, the
+   under a session ID such as `2026-05-01-1515`; the skill adds `NOTES`,
+   starting from the working `NOTES.md` that checkpoints filled.
+6. **Extract** (`/synapse:extract-session`). At teardown, the
    `synapse:extractor` sub-agent reads the archive on disk, without the
    conversation, and proposes Decision, Pattern, and Fact notes; the user
    confirms once. Facts the user stated reach it through NOTES
    `## User-stated facts`.
    Promoted notes and a Session note go to the vault; the archive and new
    notes are embedded; a `.processed/<id>.json` marker records the run.
-6. **Recall** (`/synapse:recall`). Later sessions, in any project, query the
+7. **Recall** (`/synapse:recall`). Later sessions, in any project, query the
    active store's vector DB and get ranked snippets with source paths:
    pointers into the archive, not loaded context. A `UserPromptSubmit` hook
    also adds up to three such pointers to a prompt when something in the
    store scores at least 0.70, and a session-start note names archived
    sessions never extracted. Another session-start hook lists the project's
    active Facts from the DB (`synapse facts --hook`).
-7. **Share** (`/synapse:share`, optional). Chosen Decisions, Patterns, and Facts pass
+8. **Share** (`/synapse:share`, optional). Chosen Decisions, Patterns, and Facts pass
    a scrub gate and the user's approval, then go to a team folder (a git
    repo or a synced folder). Each member's sessions sync it in the
    background and index it locally, so teammates' notes join recall,
@@ -70,6 +78,7 @@ it harvests finished agents' results from disk before anything is relaunched.
 | Hooks | `emission_check.py` (Stop) | Blocks a non-compliant final message once and asks for a rewrite; allows the stop on `stop_hook_active` or any internal error |
 | Hooks | `synapse recall-hint` (UserPromptSubmit), `synapse pending --hook` and `synapse shared hook` (SessionStart) | Automatic recall hints, the extraction reminder, and the team sync (started in the background); all fail silently |
 | Hooks | `synapse compact-guide --hook` (PreCompact) | Tells the compaction summary what to keep and drop; defers to the user's `/compact` text; never blocks; fails silently |
+| Hooks | `synapse nudge --hook` (PostToolUse, PostToolUseFailure, UserPromptSubmit, SessionStart) | Dispatch reminder after consecutive hands-on calls; context-size nudge at 60% and 90% of `[nudge] context_window`, read from the transcript's tail; resume-time line when the cache expired on a large context; resume pointer after `compact` or `clear`. One process, no new matcher in 2.6.0; never blocks; no Ollama or DB; silent on any error |
 | CLI | `bin/synapse` → `lib/synapse/` | On the Bash PATH from any folder: `where`, `setup`, `doctor`, `archive`, `recall`, `recall-check`, `recall-hint`, `pending`, `compact-guide`, `extract` (incl. `upgrade`, `supersede`, `check-candidates`), `vault`, `share` (`scrub`, `lint`, `add`), `shared` (`init`, `join`, `sync`, `status`, `retract`, `push`), `backfill`, `migrate`; `lib/py.sh` finds Python 3.11+ |
 | Resolver | `lib/synapse/paths.py` | The only code that decides locations: home, store, project, archive, DB, vault |
 | Store | `~/.claude/synapse/stores/<store>/archive/<project>/` | Canonical session history |
@@ -199,7 +208,7 @@ V1 enforced the output contract with a hook but left recall, extraction, and
 role selection to instructions. V2 took each seam below in a measured slice
 ([plan and results](design/v2.md)); the last column is what could come next.
 
-| Seam | Today (2.5) | Further option | Trade-off |
+| Seam | Today (2.6) | Further option | Trade-off |
 |------|------------|-----------|-----------|
 | Recall triggering | **Done in V2 slice D:** a `UserPromptSubmit` hook adds up to three hints scoring ≥ 0.70, once per session, failing silently | Per-project thresholds | Calibrated on the author's store: 0 of 24 unrelated prompts hinted |
 | Extraction | **Done in V2 slice D:** a session-start reminder lists archived sessions never extracted; the user still runs `/synapse:extract-session` | Auto-embed pending archives without promotion | Nothing is forgotten silently; the user still confirms every note |
@@ -208,7 +217,7 @@ role selection to instructions. V2 took each seam below in a measured slice
 | Retrieval | **Done in V2 slice 1:** hybrid keyword + vector with reciprocal rank fusion; exact, case-insensitive filters inside the search | Tuned chunking; a cross-encoder re-ranker | Measured with `synapse recall-check` |
 | Memory scope | **Done in V2 slice E:** optional teams share Decisions and Patterns through a git repo or a synced folder, behind a scrub gate and per-note approval, with provenance and local-first ranking | Encryption, access control beyond the git host's | Team leverage; a leak cannot be unshared from teammates' clones. **Gate:** the share step scrubs paths, secrets, identifiers, and session-local references (bare `#17`, "Wave B", "this session"), and sync re-checks every incoming note |
 | Evaluation | **Done in V2 slice A:** a `claude plugin eval` suite (core loop, role agents, triggers, teams) run with and without Synapse by `tools/run-bench.sh`, reported by `tools/eval-report.py` ([V2 plan](design/v2.md)) | Evals in CI; more cases per seam | Each run costs money; benchmark upkeep is real work |
-| Cost | **Done in 2.5.0:** the main session conducts and roles work (more than about five tool calls or three files go to a role); extraction runs in a fresh context as `synapse:extractor`; a PreCompact hook guides the compaction summary; `tools/context-cost.py` measures the baseline ([design](design/cost-sweep.md)) | Continuation assist ([design](design/continuation-assist.md)) | Smaller main context; one more agent file to maintain |
+| Cost | **Done in 2.5.0:** the main session conducts and roles work (more than about five tool calls or three files go to a role); extraction runs in a fresh context as `synapse:extractor`; a PreCompact hook guides the compaction summary; `tools/context-cost.py` measures the baseline ([design](design/cost-sweep.md)). **Done in 2.6.0:** continuation assist: `/synapse:checkpoint`, a resume pointer after `/clear` or compaction, a context-size nudge and a resume-time line in the nudge hook ([design](design/continuation-assist.md)) | Per-project windows; a checkpoint eval case | Smaller main context; one more agent file to maintain |
 
 Closed since V1: v1.5 merged the instruction files and split out the platform
 conventions; v1.6 packaged Synapse as a user-scope plugin with a global store

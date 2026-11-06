@@ -4,6 +4,32 @@ Status: **proposal, for review.** No code. Written 2026-11-06. Every hook
 behavior below was checked that day against the Claude Code docs (Claude
 Code 2.1.314 installed); each claim links to its source.
 
+## Status (2.6.0)
+
+Shipped in 2.6.0 (see CHANGELOG.md). It differs from the phases below by
+the maintainer's decisions of 2026-11-06:
+
+- No `CHECKPOINTS.md`. A checkpoint writes `## Resume` in `EXECUTION.md` and
+  appends to the working `NOTES.md`; `/synapse:end-session` starts from that
+  file.
+- Checkpoint and continue: `/synapse:checkpoint` does not end the turn.
+- The context nudge uses the PostToolUse channel (the existing nudge hook),
+  at 60% and 90% of `[nudge] context_window`.
+- Pointers only. The resume pointer names the Resume section; nothing is
+  inlined.
+- The resume-time line (cache expired on a large context) is on
+  UserPromptSubmit in the same hook process.
+
+Compaction retention, measured with `tools/live-check-compact.sh` (one run,
+Sonnet, $0.52, 2026-11-06): auto compaction went from 76,614 to 21,121
+tokens, and all 7 planted words (a fact, a decision with its rationale, an
+open question, stated only in conversation) were recalled. The planted turn
+was not kept word for word, so the 5,037-character summary carried them.
+Hook stdout is not in transcripts, so this does not show the PreCompact
+hook's effect.
+
+The phases below are the original proposal and are not rewritten.
+
 Issue: [spencerneutron/Synapse#11](https://github.com/spencerneutron/Synapse/issues/11).
 
 ---
@@ -13,13 +39,31 @@ Issue: [spencerneutron/Synapse#11](https://github.com/spencerneutron/Synapse/iss
 Issue #11 records two parallel Opus sessions that used up the plan
 allowance. Their transcripts show:
 
-- Main contexts grew to 606k and 425k tokens (364k and 253k average per
-  request). Neither session compacted or restarted.
-- Main-session cache reads were 275M and 114M tokens: about 90% and 70% of
-  each session's cost. Subagents were the minority.
+- Main contexts grew to 605k and 431k tokens (366k and 261k average per
+  request, 317 and 187 main requests). Neither session compacted or
+  restarted.
+- Main-session cache reads were 114.4M and 47.6M tokens (90.6% and 74.6% of
+  cache reads); the main session was 85.6% and 66.5% of each session's
+  cost, B's six workflow agents included (#11 comment, 2026-11-06 21:38
+  UTC). The main session re-reading its context is 66 to 96 percent of
+  cost in the six sessions
+  on two machines that used sub-agents (A to D here; this Mac's three
+  largest sessions, measured 2026-11-06, at 94.8% and 88.5%), and 100
+  percent in one that used none.
 - The main session did the hands-on loops itself (Session A: 197 Bash,
   43 Edit, 42 PowerShell calls). Every call re-reads the whole context.
-- One autonomous turn ran for 78 minutes and read about 100M cache tokens.
+- One autonomous turn ran for 78 minutes. The issue said it read about
+  100M cache tokens; that figure was not re-measured and probably carries
+  the overcount below.
+
+Source for the corrected figures: the maintainer's re-measurement in the
+comments on #11 (2026-11-06, 21:28 UTC; it supersedes the 21:26 comment).
+The issue body counted transcript lines, and Claude Code repeats one
+response's usage on 2 to 3 lines, so its absolute figures (757 and 452
+requests, 275M and 114M cache reads) were overstated about 2.4 times. The
+sessions' shape and the main finding hold. Two more sessions from the same
+project (C: 479 requests, mean 287k, 91.0% of cost; D: 297 requests, mean
+226k, 95.6%) each auto-compacted once, at 385k and 307k.
 
 The maintainer rejected ending sessions early. The direction is a
 **continuation assist**: shrink the context while the work continues,
@@ -31,9 +75,11 @@ without losing knowledge, and feed what it saves into the real
 Opus 4.7 and later run with a native 1M window and auto-compact "at about
 967K tokens by default"
 ([model-config: default auto-compact thresholds](https://code.claude.com/docs/en/model-config#default-auto-compact-thresholds)).
-Sessions at 606k and 425k are far from that point. So a hook that acts
-only at compaction does nothing for #11's sessions unless the context
-shrinks earlier: the user runs `/compact` or `/clear`, or lowers the
+Sessions at 605k and 431k are far from that point. The threshold is not
+fixed near 968k in practice: auto-compactions on the maintainer's machines
+ran at 307k, 385k, 393k, 461k, 854k and 968k. So a hook that acts only at
+compaction has real occasions to run, but it cannot be relied on for
+sessions like #11's unless the context shrinks earlier: the user runs `/compact` or `/clear`, or lowers the
 auto-compact window with `/autocompact`, `autoCompactWindow`, or
 `CLAUDE_CODE_AUTO_COMPACT_WINDOW`
 ([model-config: set the auto-compact window](https://code.claude.com/docs/en/model-config#set-the-auto-compact-window)).
@@ -61,8 +107,8 @@ Every phase below is designed around that fact.
 
 Weights as in #11: cache read 0.1x, cache write 1.25x, output 5x of base
 input. A main request at context C costs about 0.1·C base-equivalent
-tokens. Session A: 757 requests × 364k average = 275M cache reads, which
-matches #11. **Main-session cost scales with the average context per
+tokens. Session A: 317 requests × 366k average = 116M cache reads, which
+matches the measured 114.4M. **Main-session cost scales with the average context per
 request**, so halving that average roughly halves the dominant cost.
 
 Shrinking has its own price:
@@ -76,7 +122,7 @@ Shrinking has its own price:
 Break-even for checkpoint + `/clear`, at C = 400k and a restart context of
 60k (#11's sessions started at 58–59k): each later request saves about
 0.1 × 340k = 34k, so the checkpoint pays for itself after about 6 requests.
-Session A made 757.
+Session A made 317.
 
 Two cache effects make this larger:
 
@@ -85,7 +131,7 @@ Two cache effects make this larger:
   ([prompt-caching: which TTL](https://code.claude.com/docs/en/prompt-caching#which-ttl-each-request-gets)).
   #11's sessions were in overage and soft-paused for 70 and 159 minutes.
   The first request after such a pause rewrites the whole context:
-  606k × 1.25 ≈ 758k base-equivalent, as much as 12 cached requests at
+  605k × 1.25 ≈ 756k base-equivalent, as much as 12 cached requests at
   that size. A
   checkpoint and `/clear` before a pause avoids it. The built-in `/usage`
   already suggests "Compact before you step away"
@@ -452,7 +498,7 @@ Zero-code alternative, measured first: document `/autocompact <tokens>`
 as Synapse's recommended setting (for example 300k), so compaction comes
 early and Phase 1 shapes it. Rough illustration only: with a 300k window
 and about 40k after each compaction, the context saw-tooths around an
-average near 170k instead of Session A's 364k. That cuts cache reads by
+average near 170k instead of Session A's 366k. That cuts cache reads by
 about half, minus about two compactions of about 100k each. It costs a
 lossy summary each time instead of a deliberate checkpoint. Synapse would
 document the setting, not write it: it is the user's setting.
@@ -529,7 +575,7 @@ Medium: these change behavior on every session.
 ### Measurement
 
 - Main-session tool calls per session by tool (Bash, Edit, PowerShell) and
-  the main share of cost, before and after (#11's 90% and 70%).
+  the main share of cost, before and after (#11's 85.6% and 66.5%).
 - An eval case with a failing test to fix: a grader checks for a
   `synapse:implementer` dispatch (`arm: with-only`) and caps main-session
   Bash calls. Run the `hard` and `guard` tags to check for regressions.

@@ -5,8 +5,9 @@ context-cost.py — token and cost numbers from Claude Code transcripts.
   python3 tools/context-cost.py TRANSCRIPT... [--json]
 
 Each TRANSCRIPT is a main transcript (projects/<project>/<session>.jsonl).
-Subagent transcripts in the sibling folder <session>/subagents/*.jsonl are
-read too. The line schema is undocumented, so any line that does not parse or
+Subagent transcripts under the sibling folder <session>/subagents/ are read
+too, recursively (Workflow agents sit in subagents/workflows/<run-id>/);
+journal.jsonl files are lifecycle ledgers and are skipped. The line schema is undocumented, so any line that does not parse or
 lacks the fields is skipped.
 
 Each request counts once, keyed on message.id: one response is written as
@@ -21,12 +22,14 @@ import argparse
 import json
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 W_READ, W_WRITE_5M, W_WRITE_1H, W_OUT = 0.1, 1.25, 2.0, 5.0
+TTL_5M, TTL_1H, COLD_MIN_WRITE = 300, 3600, 1000
 MODEL_OK = re.compile(r"^[A-Za-z0-9._\[\]-]{1,64}$")
-CHECKPOINT = "synapse:checkpoint"
+CHECKPOINT_SKILLS = ("synapse:checkpoint", "checkpoint")
+CHECKPOINT_COMMAND = re.compile(r"<command-name>\s*/?(?:synapse:)?checkpoint\s*</command-name>")
 
 
 def _int(v):
@@ -39,9 +42,16 @@ def _time(v):
     if not isinstance(v, str):
         return None
     try:
-        return datetime.fromisoformat(v.replace("Z", "+00:00")).isoformat()
+        dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
     except ValueError:
         return None
+    if dt.tzinfo is None:  # naive stamps are UTC
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat()
+
+
+def _sort_key(r):
+    return datetime.fromisoformat(r["time"]) if r["time"] else datetime.min.replace(tzinfo=timezone.utc)
 
 
 def _lines(path):
@@ -56,6 +66,28 @@ def _lines(path):
                     yield obj
     except OSError:
         return
+
+
+def count_lines(path):
+    """Numbers for a diagnostic when a transcript yields no requests."""
+    n = {"lines": 0, "objects": 0, "assistant": 0, "usage": 0}
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for raw in fh:
+                n["lines"] += 1
+                try:
+                    obj = json.loads(raw)
+                except ValueError:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+                n["objects"] += 1
+                n["assistant"] += obj.get("type") == "assistant"
+                msg = obj.get("message")
+                n["usage"] += isinstance(msg, dict) and isinstance(msg.get("usage"), dict)
+    except OSError:
+        pass
+    return n
 
 
 def _request(entry):
@@ -75,6 +107,11 @@ def _request(entry):
         h1 = _int(cc.get("ephemeral_1h_input_tokens"))
         if "ephemeral_5m_input_tokens" in cc:
             m5 = _int(cc.get("ephemeral_5m_input_tokens"))
+    ttl = None
+    if h1:
+        ttl = TTL_1H
+    elif m5:
+        ttl = TTL_5M
     h1 = h1 or 0
     if m5 is None:
         m5 = max(0, total - h1)
@@ -91,6 +128,7 @@ def _request(entry):
         "cache_write_1h": h1,
         "cache_write_5m": m5,
         "output": _int(usage.get("output_tokens")),
+        "ttl": ttl,
     }
 
 
@@ -104,48 +142,76 @@ def _is_checkpoint_call(entry):
         if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") == "Skill":
             inp = b.get("input")
             skill = inp.get("skill") if isinstance(inp, dict) else None
-            if isinstance(skill, str) and CHECKPOINT in skill:
+            if skill in CHECKPOINT_SKILLS:
                 n += 1
     return n
 
 
 def _is_checkpoint_prompt(entry):
+    """A real /synapse:checkpoint command; not meta entries, compaction
+    summaries or prose that mentions the name."""
+    if entry.get("isMeta") or entry.get("isCompactSummary"):
+        return 0
     msg = entry.get("message")
     content = msg.get("content") if isinstance(msg, dict) else None
     if isinstance(content, str):
-        return int(CHECKPOINT in content)
+        return int(bool(CHECKPOINT_COMMAND.search(content)))
     if isinstance(content, list):
         for b in content:
             if isinstance(b, dict) and b.get("type") == "text" \
-                    and isinstance(b.get("text"), str) and CHECKPOINT in b["text"]:
+                    and isinstance(b.get("text"), str) \
+                    and CHECKPOINT_COMMAND.search(b["text"]):
                 return 1
     return 0
 
 
+def _first_seen(e, seen):
+    """False when this entry's uuid was already counted (a transcript can
+    repeat earlier lines, e.g. after a resume); entries without uuid pass."""
+    u = e.get("uuid")
+    if not isinstance(u, str) or not u:
+        return True
+    if u in seen:
+        return False
+    seen.add(u)
+    return True
+
+
 def read_file(path, role, requests, events):
+    seen = events["seen"]
     for e in _lines(path):
         t = e.get("type")
+        fresh = _first_seen(e, seen) if t in ("assistant", "user", "system") else True
         if t == "assistant":
             r = _request(e)
             if r:
                 mid, req = r
                 req["role"] = role
+                req["file"] = str(path)
                 old = requests.get((str(path), mid))
                 if old is None or req["output"] >= old["output"]:
                     requests[(str(path), mid)] = req
-            events["checkpoints"] += _is_checkpoint_call(e)
+            if fresh:
+                events["checkpoints"] += _is_checkpoint_call(e)
         elif t == "user":
-            events["checkpoints"] += _is_checkpoint_prompt(e)
-        elif t == "system" and e.get("subtype") == "compact_boundary":
+            if fresh:
+                events["checkpoints"] += _is_checkpoint_prompt(e)
+        elif t == "system" and e.get("subtype") == "compact_boundary" and fresh:
             md = e.get("compactMetadata")
             md = md if isinstance(md, dict) else {}
             trig = md.get("trigger")
-            events["compactions"].append({
+            c = {
                 "time": _time(e.get("timestamp")),
                 "trigger": trig if trig in ("auto", "manual") else "unknown",
                 "pre_tokens": _int(md.get("preTokens")),
                 "post_tokens": _int(md.get("postTokens")),
-            })
+            }
+            key = (c["time"], c["trigger"], c["pre_tokens"])
+            if not (isinstance(e.get("uuid"), str) and e.get("uuid")):
+                if key in events["compact_keys"]:
+                    continue
+                events["compact_keys"].add(key)
+            events["compactions"].append(c)
 
 
 def percentile(values, p):
@@ -182,6 +248,40 @@ def stats(reqs):
     }
 
 
+def cold_resumes(reqs):
+    """Requests after an idle gap longer than the cache TTL whose writes
+    dwarf their reads. Gaps are per transcript file; the TTL comes from the
+    latest earlier request that reported a cache_creation split (else 5m)."""
+    by_file = {}
+    for r in reqs:
+        if r["time"]:
+            by_file.setdefault(r["file"], []).append(r)
+    found = []
+    for rows in by_file.values():
+        rows.sort(key=_sort_key)
+        ttl, prev = TTL_5M, None
+        for r in rows:
+            if prev is not None:
+                gap = (datetime.fromisoformat(r["time"])
+                       - datetime.fromisoformat(prev["time"])).total_seconds()
+                if gap > ttl and r["cache_write"] > r["cache_read"] \
+                        and r["cache_write"] >= COLD_MIN_WRITE:
+                    found.append((r, gap))
+            if r["ttl"]:
+                ttl = r["ttl"]
+            prev = r
+    found.sort(key=lambda x: _sort_key(x[0]))
+    rs = [r for r, _ in found]
+    return {
+        "count": len(found),
+        "cache_write_tokens": sum(r["cache_write"] for r in rs),
+        "cost_base_equiv": round(cost(rs, W_WRITE_5M), 1),
+        "cost_base_equiv_1h2x": round(cost(rs, W_WRITE_1H), 1),
+        "events": [{"time": r["time"], "gap_min": round(g / 60, 1), "context": r["context"]}
+                   for r, g in found],
+    }
+
+
 def share(part, whole):
     return round(100.0 * part / whole, 1) if whole else 0.0
 
@@ -189,13 +289,17 @@ def share(part, whole):
 def analyze(main_path):
     main_path = Path(main_path)
     requests = {}
-    events = {"checkpoints": 0, "compactions": []}
+    events = {"checkpoints": 0, "compactions": [], "seen": set(), "compact_keys": set()}
     read_file(main_path, "main", requests, events)
     sub_dir = main_path.with_suffix("") / "subagents"
-    sub_files = sorted(sub_dir.glob("*.jsonl")) if sub_dir.is_dir() else []
+    # Workflow agents sit deeper (subagents/workflows/<run-id>/*.jsonl); a
+    # journal.jsonl there is a lifecycle ledger, not a transcript.
+    sub_files = sorted(f for f in sub_dir.rglob("*.jsonl") if f.name != "journal.jsonl") \
+        if sub_dir.is_dir() else []
     for f in sub_files:
         read_file(f, "subagent", requests, events)
-    reqs = sorted(requests.values(), key=lambda r: r["time"] or "")
+    sub_with_requests = {k[0] for k, v in requests.items() if v["role"] == "subagent"}
+    reqs = sorted(requests.values(), key=_sort_key)
     main = [r for r in reqs if r["role"] == "main"]
     sub = [r for r in reqs if r["role"] == "subagent"]
     sm, ss, sa = stats(main), stats(sub), stats(reqs)
@@ -207,7 +311,7 @@ def analyze(main_path):
         "session": main_path.stem if re.match(r"^[A-Za-z0-9._-]{1,80}$", main_path.stem) else "session",
         "first": times[0] if times else None,
         "last": times[-1] if times else None,
-        "subagent_files": len(sub_files),
+        "subagent_files": len(sub_with_requests),
         "models": models,
         "main": sm, "subagent": ss, "all": sa,
         "main_share_pct": {
@@ -216,6 +320,8 @@ def analyze(main_path):
             "output": share(sm["output"], sa["output"]),
             "cost": share(sm["cost_base_equiv"], sa["cost_base_equiv"]),
         },
+        "cold_resumes": {"main": cold_resumes(main), "subagent": cold_resumes(sub),
+                         "all": cold_resumes(reqs)},
         "checkpoints": events["checkpoints"],
         "compactions": events["compactions"],
         "request_list": [
@@ -245,6 +351,12 @@ def render(results):
         out.append(f"  checkpoints: {r['checkpoints']}  compactions: {len(r['compactions'])}")
         for c in r["compactions"]:
             out.append(f"    compact {c['time'] or '-'} {c['trigger']} pre {c['pre_tokens']} post {c['post_tokens']}")
+        for role in ("main", "subagent"):
+            cr = r["cold_resumes"][role]
+            out.append(f"  cold resumes ({role}): {cr['count']}  cache writes {cr['cache_write_tokens']}"
+                       f"  cost {cr['cost_base_equiv']:.1f}  cost(1h 2x) {cr['cost_base_equiv_1h2x']:.1f}")
+            for c in cr["events"]:
+                out.append(f"    cold {c['time']} gap {c['gap_min']} min ctx {c['context']}")
         out.append("")
     if len(results) > 1:
         main = sum(r["main"]["cache_reads"] for r in results)
@@ -258,7 +370,24 @@ def main(argv=None):
     ap.add_argument("transcripts", nargs="+", help="main transcript .jsonl files")
     ap.add_argument("--json", action="store_true", help="print JSON (includes per-request rows)")
     args = ap.parse_args(argv)
+    bad = False
+    for p in args.transcripts:
+        try:
+            with open(p, encoding="utf-8", errors="replace") as fh:
+                fh.read(1)
+        except OSError as exc:
+            print(f"error: cannot read transcript: {p} ({exc.strerror or type(exc).__name__})",
+                  file=sys.stderr)
+            bad = True
+    if bad:
+        return 1  # nothing on stdout: no partial report for the good paths
     results = [analyze(p) for p in args.transcripts]
+    for p, r in zip(args.transcripts, results):
+        if r["main"]["requests"] == 0:
+            n = count_lines(p)
+            print(f"note: no requests found in {p}: lines {n['lines']}, json objects {n['objects']}, "
+                  f"assistant entries {n['assistant']}, entries with message.usage {n['usage']}",
+                  file=sys.stderr)
     if args.json:
         print(json.dumps(results, indent=1))
     else:

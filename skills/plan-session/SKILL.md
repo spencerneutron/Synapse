@@ -42,6 +42,11 @@ Use this skill when:
    `${CLAUDE_PLUGIN_ROOT}/templates/PLAN.md` and
    `${CLAUDE_PLUGIN_ROOT}/templates/EXECUTION.md`.
 
+   When you reset the planning files for a new task, reset the rest too: an
+   `EXECUTION.md` `## Resume` section from the previous task is replaced or
+   removed, and a working `NOTES.md` is started fresh only if its last line is
+   a merge marker or end-session has run.
+
 3. Run session hooks (optional, per project):
 
    - If `PLAN.md` has a `## Session hooks` section, run each command or skill

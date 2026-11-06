@@ -18,6 +18,7 @@ rules decide *when*.
 | Recall | `/synapse:recall` | See "Local Knowledge Recall" below |
 | Execute | (these rules) | Briefs to roles; the main session runs what takes a handful of calls |
 | Emit | `synapse:emission-contract` | Before the final user-facing message of every turn |
+| Checkpoint | `/synapse:checkpoint` | Between stages of a long request, before a pause, or when Synapse reports a large context; then continue |
 | Archive | `/synapse:end-session` | The session itself is closing, not just a task |
 | Extract | `/synapse:extract-session` | After `/synapse:end-session`, once the user agrees |
 | Recover | `/synapse:workflow-recovery` | A background workflow or agent fleet died or was stopped |
@@ -79,6 +80,8 @@ complexity justifies structured planning.
 - Cache conclusions in `PLAN.md` (Decision Log) instead of recomputing them.
 - When the user states a fact or a decision, write it to `PLAN.md` before
   the next step, creating the file if it does not exist.
+- When the context is large, run `/synapse:checkpoint` before the next stage
+  or a pause: after it, `/clear` loses nothing; `/compact` is lossy.
 
 ---
 
