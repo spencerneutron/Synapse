@@ -1,0 +1,313 @@
+import json
+import os
+import tempfile
+import unittest
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+from helpers import LIB  # noqa: F401  (sets up sys.path and SYNAPSE_HOME)
+from test_nudge import run
+
+import continuation
+
+LINE_PAD = "x" * 900
+
+
+def ts(ago_s=0):
+    t = datetime.now(timezone.utc) - timedelta(seconds=ago_s)
+    return t.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def usage_entry(ctx=100000, ago_s=0, ttl="1h", sidechain=False, **kw):
+    cc = {"ephemeral_1h_input_tokens": 0, "ephemeral_5m_input_tokens": 0}
+    if ttl == "1h":
+        cc["ephemeral_1h_input_tokens"] = 10
+    elif ttl == "5m":
+        cc["ephemeral_5m_input_tokens"] = 10
+    usage = {"input_tokens": 1, "cache_read_input_tokens": ctx - 11,
+             "cache_creation_input_tokens": 10, "cache_creation": cc}
+    e = {"type": "assistant", "timestamp": ts(ago_s), "isSidechain": sidechain,
+         "message": {"usage": usage}}
+    e.update(kw)
+    return json.dumps(e)
+
+
+def write(path, lines):
+    Path(path).write_text("\n".join(lines) + "\n", "utf-8")
+
+
+class Base(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.home = self.dir / "home"
+        self.home.mkdir()
+        self.tr = self.dir / "t.jsonl"
+
+    def send(self, stdin):
+        r = run(stdin, self.home)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        text = r.stdout.decode().strip()
+        if not text:
+            return None
+        out = json.loads(text)
+        self.assertEqual(set(out), {"hookSpecificOutput"})
+        return out["hookSpecificOutput"]
+
+    def config(self, text):
+        (self.home / "config.toml").write_text(text, "utf-8")
+
+    def post(self, ctx, event="PostToolUse", tool="Bash", sid="s1", **extra):
+        write(self.tr, [usage_entry(ctx)])
+        return self.send({"session_id": sid, "hook_event_name": event, "tool_name": tool,
+                          "tool_input": {}, "transcript_path": str(self.tr), **extra})
+
+
+class TailReader(Base):
+    def test_large_transcript(self):
+        with open(self.tr, "wb") as f:
+            filler = (json.dumps({"type": "user", "message": LINE_PAD}) + "\n").encode()
+            for _ in range(50_000_000 // len(filler)):
+                f.write(filler)
+            f.write(b"not json at all\n")
+            f.write((usage_entry(123456, ttl="5m") + "\n").encode())
+            for _ in range(200):
+                f.write(filler)
+            f.write(b'{"type":"system"}\n{"broken\n')
+        self.assertGreater(self.tr.stat().st_size, 50_000_000)
+        u = continuation.last_usage(str(self.tr))
+        self.assertEqual(u["context"], 123456)
+        self.assertEqual(u["ttl"], "5m")
+        self.assertIsNotNone(u["time"].tzinfo)
+
+    def test_beyond_cap_is_none(self):
+        filler = json.dumps({"type": "user", "message": LINE_PAD})
+        write(self.tr, [usage_entry()] + [filler] * (3 * 1024 * 1024 // len(filler)))
+        self.assertIsNone(continuation.last_usage(str(self.tr)))
+
+    def test_skips_sidechain_zero_and_non_assistant(self):
+        zero = json.dumps({"type": "assistant", "timestamp": ts(),
+                           "message": {"usage": {"input_tokens": 0}}})
+        write(self.tr, [usage_entry(50000), usage_entry(90000, sidechain=True), zero,
+                        json.dumps({"type": "assistant", "message": {"usage": {}}}),
+                        json.dumps({"type": "user", "message": {"usage": {"input_tokens": 9}}})])
+        self.assertEqual(continuation.last_usage(str(self.tr))["context"], 50000)
+
+    def test_ttl(self):
+        write(self.tr, [usage_entry(ttl="1h")])
+        self.assertEqual(continuation.last_usage(str(self.tr))["ttl"], "1h")
+        write(self.tr, [usage_entry(ttl="5m")])
+        self.assertEqual(continuation.last_usage(str(self.tr))["ttl"], "5m")
+        write(self.tr, [usage_entry(ttl="5m"), usage_entry(ttl=None)])
+        u = continuation.last_usage(str(self.tr))
+        self.assertEqual(u["ttl"], "5m")
+        write(self.tr, [usage_entry(ttl=None)])
+        self.assertIsNone(continuation.last_usage(str(self.tr))["ttl"])
+
+    def test_bad_paths(self):
+        for p in (None, 5, str(self.dir), str(self.dir / "missing")):
+            self.assertIsNone(continuation.last_usage(p))
+        self.tr.write_bytes(b"\xff\xfe{\n[1]\n\n")
+        self.assertIsNone(continuation.last_usage(str(self.tr)))
+
+    def test_fmt_age(self):
+        f = continuation.fmt_age
+        self.assertEqual(f(10), "just now")
+        self.assertEqual(f(45 * 60), "45 min")
+        self.assertEqual(f(2 * 3600 + 5), "2 h")
+        self.assertEqual(f(3 * 86400), "3 d")
+
+
+class ContextNudge(Base):
+    def test_sequence(self):
+        seq = [100000, 170000, 185000, 200000, 275000, 280000, 100000, 190000]
+        fired = [c for c in seq if self.post(c)]
+        # 185k fires (low), 275k fires (high); 100k re-arms; 190k fires again
+        self.assertEqual(fired, [185000, 275000, 190000])
+
+    def test_line_text(self):
+        out = self.post(270400)
+        self.assertEqual(out["additionalContext"],
+                         "Synapse: the context is about 270k tokens. A /synapse:checkpoint before "
+                         "the next stage or before stepping away keeps /clear free.")
+        self.assertEqual(out["hookEventName"], "PostToolUse")
+
+    def test_high_first_marks_low(self):
+        self.assertTrue(self.post(280000))
+        self.assertIsNone(self.post(190000))
+
+    def test_cap_of_three(self):
+        res = []
+        for c in (200000, 100000) * 4:
+            res.append(bool(self.post(c)))
+        self.assertEqual(sum(res), 3)
+
+    def test_failure_event(self):
+        self.assertEqual(self.post(200000, event="PostToolUseFailure")["hookEventName"],
+                         "PostToolUseFailure")
+
+    def test_exempt_and_dispatch_tools_run(self):
+        self.assertTrue(self.post(200000, tool="Agent"))
+        self.assertTrue(self.post(280000, tool="Bash", tool_input={"command": "synapse x"}))
+
+    def test_window_zero_silent(self):
+        self.config("[nudge]\ncontext_window = 0\n")
+        self.assertIsNone(self.post(290000))
+
+    def test_custom_window(self):
+        self.config("[nudge]\ncontext_window = 100000\n")
+        self.assertIn("about 70k", self.post(70000)["additionalContext"])
+
+    def test_agent_id_silent(self):
+        self.assertIsNone(self.post(290000, agent_id="a1"))
+
+    def test_corrupt_state_starts_fresh(self):
+        (self.home / "state").mkdir()
+        (self.home / "state" / "context-s1.json").write_text("{nope")
+        self.assertTrue(self.post(200000))
+
+    def test_combined_with_dispatch(self):
+        self.config("[nudge]\ncalls = 1\n")
+        out = self.post(200000)
+        lines = out["additionalContext"].split("\n")
+        self.assertEqual(len(lines), 2)
+        self.assertIn("hands-on calls", lines[0])
+        self.assertIn("context is about 200k", lines[1])
+
+    def test_dispatch_alone_unchanged(self):
+        self.config("[nudge]\ncalls = 1\n")
+        out = self.post(1000)
+        self.assertNotIn("\n", out["additionalContext"])
+
+
+class ResumeTime(Base):
+    def prompt(self, ctx, ago_s, ttl="1h", **kw):
+        write(self.tr, [usage_entry(ctx, ago_s=ago_s, ttl=ttl)])
+        return self.send({"session_id": "s1", "hook_event_name": "UserPromptSubmit",
+                          "prompt": "hi", "transcript_path": str(self.tr), **kw})
+
+    def test_fires_after_ttl(self):
+        out = self.prompt(300000, 2 * 3600 + 60)
+        self.assertEqual(out["hookEventName"], "UserPromptSubmit")
+        self.assertEqual(out["additionalContext"],
+                         "Synapse: idle 2 h since the last request, so the prompt cache has expired "
+                         "and this request rewrites about 300k tokens. A /synapse:checkpoint before "
+                         "stepping away keeps /clear free.")
+
+    def test_silent_inside_ttl(self):
+        self.assertIsNone(self.prompt(300000, 1800))
+
+    def test_five_minute_ttl(self):
+        self.assertIn("idle 10 min", self.prompt(300000, 600, ttl="5m")["additionalContext"])
+        self.assertIsNone(self.prompt(300000, 600, ttl="1h"))
+
+    def test_unknown_ttl_is_one_hour(self):
+        self.assertIsNone(self.prompt(300000, 1800, ttl=None))
+        self.assertTrue(self.prompt(300000, 4000, ttl=None))
+
+    def test_small_context_silent(self):
+        self.assertIsNone(self.prompt(100000, 7200))
+
+    def test_window_zero_silent(self):
+        self.config("[nudge]\ncontext_window = 0\n")
+        self.assertIsNone(self.prompt(300000, 7200))
+
+    def test_still_resets_dispatch_count(self):
+        st = self.home / "state"
+        st.mkdir()
+        (st / "nudge-s1.count").write_bytes(b"...")
+        self.prompt(1000, 0)
+        self.assertFalse((st / "nudge-s1.count").exists())
+
+
+class ResumePointer(Base):
+    def setUp(self):
+        super().setUp()
+        self.proj = self.dir / "proj"
+        self.cur = self.proj / ".claude-work" / "current"
+        self.cur.mkdir(parents=True)
+        (self.proj / ".git").mkdir()
+        self.ex = self.cur / "EXECUTION.md"
+
+    def start(self, source="compact"):
+        out = self.send({"session_id": "s1", "hook_event_name": "SessionStart",
+                         "source": source, "cwd": str(self.proj)})
+        return out["additionalContext"] if out else None
+
+    def stamp(self, ago_min):
+        t = datetime.now().astimezone() - timedelta(minutes=ago_min)
+        return t.strftime("%Y-%m-%d %H:%M %z"), t.strftime("%Y-%m-%d %H:%M")
+
+    def test_with_stamp_and_notes(self):
+        s, shown = self.stamp(12)
+        s = s[:-2] + ":" + s[-2:]
+        self.ex.write_text(f"# E\n## Resume\nCheckpoint written: {s}\nmore\n## Other\n")
+        (self.cur / "NOTES.md").write_text("n")
+        text = self.start()
+        self.assertEqual(text,
+            f"Synapse: work in progress is recorded in .claude-work/current/EXECUTION.md under "
+            f"## Resume (checkpoint written {shown}, 12 min ago). If this conversation continues "
+            f"that work, read it before acting; NOTES.md beside it holds the checkpoint's facts "
+            f"and decisions.")
+        self.assertLess(len(text), 400)
+        self.assertEqual(self.start("clear"), text)
+
+    def test_stamp_outside_section_ignored(self):
+        s, _ = self.stamp(5)
+        self.ex.write_text(f"## Resume\nnothing\n## Other\nCheckpoint written: {s}\n")
+        self.assertIn("file modified", self.start())
+
+    def test_mtime_fallback_no_notes(self):
+        self.ex.write_text("## resume\nbody\n")
+        old = datetime.now().timestamp() - 3 * 3600
+        os.utime(self.ex, (old, old))
+        text = self.start()
+        self.assertIn("(file modified ", text)
+        self.assertIn(", 3 h ago)", text)
+        self.assertNotIn("NOTES.md", text)
+
+    def test_no_section_no_file_other_sources(self):
+        self.assertIsNone(self.start())
+        self.ex.write_text("# E\n### Resume later\n")
+        self.assertIsNone(self.start())
+        self.ex.write_text("## Resume\nx\n")
+        for src in ("startup", "resume", "fork", None):
+            self.assertIsNone(self.start(src))
+
+    def test_still_prunes(self):
+        st = self.home / "state"
+        st.mkdir()
+        old = st / "context-other.json"
+        old.write_text("{}")
+        t = datetime.now().timestamp() - 48 * 3600
+        os.utime(old, (t, t))
+        own = st / "context-s1.json"
+        own.write_text("{}")
+        os.utime(own, (t, t))
+        self.start("startup")
+        self.assertFalse(old.exists())
+        self.assertTrue(own.exists())
+
+
+class NeverBlock(Base):
+    def test_bad_inputs(self):
+        for stdin in (b"{not json", b"", b"[]"):
+            r = run(stdin, self.home)
+            self.assertEqual((r.returncode, r.stdout), (0, b""))
+        for tp in (None, 7, str(self.dir), str(self.dir / "nope")):
+            self.assertIsNone(self.send({"session_id": "s1", "hook_event_name": "PostToolUse",
+                                         "tool_name": "Bash", "transcript_path": tp}))
+            self.assertIsNone(self.send({"session_id": "s1", "hook_event_name": "UserPromptSubmit",
+                                         "transcript_path": tp}))
+
+    def test_bad_config(self):
+        write(self.tr, [usage_entry(290000)])
+        self.config('[nudge]\ncontext_window = "x"\n')
+        r = run({"session_id": "s1", "hook_event_name": "PostToolUse", "tool_name": "Bash",
+                 "transcript_path": str(self.tr)}, self.home)
+        self.assertEqual((r.returncode, r.stdout), (0, b""))
+
+
+if __name__ == "__main__":
+    unittest.main()

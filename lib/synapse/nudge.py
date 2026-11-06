@@ -1,18 +1,28 @@
-#!/usr/bin/env python3
 """
-nudge.py — remind the main session to dispatch after a run of hands-on calls.
+nudge.py — hook-time reminders for the main session, in one process.
 
   synapse nudge --hook   # PostToolUse, PostToolUseFailure, UserPromptSubmit, SessionStart
 
-Counts consecutive hands-on tool calls (Bash, PowerShell, Edit, Write,
-MultiEdit, NotebookEdit) made by the main session, one byte per call in a
-per-session file. At the budget ([nudge] calls in config.toml, default 5; 0
-turns it off), and again at twice and four times that, it adds one line of
-context telling the main session to brief the rest to a role.
-Synapse's own CLI calls and edits under .claude-work/ are not counted. A dispatch (Agent, Task) or a new prompt resets the count; calls made inside
-a sub-agent (hook input has agent_id) are ignored. Stdlib only: no Ollama, no
-database, no venv. It must never block: it always exits 0, never prints a
-decision, and on any error prints nothing.
+1. Dispatch nudge. Counts consecutive hands-on tool calls (Bash, PowerShell,
+   Edit, Write, MultiEdit, NotebookEdit) made by the main session, one byte per
+   call in a per-session file. At the budget ([nudge] calls in config.toml,
+   default 5; 0 turns it off), and again at twice and four times that, it adds
+   one line telling the main session to brief the rest to a role. Synapse's own
+   CLI calls and edits under .claude-work/ are not counted. A dispatch (Agent,
+   Task) or a new prompt resets the count; calls made inside a sub-agent (hook
+   input has agent_id) are ignored.
+2. Context nudge. After each tool call it reads the transcript tail and, at 60%
+   and 90% of [nudge] context_window (default 300000; 0 turns 2 and 3 off),
+   suggests /synapse:checkpoint. At most 3 times per session; re-armed when the
+   context drops below 60% (after a compaction).
+3. Resume-time line. On a new prompt, if the last request was longer ago than
+   the prompt cache lives and the context is at least 60% of the window, says
+   what the request will rewrite.
+4. Resume pointer. At SessionStart after /compact or /clear, points at the
+   ## Resume section of .claude-work/current/EXECUTION.md (pointers only).
+
+Stdlib only: no Ollama, no database, no venv. It must never block: it always
+exits 0, never prints a decision, and on any error prints nothing.
 """
 
 import json
@@ -67,6 +77,13 @@ def prune(paths, sid: str) -> None:
                 f.unlink()
         except OSError:
             pass
+    own_ctx = paths.context_state(sid)
+    for f in state.glob("context-*"):
+        try:
+            if f != own_ctx and now - f.stat().st_mtime > STALE_S:
+                f.unlink()
+        except OSError:
+            pass
 
 
 def count_call(paths, sid: str) -> int:
@@ -81,37 +98,55 @@ def count_call(paths, sid: str) -> int:
         os.close(fd)
 
 
+def dispatch_line(paths, sid: str, data: dict) -> str:
+    tool = data.get("tool_name")
+    if tool in DISPATCH:
+        reset(paths, sid)
+    elif tool in HANDS_ON:
+        if exempt(tool, data.get("tool_input")):
+            return ""
+        n = paths.settings()["nudge_calls"]
+        if n == 0:
+            return ""
+        count = count_call(paths, sid)
+        if count in (n, 2 * n, 4 * n):
+            return (f"Synapse: {count} hands-on calls in a row in the main session. "
+                    "Brief the rest of this step to a role instead of continuing here: "
+                    "synapse:implementer for changes or a fix loop (goal, files, failing "
+                    "command, done condition, attempt limit), synapse:scout or "
+                    "synapse:researcher for searches. Read its report.")
+    return ""
+
+
+def emit(event: str, *lines: str) -> str:
+    text = "\n".join(x for x in lines if x)
+    if not text:
+        return ""
+    return json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}})
+
+
 def handle(data: dict) -> str:
     sid = data.get("session_id")
     event = data.get("hook_event_name")
     if not isinstance(sid, str) or not sid or not any(c.isalnum() for c in sid):
         return ""
     import paths
+    import continuation
     if event in ("PostToolUse", "PostToolUseFailure"):
         if data.get("agent_id"):
             return ""
-        tool = data.get("tool_name")
-        if tool in DISPATCH:
-            reset(paths, sid)
-        elif tool in HANDS_ON:
-            if exempt(tool, data.get("tool_input")):
-                return ""
-            n = paths.settings()["nudge_calls"]
-            if n == 0:
-                return ""
-            count = count_call(paths, sid)
-            if count in (n, 2 * n, 4 * n):
-                text = (f"Synapse: {count} hands-on calls in a row in the main session. "
-                        "Brief the rest of this step to a role instead of continuing here: "
-                        "synapse:implementer for changes or a fix loop (goal, files, failing "
-                        "command, done condition, attempt limit), synapse:scout or "
-                        "synapse:researcher for searches. Read its report.")
-                return json.dumps({"hookSpecificOutput": {"hookEventName": event,
-                                                          "additionalContext": text}})
+        first = dispatch_line(paths, sid, data)
+        try:
+            second = continuation.context_nudge(paths, sid, data)
+        except Exception:
+            second = ""
+        return emit(event, first, second)
     elif event == "UserPromptSubmit":
         reset(paths, sid)
+        return emit(event, continuation.resume_time_line(paths, data))
     elif event == "SessionStart":
         prune(paths, sid)
+        return emit(event, continuation.resume_pointer(paths, data))
     return ""
 
 
