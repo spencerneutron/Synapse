@@ -12,7 +12,8 @@ synapse — command-line entry point for the Synapse plugin.
   synapse pending [--hook]               archived sessions never extracted
   synapse facts [--project P] [--hook]   this project's Fact notes (listed at session start)
   synapse compact-guide --hook           PreCompact: what the compaction summary should keep
-  synapse nudge --hook   PostToolUse: reminds the main session to dispatch after N hands-on calls
+  synapse nudge --hook   hooks: dispatch reminder, context-size nudge, resume pointer
+  synapse checkpoint --stamp             record the time in EXECUTION.md's Resume section
   synapse share <subcommand> [...]       scrub | lint | add (share a note with a team)
   synapse shared <subcommand> [...]      init | join | sync | status | retract | push
   synapse extract <subcommand> [...]     init | embed-archive | embed-note | status |
@@ -47,6 +48,7 @@ COMMANDS = {
     "facts": "facts",
     "compact-guide": "compact_guide",
     "nudge": "nudge",
+    "checkpoint": "checkpoint",
     "share": "share",
     "shared": "shared",
     "extract": "extract",

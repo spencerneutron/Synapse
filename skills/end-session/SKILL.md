@@ -66,11 +66,15 @@ Scan the **working** `PLAN.md` and `EXECUTION.md` for anything still in flight. 
 - Steps marked in-progress that never completed
 - Explicit "out-of-scope" or "scope deliberately skipped" items the user may still want to track
 
+If `/synapse:checkpoint` wrote a working `.claude-work/current/NOTES.md`, scan it too.
+
 Also scan current in-memory task list for tasks still `pending` or `in_progress` — those are deferred by definition.
 
 Be selective: only capture items that a future session would actually act on. Don't transcribe every historical decision.
 
 ### 4. Write the session notes file
+
+If `.claude-work/current/NOTES.md` exists, start from it: carry each entry into the matching section below (it records facts and rationale from parts of the conversation a `/clear` or `/compact` may have removed), then add what the conversation and files add. After writing the notes file, append one line to that working NOTES.md: `<!-- merged into NOTES_<session-id> -->`, so the next checkpoint starts it fresh.
 
 Write to the `notes_path` that `synapse archive` printed (`archive/<project>/NOTES_<session-id>.md` in the store) with this structure:
 
@@ -145,7 +149,7 @@ explicitly indicated a "stop suggesting" preference, omit this step.
 
 ### 6. Do not modify the working PLAN.md / EXECUTION.md
 
-The skill is archival, not destructive. The next `plan-session` invocation is responsible for deciding whether to reset, continue, or back up the working files again.
+The skill is archival, not destructive. The merge marker line in the working NOTES.md (step 4) is the only write to a working file. The next `plan-session` invocation is responsible for deciding whether to reset, continue, or back up the working files again.
 
 ---
 
