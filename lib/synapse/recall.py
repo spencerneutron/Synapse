@@ -280,6 +280,66 @@ def search_all(
     return merged
 
 
+CANDIDATE_TYPES = ("decision", "fact", "pattern")
+CANDIDATE_MIN_SCORE = 0.70  # the recall-hint threshold; unrelated concepts score below about 0.67
+CANDIDATE_TOP = 3
+CANDIDATE_POOL = 50         # chunks searched per candidate, before own-session and same-note hits are dropped
+
+
+def check_candidates(conn: sqlite3.Connection, candidates: list[dict], session_id: str,
+                     resolved: "paths.Resolved", threshold: float = CANDIDATE_MIN_SCORE) -> list[dict]:
+    """For each candidate, the user's own prior notes of its type on its concept.
+
+    Local scope only (`synapse extract supersede` marks only the user's own
+    notes). Hits from `session_id` are dropped before the top CANDIDATE_TOP
+    are taken, and one note appears once (its best chunk). Superseded notes
+    stay hidden, as in `synapse recall`. One embedding call per candidate.
+    """
+    out = []
+    for c in candidates:
+        pool = search_all(conn, c["concept"], CANDIDATE_POOL, resolved, scope="local",
+                          source_type=c["type"])
+        hits, seen = [], set()
+        for h in pool:
+            if h["session_id"] == session_id or h["stored_path"] in seen or h["score"] < threshold:
+                continue
+            seen.add(h["stored_path"])
+            hits.append({
+                "title": Path(h["stored_path"]).stem,
+                "score": h["score"],
+                "session_id": h["session_id"],
+                "snippet": h["snippet"],
+                "path": h["stored_path"],
+            })
+            if len(hits) == CANDIDATE_TOP:
+                break
+        out.append({"type": c["type"], "title": c["title"], "concept": c["concept"], "hits": hits})
+    return out
+
+
+def load_candidates(path: Path) -> list[dict]:
+    """Read and validate a candidates file: a list, or {"candidates": [...]}."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        sys.exit(f"error: cannot read candidates from {path}: {e}")
+    if isinstance(data, dict) and "candidates" in data:
+        data = data["candidates"]
+    if not isinstance(data, list):
+        sys.exit("error: candidates must be a JSON list (or an object with a 'candidates' list)")
+    for i, c in enumerate(data):
+        if not isinstance(c, dict):
+            sys.exit(f"error: candidate {i} is not an object")
+        if c.get("type") not in CANDIDATE_TYPES:
+            sys.exit(f"error: candidate {i}: type must be one of {', '.join(CANDIDATE_TYPES)}, "
+                     f"got {c.get('type')!r}")
+        if not isinstance(c.get("concept"), str) or not c["concept"].strip():
+            sys.exit(f"error: candidate {i}: 'concept' is required (the subject without the choice)")
+        if not isinstance(c.get("title"), str):
+            c["title"] = ""
+    return data
+
+
 def format_text(results: list[dict], query: str) -> str:
     """Human-readable output for terminal use."""
     if not results:

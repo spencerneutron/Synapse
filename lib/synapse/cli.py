@@ -14,7 +14,7 @@ synapse — command-line entry point for the Synapse plugin.
   synapse share <subcommand> [...]       scrub | lint | add (share a note with a team)
   synapse shared <subcommand> [...]      init | join | sync | status | retract | push
   synapse extract <subcommand> [...]     init | embed-archive | embed-note | status |
-                                         upgrade | supersede
+                                         upgrade | supersede | check-candidates
   synapse vault <subcommand> [...]       verify | create-note | note-exists | search
   synapse backfill [...]                 embed archived sessions with no marker
   synapse migrate --from DIR [...]       copy a V1/v1.5 workspace's memory in

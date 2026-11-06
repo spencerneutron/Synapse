@@ -12,6 +12,9 @@ Subcommands:
                              keeps every vector; also creates a new DB).
   supersede <old> --by <new> Mark a Decision note superseded in the DB and in its
                              front matter; recall then hides it by default.
+  check-candidates <file> --session <id>
+                             For each candidate note in a JSON file, list prior
+                             local notes on its concept (score >= 0.70, top 3).
   reembed-all                Detect embedding-model mismatches and re-embed.
 
 The script is deterministic and idempotent. Atomic-note extraction (deciding
@@ -990,6 +993,24 @@ def cmd_supersede(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_check_candidates(args: argparse.Namespace) -> int:
+    import recall  # imports this module; kept lazy to avoid a cycle
+    candidates = recall.load_candidates(args.file)
+    if args.threshold is None:
+        args.threshold = recall.CANDIDATE_MIN_SCORE
+    if not args.db.exists():
+        sys.exit(f"error: DB not found at {args.db}. run `synapse setup` first.")
+    results = []
+    if candidates:
+        conn = db_connect(args.db)
+        require_current(conn, args.db)
+        results = recall.check_candidates(conn, candidates, args.session,
+                                          paths.resolve(), threshold=args.threshold)
+    print(json.dumps({"session_id": args.session, "threshold": args.threshold,
+                      "candidates": results}, indent=2))
+    return 0
+
+
 # ---------- Entry point ----------
 
 def main(argv: list[str] | None = None) -> int:
@@ -1036,6 +1057,16 @@ def main(argv: list[str] | None = None) -> int:
                        help="vault folder for titles (default: the one holding the old note, "
                             "else Decisions)")
     p_sup.set_defaults(func=cmd_supersede)
+
+    p_cc = sub.add_parser("check-candidates",
+                          help="find prior local notes on each candidate's concept")
+    p_cc.add_argument("file", type=Path,
+                      help='JSON list of {"type", "title", "concept"} (or {"candidates": [...]})')
+    p_cc.add_argument("--session", required=True,
+                      help="the session being extracted: its own notes are skipped")
+    p_cc.add_argument("--threshold", type=float, default=None,
+                      help="minimum cosine score (default: recall.CANDIDATE_MIN_SCORE, 0.70)")
+    p_cc.set_defaults(func=cmd_check_candidates)
 
     p_re = sub.add_parser("reembed-all", help="detect model mismatches")
     p_re.set_defaults(func=cmd_reembed_all)
