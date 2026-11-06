@@ -109,6 +109,8 @@ their PATH, and their sandbox blocks the Synapse home), so a CLI-driven skill
 is checked live instead: `tools/live-check-share.sh --yes <team home>` runs
 headless sessions with this repo as the plugin (about $0.30 per run). Run the
 CLI against a throwaway home: `SYNAPSE_HOME=$(mktemp -d) bin/synapse setup`.
+`tools/live-check-compact.sh --yes` checks what survives auto-compaction
+(about $0.55 per run).
 
 ## Release
 

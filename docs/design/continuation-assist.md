@@ -4,6 +4,32 @@ Status: **proposal, for review.** No code. Written 2026-11-06. Every hook
 behavior below was checked that day against the Claude Code docs (Claude
 Code 2.1.314 installed); each claim links to its source.
 
+## Status (2.6.0)
+
+Shipped in 2.6.0 (see CHANGELOG.md). It differs from the phases below by
+the maintainer's decisions of 2026-11-06:
+
+- No `CHECKPOINTS.md`. A checkpoint writes `## Resume` in `EXECUTION.md` and
+  appends to the working `NOTES.md`; `/synapse:end-session` starts from that
+  file.
+- Checkpoint and continue: `/synapse:checkpoint` does not end the turn.
+- The context nudge uses the PostToolUse channel (the existing nudge hook),
+  at 60% and 90% of `[nudge] context_window`.
+- Pointers only. The resume pointer names the Resume section; nothing is
+  inlined.
+- The resume-time line (cache expired on a large context) is on
+  UserPromptSubmit in the same hook process.
+
+Compaction retention, measured with `tools/live-check-compact.sh` (one run,
+Sonnet, $0.52, 2026-11-06): auto compaction went from 76,614 to 21,121
+tokens, and all 7 planted words (a fact, a decision with its rationale, an
+open question, stated only in conversation) were recalled. The planted turn
+was not kept word for word, so the 5,037-character summary carried them.
+Hook stdout is not in transcripts, so this does not show the PreCompact
+hook's effect.
+
+The phases below are the original proposal and are not rewritten.
+
 Issue: [spencerneutron/Synapse#11](https://github.com/spencerneutron/Synapse/issues/11).
 
 ---
