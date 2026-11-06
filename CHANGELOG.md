@@ -36,6 +36,12 @@
 - `synapse help`, `synapse archive --help` and `synapse compact-guide`
   (usage) printed their em dash as cp1252 byte 0x97 on Windows; they now
   write UTF-8, like the 2.5.1 and 2.6.0 fixes for `nudge` and `checkpoint`.
+  `cli.main` now reconfigures stdout and stderr for every command, and the
+  `tools/*.py` scripts do the same, so the fix is no longer per module. The
+  test also covers `tools/*.py` and `hooks/*.py`, so the bug fails locally on
+  any OS instead of on Windows CI (it caught `build_context.py`,
+  `build_eval_home.py` and `eval-report.py`). Installed paths were never
+  affected: `lib/py.sh` sets `PYTHONUTF8=1`.
 
 ## 2.6.0 — 2026-11-06 — Continuation assist
 

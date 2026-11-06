@@ -19,7 +19,15 @@ LIB = Path(__file__).resolve().parent.parent / "lib" / "synapse"
 sys.path.insert(0, str(LIB))
 import cli  # noqa: E402
 
+ROOT = Path(__file__).resolve().parent.parent
 CLI = LIB / "cli.py"
+
+# Scripts that do not take --help: run them with no args and empty stdin.
+# emission_check.py is a Stop hook; it reads event JSON from stdin and, on
+# empty input, allows the stop without writing anything.
+NO_HELP_SCRIPTS = {"emission_check.py"}
+# Skip list (script name -> reason). Empty: every script runs safely here.
+SKIP_SCRIPTS = {}
 
 # No-arg forms that are safe to run: a usage text or usage error, no writes.
 # Left out on purpose (they provision a venv or read/write a store):
@@ -99,6 +107,39 @@ class CliEncodingTest(unittest.TestCase):
                 with self.subTest(cmd=cmd, sub=sub):
                     self.check([cmd, sub, "--help"], must_exit_zero=True)
         self.assertGreater(seen, 0, "no argparse subcommands discovered")
+
+
+class ScriptEncodingTest(unittest.TestCase):
+    """Directly-run scripts (tests and maintainers run them with `python file.py`)."""
+
+    def test_scripts_emit_utf8(self):
+        scripts = sorted([*(ROOT / "tools").glob("*.py"), *(ROOT / "hooks").glob("*.py")])
+        self.assertGreater(len(scripts), 0, "no scripts discovered")
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "home")
+            cwd = os.path.join(tmp, "cwd")
+            os.makedirs(home)
+            os.makedirs(cwd)
+            for script in scripts:
+                if script.name in SKIP_SCRIPTS:
+                    continue
+                with self.subTest(script=f"{script.parent.name}/{script.name}"):
+                    args = [] if script.name in NO_HELP_SCRIPTS else ["--help"]
+                    env = dict(os.environ)
+                    env.pop("PYTHONUTF8", None)
+                    env["PYTHONIOENCODING"] = "cp1252"
+                    env["SYNAPSE_HOME"] = home
+                    proc = subprocess.run(
+                        [sys.executable, str(script), *args],
+                        env=env, cwd=cwd, input=b"", capture_output=True, timeout=60,
+                    )
+                    for name, data in (("stdout", proc.stdout), ("stderr", proc.stderr)):
+                        try:
+                            data.decode("utf-8")
+                        except UnicodeDecodeError as exc:
+                            self.fail(f"{script.name}: {name} is not UTF-8: {exc}")
+                    self.assertIn(proc.returncode, (0, 1, 2),
+                                  f"{script.name}: exit {proc.returncode}")
 
 
 if __name__ == "__main__":

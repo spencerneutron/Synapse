@@ -37,6 +37,10 @@ def synapse(home: Path, *args: str) -> None:
 
 
 def main() -> int:
+    # Windows Python writes pipes in the ANSI code page; force UTF-8 output.
+    for stream, errors in ((sys.stdout, "replace"), (sys.stderr, "backslashreplace")):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors=errors)
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("home", type=Path)
     parser.add_argument("--triggers", choices=["on", "off"], required=True)

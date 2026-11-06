@@ -40,6 +40,13 @@ Synapse gives every session are in `instructions/`, not here.
   verify every vector). Measure retrieval changes with `synapse
   recall-check` against a golden set before and after.
 - **Python:** 3.11+, stdlib only except `sqlite-vec`.
+- **Output encoding:** installed paths run through `lib/py.sh`
+  (`PYTHONUTF8=1`), but tests and direct runs do not, and Windows pipes
+  default to cp1252 (an em dash leaves as byte 0x97). `cli.main` reconfigures
+  stdout and stderr to UTF-8 for every `synapse` command; a new script run
+  directly (`tools/`, `hooks/`) does the same before its first print.
+  `tests/test_cli_encoding.py` checks every entry point under a forced
+  cp1252 stdout on any OS, so this fails locally, not on Windows CI.
 - **No personal data:** no home paths, usernames, machine ids, or private
   links outside `examples/` (CI scans for them).
 
