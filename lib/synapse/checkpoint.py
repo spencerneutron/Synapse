@@ -19,6 +19,10 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 HEADING = re.compile(rb"^(?:\xef\xbb\xbf)?##[ \t]+Resume\b", re.IGNORECASE)
 H2 = re.compile(rb"^##[ \t]")
 FENCE = re.compile(rb"^(?:\xef\xbb\xbf)?[ \t]{0,3}(```|~~~)")
