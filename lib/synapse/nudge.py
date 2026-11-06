@@ -117,14 +117,14 @@ def handle(data: dict) -> str:
 
 def main(argv: list[str]) -> int:
     try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
         if "--hook" not in argv:
             print(__doc__.strip())
             return 0
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         out = handle(read_input())
         if out:
-            if hasattr(sys.stdout, "reconfigure"):
-                sys.stdout.reconfigure(encoding="utf-8", errors="replace")
             print(out)
     except BaseException:
         pass
