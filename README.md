@@ -63,6 +63,19 @@ setup are reported for the user to decide.
    through a git repo or a synced folder. Teammates' notes join recall,
    labeled; your own note wins a tie, and your own decision wins a conflict.
 
+## Long sessions
+
+On a model with a 1M-token window (the Fable models, Sonnet 5 and later,
+Haiku 5.5, Opus 4.7 and later), Claude Code compacts only at about 967k
+tokens by default. Synapse's PreCompact hook, which shapes the compaction
+summary, runs only at compaction, so a session that stays below that point
+never uses it. A long session also re-reads its whole context on every
+request. Consider lowering the auto-compact window to about 300k with
+`/autocompact 300k`, the `autoCompactWindow` setting, or the
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW` environment variable (the variable wins over
+the other two). The trade-off: each compaction is lossy and costs one large
+request. Synapse never changes this setting; `/synapse:doctor` reports it.
+
 ## Where things live
 
 - **Rules** load at every session start from the plugin's `SessionStart`

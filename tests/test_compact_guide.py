@@ -179,5 +179,51 @@ class DoctorPreCompactTests(unittest.TestCase):
             self.assertTrue(all(i["level"] == "warn" for i in found))
 
 
+class DoctorAutocompactTests(unittest.TestCase):
+    def run_check(self, user=None, project=None, env=None):
+        with tempfile.TemporaryDirectory() as t:
+            t = Path(t)
+            (t / "home").mkdir()
+            (t / ".claude").mkdir()
+            if user is not None:
+                (t / "home" / "settings.json").write_text(json.dumps(user))
+            if project is not None:
+                (t / ".claude" / "settings.json").write_text(json.dumps(project))
+            clean = {k: v for k, v in os.environ.items()
+                     if k not in ("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "ANTHROPIC_MODEL")}
+            clean.update(env or {})
+            rep = doctor.Report()
+            with mock.patch.object(doctor, "claude_dir", return_value=t / "home"), \
+                    mock.patch.dict(os.environ, clean, clear=True), \
+                    mock.patch.object(doctor, "MANAGED_SETTINGS", {}):
+                doctor.check_settings(rep, t)
+            return [i for i in rep.items if i["check"] == "autocompact-window"]
+
+    def test_no_override_is_info(self):
+        found = self.run_check()
+        self.assertEqual([i["level"] for i in found], ["info"], found)
+        self.assertIn("default applies", found[0]["detail"])
+
+    def test_1m_model_without_override_warns(self):
+        found = self.run_check(user={"model": "opus[1m]"})
+        self.assertEqual([i["level"] for i in found], ["warn"], found)
+        found = self.run_check(env={"ANTHROPIC_MODEL": "sonnet[1m]"})
+        self.assertEqual([i["level"] for i in found], ["warn"], found)
+
+    def test_settings_override_is_reported_with_value(self):
+        found = self.run_check(user={"model": "opus[1m]"}, project={"autoCompactWindow": 300000})
+        self.assertEqual([i["level"] for i in found], ["info"], found)
+        self.assertIn("300000", found[0]["detail"])
+
+    def test_per_model_override_from_autocompact_command(self):
+        found = self.run_check(user={"modelSettings": {"opus": {"autoCompactWindow": 250000}}})
+        self.assertIn("250000", found[0]["detail"])
+
+    def test_env_override_is_reported(self):
+        found = self.run_check(user={"model": "opus[1m]"}, env={"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "300k"})
+        self.assertEqual([i["level"] for i in found], ["info"], found)
+        self.assertIn("300k", found[0]["detail"])
+
+
 if __name__ == "__main__":
     unittest.main()
