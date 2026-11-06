@@ -28,17 +28,25 @@ synapse` and `claude plugin update synapse@synapse`, then start new sessions.
 - **Latency:** about 44 ms per matched call on macOS (bash, `lib/py.sh`,
   and Python startup; the counter itself is two syscalls). Windows is not
   measured.
-- **Measured** on `evals/loop-goes-to-implementer` (Sonnet, 2 runs, $0.34):
-  implementer dispatches went from 0 of 2 to 1 of 2. The run that
-  dispatched did so right after the fifth call, "as the Synapse hook
-  suggests". The other run finished the fix on its fifth call.
-  `suite-passes` 2 of 2. Five short-task cases (`answer-first`,
+- **Measured** (Sonnet, 2 runs per measurement, $1.99 in all): with the
+  hook, 2 of 6 runs dispatched `synapse:implementer`, both right after the
+  fifth call and citing the hook; without it, 0 of 6 (four on 2.5.0, two
+  with the hook off). On `evals/loop-goes-to-implementer` that is 1 of 4
+  (one run ignored the nudge and made 8 calls); `suite-passes` 4 of 4. On
+  the new `evals/long-loop-goes-to-implementer`, 1 of 2 with the hook and
+  0 of 2 with it off; its fixture still needs work (a read reveals
+  rounds 1-8, and every run stops at round 9's rounding as a spec
+  question). Five short-task cases (`answer-first`,
   `scope-discipline`, `implement-with-validation`, `delegate-and-verify`,
   `verify-before-done`, once each, $0.63) all pass, and none reached five
   hands-on calls, so the nudge never fired on them.
 
 ### Changed
 
+- **Evals.** `loop-goes-to-implementer`'s `few-main-session-calls` grader
+  passes a dispatch that follows the nudge (at most six hands-on calls
+  before it, two after). A new `guard` case, `long-loop-goes-to-implementer`,
+  has nine serial fix rounds.
 - `instructions/core.md` says Synapse's hook reminds at five calls.
 
 ## 2.5.0 — 2026-11-06 — The main session conducts, roles work
