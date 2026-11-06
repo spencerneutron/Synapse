@@ -11,6 +11,14 @@ _No open items — session closed clean._ -->
 
 - <One per line, in the user's words>
 
+## Patterns surfaced
+
+- <One reusable lesson per line, with where it applies>
+
+## Decision rationale
+
+- <One decision made in the conversation per line, with its reason; favor ones missing from PLAN.md's Decision Log>
+
 ## Open questions
 
 - <One per item, with enough context to act on cold>

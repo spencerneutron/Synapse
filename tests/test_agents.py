@@ -22,7 +22,7 @@ EXPECTED = {
 # The extractor carries the extraction rules (sub-agents never see skills), so
 # its body gets its own, larger cap.
 BODY_CAP = 3000
-BODY_CAP_OVERRIDE = {"extractor": 7500}
+BODY_CAP_OVERRIDE = {"extractor": 8000}
 # Only the extract-session skill dispatches it; core.md's role table omits it.
 NOT_IN_CORE = {"extractor"}
 

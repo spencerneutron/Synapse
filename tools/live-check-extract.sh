@@ -138,7 +138,7 @@ for i in $(seq 1 "$RUNS"); do
     out="$(cd "$W" && PATH="$S:$PATH" SYNAPSE_HOME="$H" claude -p \
         "Extract session $SESSION for project $PROJECT." \
         --plugin-dir "$ROOT" --settings '{"enabledPlugins":{"synapse@synapse":false}}' \
-        --allowedTools "Bash(synapse *)" "Bash(mktemp *)" "Bash(cat *)" "Bash(ls *)" Read Write Skill Agent Task \
+        --allowedTools "Bash(synapse *)" "Bash(mkdir *)" "Bash(cat *)" "Bash(ls *)" Read Write Skill Agent Task \
         --max-budget-usd 1 --output-format json)"
     after="$(ls "$H/vault/Decisions" | wc -l)"
     reply="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("result",""))')"
