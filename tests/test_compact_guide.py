@@ -72,7 +72,39 @@ class CompactGuideTests(unittest.TestCase):
 
     def test_custom_instructions_take_precedence(self):
         self.assertIn("take precedence", self.out(self.hook(custom_instructions="focus on the API")))
-        self.assertIn("take precedence", self.out(self.hook(custom_instructions="")))
+
+    def test_empty_custom_instructions_do_not_count(self):
+        for blank in ("", "   ", "\n\t "):
+            with self.subTest(blank=repr(blank)):
+                self.assertNotIn("take precedence", self.out(self.hook(custom_instructions=blank)))
+
+    def test_planning_paths_use_forward_slashes(self):
+        import compact_guide
+        from pathlib import PureWindowsPath
+        win = PureWindowsPath("C:\\proj\\.claude-work\\current")
+        with mock.patch("paths.find_work_dir", return_value=win), \
+                mock.patch.object(PureWindowsPath, "is_file", create=True, return_value=True), \
+                mock.patch.object(compact_guide, "has_heading", return_value=False), \
+                mock.patch.object(compact_guide, "recent_resume", return_value=False):
+            text = compact_guide.build({"cwd": str(self.root)})
+        self.assertIn("C:/proj/.claude-work/current/PLAN.md", text)
+        self.assertNotIn("\\", text)
+
+    def test_cwd_subfolder_finds_parent_planning_files(self):
+        self.work.mkdir(parents=True)
+        (self.work / "PLAN.md").write_text("p")
+        sub = self.root / "src" / "deep"
+        sub.mkdir(parents=True)
+        self.assertIn("PLAN.md", self.out(self.hook(cwd=str(sub))))
+
+    def test_git_boundary_stops_the_search(self):
+        self.work.mkdir(parents=True)
+        (self.work / "PLAN.md").write_text("p")
+        inner = self.root / "inner"
+        (inner / ".git").mkdir(parents=True)
+        sub = inner / "src"
+        sub.mkdir()
+        self.assertNotIn("PLAN.md", self.out(self.hook(cwd=str(sub))))
 
     def test_claude_md_compact_instructions(self):
         (self.root / "CLAUDE.md").write_text("# Project\n\n## Compact instructions\nKeep the schema.\n")

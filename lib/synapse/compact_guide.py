@@ -5,7 +5,7 @@ compact_guide.py — what the compaction summary should keep (PreCompact hook).
   synapse compact-guide --hook   # PreCompact: reads hook JSON, prints plain text
 
 Claude Code uses a PreCompact hook's stdout as instructions for the
-compaction summary. This prints about 2,000 characters of guidance: what to
+compaction summary. This prints about 1,000 characters of guidance: what to
 keep, what to drop, where the planning files are, and that the user's own
 compact instructions take precedence. Stdlib only: no Ollama, no database,
 no venv. It must never block compaction: it always exits 0, prints plain
@@ -61,8 +61,8 @@ def build(data: dict) -> str:
     if root is not None:
         try:
             import paths
-            work = paths.work_dir(root)
-            found = [f"{work / n}" for n in ("PLAN.md", "EXECUTION.md", "CHECKPOINTS.md")
+            work = paths.find_work_dir(root)
+            found = [(work / n).as_posix() for n in ("PLAN.md", "EXECUTION.md", "CHECKPOINTS.md")
                      if (work / n).is_file()]
             if found:
                 parts.append("Planning files that exist and are the source of truth for plan, progress, and checkpoints: "
@@ -77,7 +77,8 @@ def build(data: dict) -> str:
                 parts.append("The project's CLAUDE.md has a 'Compact instructions' section; those instructions take precedence over this guidance.")
         except Exception:
             pass
-    if data.get("custom_instructions") is not None:
+    custom = data.get("custom_instructions")
+    if isinstance(custom, str) and custom.strip():
         parts.append("The user gave their own instructions for this compaction; they take precedence over this guidance.")
     return "\n".join(parts)
 
