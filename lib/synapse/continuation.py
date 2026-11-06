@@ -63,6 +63,14 @@ def last_usage(transcript_path):
             return None
         found = None
         for line in _tail_lines(transcript_path):
+            if b"compact_boundary" in line:
+                try:
+                    b = json.loads(line)
+                except Exception:
+                    b = None
+                if isinstance(b, dict) and b.get("type") == "system" \
+                        and b.get("subtype") == "compact_boundary":
+                    break  # older usage predates the compaction: stale
             if b'"usage"' not in line or b'"assistant"' not in line:
                 continue
             try:
@@ -116,20 +124,38 @@ def _k(tokens: int) -> str:
     return f"{round(tokens / 1000)}k"
 
 
-def _load_state(path: Path) -> dict:
+def _epoch(path: Path) -> int:
     try:
-        s = json.loads(path.read_text("utf-8"))
-        fired = s.get("fired")
-        fires = s.get("fires")
-        if isinstance(fired, list) and isinstance(fires, int) and not isinstance(fires, bool):
-            return {"fired": [x for x in fired if x in ("low", "high")], "fires": fires}
+        e = json.loads(path.read_text("utf-8")).get("epoch")
+        return e if isinstance(e, int) and not isinstance(e, bool) and e >= 0 else 0
     except Exception:
-        pass
-    return {"fired": [], "fires": 0}
+        return 0
+
+
+def _write_epoch(path: Path, epoch: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps({"epoch": epoch}), "utf-8")
+    os.replace(tmp, path)
+
+
+def _claim(path: Path, level: str, epoch: int) -> bool:
+    """Create the marker for (level, epoch) exclusively; True for the one process that did."""
+    try:
+        os.close(os.open(path.with_name(f"{path.stem}.{level}.{epoch}"),
+                         os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+        return True
+    except FileExistsError:
+        return False
 
 
 def context_nudge(paths, sid: str, data: dict) -> str:
-    """The context-size line for this call, or "". Main session only."""
+    """The context-size line for this call, or "". Main session only.
+
+    State: context-<sid>.json holds an epoch, bumped when the context drops
+    below the low threshold; a fire is claimed by creating the marker
+    context-<sid>.<level>.<epoch> with O_EXCL, so parallel hooks print it once.
+    The cap counts markers."""
     if data.get("agent_id"):
         return ""
     window = paths.settings()["context_window"]
@@ -140,24 +166,34 @@ def context_nudge(paths, sid: str, data: dict) -> str:
         return ""
     ctx = u["context"]
     path = paths.context_state(sid)
-    state = _load_state(path)
-    before = (list(state["fired"]), state["fires"])
-    line = ""
+    epoch = _epoch(path)
+    here = lambda lv: path.with_name(f"{path.stem}.{lv}.{epoch}").exists()  # noqa: E731
     if ctx < window * LOW:
-        state["fired"] = []
-    elif state["fires"] < MAX_FIRES:
-        if ctx >= window * HIGH and "high" not in state["fired"]:
-            state["fired"] = ["low", "high"]
-            state["fires"] += 1
-            line = f"Synapse: the context is about {_k(ctx)} tokens. {CHECKPOINT}"
-        elif ctx < window * HIGH and "low" not in state["fired"]:
-            state["fired"] = ["low"]
-            state["fires"] += 1
-            line = f"Synapse: the context is about {_k(ctx)} tokens. {CHECKPOINT}"
-    if (state["fired"], state["fires"]) != before:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(state), "utf-8")
-    return line
+        if here("low") or here("high"):
+            _write_epoch(path, epoch + 1)
+        return ""
+    if ctx >= window * HIGH:
+        level, ok = "high", not here("high")
+    else:
+        level, ok = "low", not (here("low") or here("high"))
+    if not ok:
+        return ""
+
+    def fires():
+        return len(list(path.parent.glob(f"{path.stem}.low.*"))) + \
+            len(list(path.parent.glob(f"{path.stem}.high.*")))
+    if fires() >= MAX_FIRES:
+        return ""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not _claim(path, level, epoch):
+        return ""
+    if fires() > MAX_FIRES:  # lost a race for the last slot
+        try:
+            path.with_name(f"{path.stem}.{level}.{epoch}").unlink()
+        except OSError:
+            pass
+        return ""
+    return f"Synapse: the context is about {_k(ctx)} tokens. {CHECKPOINT}"
 
 
 def resume_time_line(paths, data: dict) -> str:
@@ -219,10 +255,13 @@ def resume_pointer(paths, data: dict) -> str:
     age = fmt_age(max(0.0, (datetime.now(timezone.utc) - when).total_seconds()))
     age = age if age == "just now" else f"{age} ago"
     shown = when.astimezone().strftime("%Y-%m-%d %H:%M")
-    try:
-        rel = f.relative_to(Path(cwd))
-    except ValueError:
-        rel = f
+    rel = f
+    for base in (Path(cwd), work.parent.parent):
+        try:
+            rel = f.relative_to(base)
+            break
+        except ValueError:
+            pass
     notes = ("; NOTES.md beside it holds the checkpoint's facts and decisions"
              if (work / "NOTES.md").is_file() else "")
     return (f"Synapse: work in progress is recorded in {rel.as_posix()} under ## Resume "

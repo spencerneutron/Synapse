@@ -11,7 +11,9 @@ nudge.py — hook-time reminders for the main session, in one process.
    CLI calls and edits under .claude-work/ are not counted. A dispatch (Agent,
    Task) or a new prompt resets the count; calls made inside a sub-agent (hook
    input has agent_id) are ignored.
-2. Context nudge. After each tool call it reads the transcript tail and, at 60%
+2. Context nudge. After each matched tool call (Bash, PowerShell, Edit, Write,
+   MultiEdit, NotebookEdit, Agent, Task; Read, Grep and MCP calls do not run
+   the hook) it reads the transcript tail and, at 60%
    and 90% of [nudge] context_window (default 300000; 0 turns 2 and 3 off),
    suggests /synapse:checkpoint. At most 3 times per session; re-armed when the
    context drops below 60% (after a compaction).
@@ -34,6 +36,7 @@ from pathlib import Path
 HANDS_ON = {"Bash", "PowerShell", "Edit", "Write", "MultiEdit", "NotebookEdit"}
 DISPATCH = {"Agent", "Task"}
 STALE_S = 24 * 3600
+CONTEXT_STALE_S = 7 * 24 * 3600  # the state file is only written on a change
 SHELLS = {"Bash", "PowerShell"}
 PLANNING_DIRS = ("/.claude-work/", "\\.claude-work\\")
 
@@ -77,10 +80,11 @@ def prune(paths, sid: str) -> None:
                 f.unlink()
         except OSError:
             pass
-    own_ctx = paths.context_state(sid)
+    own_ctx = paths.context_state(sid).stem
     for f in state.glob("context-*"):
         try:
-            if f != own_ctx and now - f.stat().st_mtime > STALE_S:
+            if f.name.split(".")[0] != own_ctx \
+                    and now - f.stat().st_mtime > CONTEXT_STALE_S:
                 f.unlink()
         except OSError:
             pass

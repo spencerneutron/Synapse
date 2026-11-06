@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -175,6 +176,31 @@ class ContextNudge(Base):
         self.assertIn("hands-on calls", lines[0])
         self.assertIn("context is about 200k", lines[1])
 
+    def test_parallel_hooks_fire_once(self):
+        write(self.tr, [usage_entry(200000)])
+        stdin = {"session_id": "s1", "hook_event_name": "PostToolUse", "tool_name": "Read",
+                 "transcript_path": str(self.tr)}
+        for trial in range(3):
+            self.setUp()
+            write(self.tr, [usage_entry(200000)])
+            with ThreadPoolExecutor(8) as ex:
+                outs = list(ex.map(lambda _: run(stdin, self.home).stdout, range(8)))
+            self.assertEqual(sum(1 for o in outs if o.strip()), 1, outs)
+
+    def test_compaction_boundary_is_stale(self):
+        boundary = json.dumps({"type": "system", "subtype": "compact_boundary",
+                               "compactMetadata": {"preTokens": 400105, "postTokens": 20000}})
+        summary = json.dumps({"type": "user", "isCompactSummary": True, "message": "s"})
+        write(self.tr, [usage_entry(400000, ago_s=7200), boundary, summary])
+        self.assertIsNone(continuation.last_usage(str(self.tr)))
+        self.assertIsNone(self.send({"session_id": "s1", "hook_event_name": "PostToolUse",
+                                     "tool_name": "Bash", "transcript_path": str(self.tr)}))
+        self.assertIsNone(self.send({"session_id": "s1", "hook_event_name": "UserPromptSubmit",
+                                     "transcript_path": str(self.tr)}))
+        # an assistant entry after the boundary counts again
+        write(self.tr, [usage_entry(400000, ago_s=7200), boundary, summary, usage_entry(250000)])
+        self.assertEqual(continuation.last_usage(str(self.tr))["context"], 250000)
+
     def test_dispatch_alone_unchanged(self):
         self.config("[nudge]\ncalls = 1\n")
         out = self.post(1000)
@@ -275,19 +301,32 @@ class ResumePointer(Base):
         for src in ("startup", "resume", "fork", None):
             self.assertIsNone(self.start(src))
 
+    def test_path_relative_to_project_root_from_subfolder(self):
+        self.ex.write_text("## Resume\nx\n")
+        sub = self.proj / "src" / "deep"
+        sub.mkdir(parents=True)
+        out = self.send({"session_id": "s1", "hook_event_name": "SessionStart",
+                         "source": "clear", "cwd": str(sub)})
+        self.assertIn("recorded in .claude-work/current/EXECUTION.md under", out["additionalContext"])
+
     def test_still_prunes(self):
         st = self.home / "state"
         st.mkdir()
         old = st / "context-other.json"
         old.write_text("{}")
-        t = datetime.now().timestamp() - 48 * 3600
+        t = datetime.now().timestamp() - 8 * 24 * 3600
         os.utime(old, (t, t))
+        fresh = st / "context-fresh.json"
+        fresh.write_text("{}")
+        mark = st / "context-s1.low.0"
+        mark.write_text("")
+        os.utime(mark, (t, t))
         own = st / "context-s1.json"
         own.write_text("{}")
         os.utime(own, (t, t))
         self.start("startup")
         self.assertFalse(old.exists())
-        self.assertTrue(own.exists())
+        self.assertTrue(own.exists() and mark.exists() and fresh.exists())
 
 
 class NeverBlock(Base):
