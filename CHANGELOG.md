@@ -82,8 +82,9 @@ The design is `docs/design/continuation-assist.md`.
 ### Measured
 
 - **Hook latency** on macOS (20 runs, 206 MB synthetic transcript), median
-  and max in ms: PostToolUse 49 and 51, UserPromptSubmit 51 and 62,
-  SessionStart `compact` 52 and 58. The 2.5.1 baseline was 48 ms median.
+  and max in ms, after the review fixes: PostToolUse 55 and 56,
+  UserPromptSubmit 56 and 58, SessionStart `compact` 53 and 57. The 2.5.1
+  baseline was 48 ms median on the same transcript.
 - **Compaction retention** (`tools/live-check-compact.sh`, one run, Sonnet,
   $0.52, 2026-11-06). Auto compaction went from 76,614 to 21,121 tokens. All
   7 planted words (a stated fact, a decision with its rationale, an open
