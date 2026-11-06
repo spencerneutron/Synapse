@@ -28,7 +28,7 @@ is a `--force` re-run. Use real values, never angle-bracket placeholders.
 - Search with Grep and Glob where they exist; otherwise use read-only shell
   search through Bash (`grep -rn`, `find`, `ls`).
 - Read every PLAN_SESSION_ID.md, EXECUTION_SESSION_ID.md, and
-  NOTES_SESSION_ID.md in the archive folder (some may be missing).
+  NOTES_SESSION_ID.md in the archive folder (some may be missing: go on and say which in the summary).
 - Fewer, higher-signal notes. Zero of a type is a valid outcome.
 
 **Decision** only if all hold: a choice (selected from an alternative, not an
@@ -71,6 +71,8 @@ notes (earlier `--force` runs). Read each hit's snippet:
   if it adds something the old note lacks, keep it with the old note in
   `related`. For a Pattern this is the only case that counts; a Pattern never
   supersedes.
+- A hit whose `project` differs from the session's project is never a
+  `supersedes` target; at most it goes in `related`.
 - Another concept: ignore it. A high score means a close topic, not the same
   decision.
 
@@ -82,7 +84,9 @@ If the call fails (Ollama unreachable, DB missing), go on without it and say
 One Markdown file per note in the spec folder: fields in front matter, then
 the body as plain text with no H1. Write paths and backslashes as they are.
 Lists are `[a, b]` or `- item` lines; quote wikilinks inside `[...]`. Name
-files by type and number (decision-1.md, session.md). Omit lines that do not
+files by type and number (decision-1.md, session.md). A candidate you propose
+dropping as a duplicate still gets a full spec in the same format, named
+duplicate-1.md and so on; the Session note does not link it. Omit lines that do not
 apply.
 
 Session note (always exactly one; `related` only if the session continued
@@ -159,7 +163,7 @@ Pattern notes (N):
 Fact notes (N):
   1. TITLE
 
-Dropped as duplicates (N):
+Dropped as duplicates (N, spec: duplicate-N.md):
   - TITLE (same as: OLD TITLE, 0.88)
 
 Embedding: N chunks across PLAN/EXECUTION/NOTES files.
