@@ -179,7 +179,7 @@ session.
 
 ## Automatic recall and reminders
 
-Two hooks act on their own, and both stay silent when anything they need is
+Three hooks act on their own, and all stay silent when anything they need is
 missing:
 
 - **Recall hints.** On each prompt of four words or more, Synapse searches
@@ -189,14 +189,18 @@ missing:
   notifications get none.
 - **Extraction reminder.** At session start, if this project has archived
   sessions that were never extracted, one line says so.
+- **Project facts.** At session start (and after `/clear` or compaction),
+  the project's active Fact notes are listed: one line each, at most 20,
+  from the DB alone (no Ollama).
 
-Both are switches in `~/.claude/synapse/config.toml`:
+All are switches in `~/.claude/synapse/config.toml`:
 
 ```toml
 [recall]
 auto = true        # false turns hints off
 min_score = 0.70   # higher means fewer, surer hints
 max_hits = 3
+facts = true       # false stops listing this project's Facts at session start
 
 [extract]
 remind = true      # false turns the reminder off
@@ -206,7 +210,7 @@ Prompts go only to the local Ollama server.
 
 ## Share with a team (optional)
 
-A team shares Decisions and Patterns, never session archives. The notes live
+A team shares Decisions, Patterns, and Facts, never session archives. The notes live
 in a folder that reaches every member through a **git repo** (GitHub, GitLab,
 a bare repo on a NAS) or a **synced folder** (Dropbox, iCloud Drive, SMB).
 Each member builds a local index from it; the index is never shared.
@@ -266,9 +270,9 @@ background sync off.
 | `~/.claude/plugins/` | The plugin itself | Claude Code's installer |
 | `~/.claude/settings.json` | `enabledPlugins`, `extraKnownMarketplaces` entries | Claude Code's installer |
 | `~/.claude/synapse/` | Config, stores (archives + `vectors.db`), venv, `state/` (which hints a session has seen, pruned after 7 days; each team's last sync), `shared/<team>/` (a git team's clone and every team's index) | `synapse setup`, `archive`, `extract`, `migrate`, `shared`, the hooks |
-| A folder team's synced folder | `Decisions/`, `Patterns/`, `Retracted/`, `.synapse-team.toml` | `synapse shared init`, `/synapse:share`, `synapse shared retract` |
+| A folder team's synced folder | `Decisions/`, `Patterns/`, `Facts/`, `Retracted/`, `.synapse-team.toml` | `synapse shared init`, `/synapse:share`, `synapse shared retract` |
 | `<project>/.claude-work/current/` | `PLAN.md`, `EXECUTION.md` | The agent, during structured work |
-| The store's Obsidian vault | `Sessions/`, `Decisions/`, `Patterns/`, `Projects/` notes | `/synapse:extract-session` |
+| The store's Obsidian vault | `Sessions/`, `Decisions/`, `Patterns/`, `Facts/`, `Projects/` notes | `/synapse:extract-session` |
 
 `~/.claude/synapse/` moves with `CLAUDE_CONFIG_DIR`, or anywhere with
 `SYNAPSE_HOME`.

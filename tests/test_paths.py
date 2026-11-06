@@ -35,6 +35,30 @@ class ResolveTests(unittest.TestCase):
         self.assertEqual(r.project, "billing-api")
         self.assertEqual(r.project_source, "git root")
 
+    def test_a_worktree_is_its_repository_project(self):
+        repo = self.tmp / "work" / "Synapse"
+        (repo / ".git" / "worktrees" / "fix-1").mkdir(parents=True)
+        tree = self.tmp / "trees" / "fix-1"
+        tree.mkdir(parents=True)
+        (tree / ".git").write_text(f"gitdir: {(repo / '.git' / 'worktrees' / 'fix-1').as_posix()}\n")
+        self.assertEqual(paths.resolve(cwd=tree).project, "Synapse")
+        bare = self.tmp / "srv" / "api.git"
+        (bare / "worktrees" / "main").mkdir(parents=True)
+        (tree / ".git").write_text(f"gitdir: {(bare / 'worktrees' / 'main').as_posix()}\n")
+        self.assertEqual(paths.resolve(cwd=tree).project, "api")
+        (tree / ".git").write_text("gitdir: ../../work/Synapse/.git/modules/lib\n")   # a submodule
+        self.assertEqual(paths.resolve(cwd=tree).project, "fix-1")
+
+    def test_synapse_vault_drops_the_configured_vault_path(self):
+        self.write_config('[stores.main]\nvault = "Synapse"\nvault_path = "%s"\n' % self.tmp.as_posix())
+        self.assertEqual(paths.resolve(cwd=self.project).vault_path, self.tmp)
+        os.environ["SYNAPSE_VAULT"] = "Other"
+        try:
+            r = paths.resolve(cwd=self.project)
+        finally:
+            os.environ.pop("SYNAPSE_VAULT")
+        self.assertEqual((r.vault, r.vault_path), ("Other", None))
+
     def test_marker_selects_store_and_project(self):
         self.write_config('default_store = "main"\n[stores.client]\npath = "%s"\nvault = "Client"\n'
                           % (self.tmp / "client-store").as_posix())

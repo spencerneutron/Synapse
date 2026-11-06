@@ -132,6 +132,15 @@ class RetrievalTests(unittest.TestCase):
             hits = self.search("QuickAddTracker", project="ÜBERSICHT", mode=mode)
             self.assertEqual([h["stored_path"] for h in hits], ["archive/Ü/PLAN_9.md"], mode)
 
+    def test_supersede_finds_a_facts_folder_without_being_told(self):
+        self.add("vault/Facts/Two tenants.md", "fact", "VeilMX", "two tenants run this")
+        self.add("vault/Facts/One tenant.md", "fact", "VeilMX", "one tenant runs this")
+        with redirect_stdout(StringIO()) as out:
+            extract.cmd_supersede(Namespace(old="[[Two tenants]]", by="[[One tenant]]", folder=None, db=self.db))
+        report = json.loads(out.getvalue())
+        self.assertEqual((report["superseded"], report["chunks_marked"]), ("vault/Facts/Two tenants.md", 1))
+        self.assertEqual(report["by"], "vault/Facts/One tenant.md")
+
     def test_supersede_without_vault_path_never_calls_obsidian(self):
         import vault_write
         saved = vault_write.vault_path

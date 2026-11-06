@@ -4,6 +4,7 @@ argument parsing."""
 
 import dataclasses
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -120,6 +121,133 @@ class CreateNoteTests(unittest.TestCase):
         with self.assertRaises(SystemExit) as cm:
             self.create(from_file=str(src))
         self.assertIn("--from-md", str(cm.exception.code))   # Invalid \uXXXX escape
+
+    def test_fact_notes_need_a_project_and_land_in_facts(self):
+        src = self.tmp / "fact.md"
+        src.write_text("---\ntype: fact\ntitle: Deployed for one company only\n---\n## Fact\nOnly Contoso.\n")
+        with self.assertRaises(SystemExit) as cm:
+            self.create(from_md=str(src))
+        self.assertIn("needs a project", str(cm.exception.code))
+        src.write_text("---\ntype: fact\ntitle: Deployed for one company only\nproject: acme\n"
+                       "supersedes: \"[[Two tenants]]\"\n---\n## Fact\nOnly Contoso.\n")
+        report = self.create(from_md=str(src))
+        self.assertEqual(report["vault_relative_path"], "Facts/Deployed for one company only.md")
+        text = Path(report["path"]).read_text(encoding="utf-8")
+        self.assertIn("# Fact: Deployed for one company only", text)
+        self.assertIn('supersedes: "[[Two tenants]]"', text)
+
+
+class VaultPathTests(unittest.TestCase):
+    """A note is never written outside the vault (#8)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        for name in ("_vault_path_cache", "VAULT_DIR"):
+            patcher = mock.patch.object(vault_write, name, None)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.cwd = self.tmp / "repo"
+        self.cwd.mkdir()
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(self.cwd)
+
+    def cli(self, stdout: str, code: int = 0):
+        done = subprocess.CompletedProcess([], code, stdout=stdout, stderr="")
+        return mock.patch.object(vault_write, "run_obsidian", return_value=done)
+
+    def test_configured_vault_path_wins_without_asking_obsidian(self):
+        vault = self.tmp / "vault"
+        vault.mkdir()
+        with mock.patch.object(vault_write, "VAULT_DIR", vault), \
+             mock.patch.object(vault_write, "run_obsidian", side_effect=AssertionError("asked the CLI")):
+            self.assertEqual(vault_write.vault_path(), vault)
+
+    def test_configured_vault_path_must_exist(self):
+        with mock.patch.object(vault_write, "VAULT_DIR", self.tmp / "gone"), \
+             self.assertRaises(SystemExit) as cm:
+            vault_write.vault_path()
+        self.assertIn("vault_path", str(cm.exception.code))
+
+    def test_empty_or_relative_cli_answers_are_refused(self):
+        for out in ("", "\n", "Synapse", "Patterns"):
+            vault_write._vault_path_cache = None
+            with self.cli(out), self.assertRaises(SystemExit):
+                vault_write.vault_path()
+        vault = self.tmp / "vault"
+        vault.mkdir()
+        with self.cli(f"{vault}\n"):
+            self.assertEqual(vault_write.vault_path(), vault)
+
+    def test_create_note_never_writes_into_the_cwd(self):
+        src = self.tmp / "spec.md"
+        src.write_text(SPEC_MD, encoding="utf-8")
+        args = Namespace(from_md=str(src), from_file=None, on_conflict="error")
+        with self.cli(""), self.assertRaises(SystemExit), redirect_stdout(StringIO()):
+            vault_write.cmd_create_note(args)
+        self.assertEqual(list(self.cwd.iterdir()), [])
+
+
+class VaultFolderTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.vault = self.tmp / "vault"
+        self.vault.mkdir()
+        for name, value in (("_vault_path_cache", None), ("VAULT_DIR", self.vault)):
+            patcher = mock.patch.object(vault_write, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_a_symlinked_vault_folder_still_takes_notes(self):
+        elsewhere = self.tmp / "elsewhere" / "Patterns"
+        elsewhere.mkdir(parents=True)
+        (self.vault / "Patterns").symlink_to(elsewhere, target_is_directory=True)
+        src = self.tmp / "spec.md"
+        src.write_text(SPEC_MD, encoding="utf-8")
+        with redirect_stdout(StringIO()):
+            vault_write.cmd_create_note(Namespace(from_md=str(src), from_file=None, on_conflict="error"))
+        self.assertTrue((elsewhere / "Quote Windows paths in Git Bash.md").exists())
+
+    def test_verify_fails_when_vault_path_is_not_the_open_vault(self):
+        other = self.tmp / "other"
+        other.mkdir()
+
+        def cli(answer):
+            def run(*args, **kw):
+                out = vault_write.VAULT_NAME if "info=name" in args else str(answer)
+                return subprocess.CompletedProcess([], 0, stdout=out + "\n", stderr="")
+            return run
+
+        with mock.patch.object(vault_write, "run_obsidian", cli(other)), redirect_stdout(StringIO()), \
+             self.assertRaises(SystemExit) as cm:
+            vault_write.cmd_verify(Namespace())
+        self.assertIn("not the open vault", str(cm.exception.code))
+        vault_write._vault_path_cache = None
+        with mock.patch.object(vault_write, "run_obsidian", cli(self.vault)), redirect_stdout(StringIO()) as out:
+            self.assertEqual(vault_write.cmd_verify(Namespace()), 0)
+        self.assertIn("verify OK", out.getvalue())
+
+
+class DoctorVaultTests(unittest.TestCase):
+    def test_a_vault_path_obsidian_does_not_use_is_a_warning(self):
+        import doctor
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        (tmp / "a").mkdir()
+        (tmp / "b").mkdir()
+        for configured, level in ((tmp / "a", "ok"), (tmp / "b", "warn"), (None, "info")):
+            r = dataclasses.replace(paths.resolve(), vault="Synapse", vault_path=configured)
+            rep = doctor.Report()
+            with mock.patch.object(doctor, "obsidian_vaults", return_value={"Synapse": str(tmp / "a")}), \
+                 mock.patch.object(doctor, "check_ollama", return_value=(True, True)):
+                doctor.check_runtime(rep, r)
+            self.assertEqual([i["level"] for i in rep.items if i["check"] == "vault"], [level], configured)
+        rep = doctor.Report()
+        with mock.patch.object(doctor, "obsidian_vaults", return_value={}), \
+             mock.patch.object(doctor, "check_ollama", return_value=(True, True)):
+            doctor.check_runtime(rep, dataclasses.replace(paths.resolve(), vault_path=Path("rel/vault")))
+        self.assertEqual([i["level"] for i in rep.items if i["check"] == "vault_path"], ["error"])
 
 
 class EmbedNotePathTests(unittest.TestCase):

@@ -310,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--project", default=None,
                         help="filter by project (frontmatter project field; case-insensitive)")
     parser.add_argument("--type", dest="source_type", default=None,
-                        choices=["decision", "pattern", "archive"],
+                        choices=["decision", "pattern", "fact", "archive"],
                         help="filter by source type")
     parser.add_argument("--since", default=None,
                         help="filter by created_at >= this ISO date (YYYY-MM-DD)")

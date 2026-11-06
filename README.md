@@ -5,7 +5,7 @@ execute in small verified steps, archive the working state, and promote
 durable decisions into a local knowledge base the next session can recall.
 It installs once for the whole machine and works in every project.
 
-**Version:** 2.3.2 (2026-11-02). See [CHANGELOG.md](CHANGELOG.md).
+**Version:** 2.4.0 (2026-11-06). See [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
@@ -49,14 +49,16 @@ setup are reported for the user to decide.
    and a Stop hook enforces its mechanical rules.
 4. **Archive:** `/synapse:end-session` copies the planning files into the
    store and writes session notes.
-5. **Extract:** `/synapse:extract-session` promotes Decisions and Patterns to
-   an Obsidian vault and embeds the session in the vector DB. A new session
-   says so when an archived session was never extracted.
+5. **Extract:** `/synapse:extract-session` promotes Decisions, Patterns,
+   and Facts (what the user stated about the project) to an Obsidian vault
+   and embeds the session in the vector DB. A new session lists the
+   project's Facts, and says so when an archived session was never
+   extracted.
 6. **Recall:** later sessions, in any project, get ranked pointers into that
    history: automatically, when a prompt closely matches something in the
    store, and on demand with `/synapse:recall`.
-7. **Share (optional):** `/synapse:share` gives a team chosen Decisions and
-   Patterns, scrubbed of paths, secrets, and session-local references,
+7. **Share (optional):** `/synapse:share` gives a team chosen Decisions,
+   Patterns, and Facts, scrubbed of paths, secrets, and session-local references,
    through a git repo or a synced folder. Teammates' notes join recall,
    labeled; your own note wins a tie, and your own decision wins a conflict.
 

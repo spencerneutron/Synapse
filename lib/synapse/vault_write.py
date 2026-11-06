@@ -13,7 +13,7 @@ Subcommands:
 
 JSON spec for create-note:
 {
-  "type": "decision" | "pattern" | "session",
+  "type": "decision" | "pattern" | "fact" | "session",
   "title": "Use sqlite-vec for local vector store",
   "project": "workspace",
   "session_id": "2026-04-23-1645",        // optional, links back to source session
@@ -65,11 +65,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import paths  # noqa: E402
 
 VAULT_NAME = paths.DEFAULT_VAULT
+# The store's configured vault_path, if any; it wins over the Obsidian CLI.
+VAULT_DIR: Path | None = None
 
 FOLDERS = {
     "session": "Sessions",
     "decision": "Decisions",
     "pattern": "Patterns",
+    "fact": "Facts",
     "project": "Projects",
 }
 
@@ -182,19 +185,31 @@ _vault_path_cache: Path | None = None
 
 
 def vault_path() -> Path:
-    """Return the on-disk path to the Synapse vault. Cached per-process."""
+    """The vault's folder on disk, cached per process: the store's configured
+    vault_path, else what the Obsidian CLI reports. Always an existing
+    absolute folder: the CLI can exit 0 with empty output, and Path("") is
+    the working directory, so a note would land in the user's repo."""
     global _vault_path_cache
     if _vault_path_cache is not None:
         return _vault_path_cache
-    result = run_obsidian("vault", "info=path")
-    if result.returncode != 0:
-        sys.exit(
-            f"error: could not determine vault path. "
-            f"is Obsidian running with the {VAULT_NAME!r} vault open?"
-        )
-    path = Path(result.stdout.strip())
-    if not path.exists():
-        sys.exit(f"error: Obsidian reported vault path {path} but it does not exist.")
+    if VAULT_DIR is not None:
+        if not VAULT_DIR.is_absolute() or not VAULT_DIR.is_dir():
+            sys.exit(f"error: the configured vault_path {VAULT_DIR} is not an existing absolute "
+                     f"folder. fix vault_path in {paths.config_path()}")
+        path = VAULT_DIR
+    else:
+        result = run_obsidian("vault", "info=path")
+        out = (result.stdout or "").strip() if result.returncode == 0 else ""
+        if not out:
+            sys.exit(
+                f"error: could not determine vault path (the obsidian CLI gave none). "
+                f"is Obsidian running with the {VAULT_NAME!r} vault open? setting vault_path "
+                f"for the store in {paths.config_path()} avoids asking Obsidian."
+            )
+        path = Path(out)
+        if not path.is_absolute() or not path.is_dir():
+            sys.exit(f"error: Obsidian reported vault path {out!r}, which is not an existing "
+                     "absolute folder.")
     _vault_path_cache = path
     return path
 
@@ -283,7 +298,7 @@ def safe_name(title: str) -> str:
 
 def build_note_name(spec: dict) -> str:
     """Build the filename based on note type. The folder (Sessions/Decisions/
-    Patterns/Projects) already indicates the note's type, so filenames don't
+    Patterns/Facts/Projects) already indicates the note's type, so filenames don't
     need a redundant prefix. The H1 inside the file shows the type for human
     readers."""
     note_type = spec["type"]
@@ -292,7 +307,7 @@ def build_note_name(spec: dict) -> str:
     if note_type == "session":
         # Session notes are named by their session_id directly.
         return safe_name(spec.get("session_id") or title)
-    if note_type in ("decision", "pattern", "project"):
+    if note_type in ("decision", "pattern", "fact", "project"):
         return safe_name(title)
     sys.exit(f"error: unknown note type {note_type!r}")
 
@@ -312,7 +327,7 @@ def build_frontmatter_fields(spec: dict) -> dict:
     if note_type == "session":
         fields["session_id"] = spec.get("session_id")
         fields["duration"] = spec.get("duration")
-    elif note_type == "decision":
+    elif note_type in ("decision", "fact"):
         fields["supersedes"] = spec.get("supersedes")
     elif note_type == "pattern":
         fields["applies_to"] = spec.get("applies_to") or []
@@ -331,8 +346,8 @@ def build_frontmatter_fields(spec: dict) -> dict:
 
 
 def note_heading(spec: dict) -> str:
-    """The H1 a note gets: the type is shown for decisions and patterns."""
-    prefix = {"decision": "Decision: ", "pattern": "Pattern: "}.get(spec["type"], "")
+    """The H1 a note gets: the type is shown for decisions, patterns, and facts."""
+    prefix = {"decision": "Decision: ", "pattern": "Pattern: ", "fact": "Fact: "}.get(spec["type"], "")
     return f"# {prefix}{spec['title']}"
 
 
@@ -519,6 +534,16 @@ def cmd_verify(args: argparse.Namespace) -> int:
         )
 
     print(f"vault: {VAULT_NAME}")
+    root = vault_path()
+    print(f"vault path: {root}")
+    if VAULT_DIR is not None:
+        # vault_path decides where notes go; it must be the vault Obsidian has open.
+        shown = run_obsidian("vault", "info=path")
+        out = (shown.stdout or "").strip() if shown.returncode == 0 else ""
+        if out and Path(out).is_absolute() and not paths.same_path(out, root):
+            sys.exit(f"error: vault_path {root} is not the open vault's folder ({out}).\n"
+                     f"notes would be written where Obsidian does not show them; fix vault_path "
+                     f"in {paths.config_path()}.")
     print(f"folders will be created on first note write: "
           f"{', '.join(FOLDERS.values())}")
     print("verify OK")
@@ -548,6 +573,9 @@ def cmd_create_note(args: argparse.Namespace) -> int:
         sys.exit(f"error: unknown note type {note_type!r}. "
                  f"valid types: {', '.join(FOLDERS)}")
 
+    if note_type == "fact" and not spec.get("project"):
+        sys.exit("error: a Fact note needs a project: facts are listed per project at session start")
+
     folder = FOLDERS[note_type]
     name = build_note_name(spec)
     name = resolve_name_with_conflict(folder, name, args.on_conflict)
@@ -569,9 +597,14 @@ def cmd_create_note(args: argparse.Namespace) -> int:
     # Obsidian watches its vault directory and picks up new files
     # automatically, so the user-facing experience is identical.
 
-    target_dir = vault_path() / folder
-    target_dir.mkdir(parents=True, exist_ok=True)
+    root = vault_path()
+    target_dir = root / folder
     target_path = target_dir / f"{name}.md"
+    # No resolve(): a vault folder may be a symlink. root is an absolute folder
+    # and name is sanitized, so this only fails if that ever stops being true.
+    if not target_path.is_absolute() or target_path.parent != root / folder:
+        sys.exit(f"error: refusing to write {target_path}: it is outside the vault {root}")
+    target_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         target_path.write_text(content, encoding="utf-8", newline="\n")
@@ -612,8 +645,9 @@ def cmd_search(args: argparse.Namespace) -> int:
 # ---------- Entry point ----------
 
 def main(argv: list[str] | None = None) -> int:
-    global VAULT_NAME
-    VAULT_NAME = paths.resolve().vault
+    global VAULT_NAME, VAULT_DIR
+    r = paths.resolve()
+    VAULT_NAME, VAULT_DIR = r.vault, r.vault_path
     parser = argparse.ArgumentParser(prog="synapse vault", description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
 

@@ -1,6 +1,6 @@
 ---
 name: share
-description: Share Decision and Pattern notes with a team (a git repo or a synced folder). Scrubs paths, secrets, and session-local references, shows each note before and after, and adds only the notes the user approves; pushes only on the user's OK. Use when the user asks to share notes with their team, or to take a shared note back.
+description: Share Decision, Pattern, and Fact notes with a team (a git repo or a synced folder). Scrubs paths, secrets, and session-local references, shows each note before and after, and adds only the notes the user approves; pushes only on the user's OK. Use when the user asks to share notes with their team, or to take a shared note back.
 allowed-tools: Bash(synapse share *), Bash(synapse shared *), Bash(synapse recall *), Bash(synapse where *)
 ---
 
@@ -17,7 +17,7 @@ private. Sharing is opt-in per note; nothing is shared automatically.
 
 ## Rules
 
-- Only Decision and Pattern notes. Session notes and archives stay personal.
+- Only Decision, Pattern, and Fact notes. Session notes and archives stay personal.
 - Never edit the user's own note. Work on a copy in a temporary file.
 - Share only the notes the user approves, one by one, after seeing the
   scrubbed version.
@@ -44,8 +44,8 @@ With more than one team, ask which one.
 ### 2. Pick the notes
 
 From the user's names or paths, from `synapse recall "<topic>" --scope local
---type decision` (or `pattern`), or from the Decisions and Patterns of the
-last extraction. List the candidates (titles only) and confirm the set.
+--type decision` (or `pattern`, `fact`), or from the Decisions, Patterns,
+and Facts of the last extraction. List the candidates (titles only) and confirm the set.
 
 ### 3. Scrub each note
 

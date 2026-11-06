@@ -109,7 +109,7 @@ class Chunk:
     """A unit of text destined for embedding."""
     text: str                  # the chunk content, with breadcrumb prepended
     source_path: str           # relative path to source file
-    source_type: str           # 'session' | 'decision' | 'pattern' | 'archive'
+    source_type: str           # 'session' | 'decision' | 'pattern' | 'fact' | 'archive'
     session_id: str | None
     project: str | None
     chunk_index: int
@@ -587,7 +587,8 @@ def chunk_document(
         for piece in pieces:
             # Drop chunks with no semantic information (empty markers,
             # pure metadata, pure link references). See is_low_information.
-            if is_low_information(piece):
+            # A Fact is short by design ("No SLA.") and always kept.
+            if source_type != "fact" and is_low_information(piece):
                 continue
 
             # Only merge a tiny chunk into its predecessor if they share
@@ -935,21 +936,35 @@ def note_ref(arg: str, r: "paths.Resolved", folder: str) -> tuple[str, Path | No
     import vault_write
     title = arg.strip().removeprefix("[[").removesuffix("]]")
     title = re.split(r"[|#]", title, maxsplit=1)[0].strip()   # [[Title|alias]], [[Title#Heading]]
-    title = re.sub(r"^(Decision|Pattern):\s*", "", title).removesuffix(".md")
+    title = re.sub(r"^(Decision|Pattern|Fact):\s*", "", title).removesuffix(".md")
     name = vault_write.safe_name(title)
     stored = f"vault/{folder}/{name}.md"
     return stored, (r.vault_path / folder / f"{name}.md") if r.vault_path else None
 
 
+def infer_folder(conn: sqlite3.Connection, arg: str, r: "paths.Resolved") -> str:
+    """The folder a supersede title refers to: the one holding that note in
+    the DB or on disk (a Fact superseded without --folder Facts must not
+    silently mark nothing); Decisions when neither does."""
+    for folder in ("Decisions", "Facts"):
+        stored, f = note_ref(arg, r, folder)
+        if conn.execute("SELECT 1 FROM chunks WHERE source_path = ? LIMIT 1", (stored,)).fetchone() \
+                or (f is not None and f.exists()):
+            return folder
+    return "Decisions"
+
+
 def cmd_supersede(args: argparse.Namespace) -> int:
     r = paths.resolve()
-    old, old_file = note_ref(args.old, r, args.folder)
-    new, _ = note_ref(args.by, r, args.folder)
-    if old == new:
-        sys.exit("error: a note cannot supersede itself")
-
     conn = db_connect(args.db)
     require_current(conn, args.db)
+    folder = args.folder or infer_folder(conn, args.old, r)
+    old, old_file = note_ref(args.old, r, folder)
+    new, _ = note_ref(args.by, r, folder)
+    if old == new:
+        sys.exit("error: a note cannot supersede itself")
+    if old_file is not None and not old_file.is_absolute():
+        old_file = None   # a relative vault_path would resolve against the working directory
     ids = [row["id"] for row in conn.execute("SELECT id FROM chunks WHERE source_path = ?", (old,))]
     for cid in ids:
         conn.execute("UPDATE chunks SET status = 'superseded', superseded_by = ? WHERE id = ?", (new, cid))
@@ -1017,7 +1032,9 @@ def main(argv: list[str] | None = None) -> int:
     p_sup = sub.add_parser("supersede", help="mark a note superseded by another")
     p_sup.add_argument("old", help="the replaced note: path, [[wikilink]], or title")
     p_sup.add_argument("--by", required=True, help="the replacing note: path, [[wikilink]], or title")
-    p_sup.add_argument("--folder", default="Decisions", help="vault folder for titles (default Decisions)")
+    p_sup.add_argument("--folder", default=None, choices=paths.VAULT_FOLDERS,
+                       help="vault folder for titles (default: the one holding the old note, "
+                            "else Decisions)")
     p_sup.set_defaults(func=cmd_supersede)
 
     p_re = sub.add_parser("reembed-all", help="detect model mismatches")

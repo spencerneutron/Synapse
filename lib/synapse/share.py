@@ -7,10 +7,10 @@ share.py — put an approved, scrubbed note into a team's shared folder.
   synapse share add <team> <file> [--source NOTE] [--json]
 
 `add` takes the version the user approved (the /synapse:share skill writes
-it), refuses it unless `lint` is clean, keeps only Decision and Pattern
-notes, replaces personal front matter (session links, related notes) with
-provenance (origin, author, shared_at, source_id), writes it to the team's
-Decisions/ or Patterns/, commits for a git team, and re-indexes. It never
+it), refuses it unless `lint` is clean, keeps only Decision, Pattern, and
+Fact notes, replaces personal front matter (session links, related notes)
+with provenance (origin, author, shared_at, source_id), writes it to the
+team's Decisions/, Patterns/, or Facts/, commits for a git team, and re-indexes. It never
 pushes: that is `synapse shared push`, after the user's OK.
 """
 
@@ -29,7 +29,7 @@ import paths  # noqa: E402
 import scrub  # noqa: E402
 import shared  # noqa: E402
 
-FOLDER_FOR = {"decision": "Decisions", "pattern": "Patterns"}
+FOLDER_FOR = {"decision": "Decisions", "pattern": "Patterns", "fact": "Facts"}
 # Personal links and ids that mean nothing to a teammate, plus provenance
 # fields that only `add` may set.
 DROP_KEYS = {"session_id", "related", "supersedes", "superseded_by",
@@ -99,7 +99,7 @@ def cmd_add(args) -> int:
         shared.die(f"{len(problems)} finding(s): fix them (synapse share scrub) before sharing")
     kind = extract.parse_frontmatter(text)[0].get("type", "")
     if kind not in FOLDER_FOR:
-        shared.die(f"only Decision and Pattern notes can be shared (type: {kind or 'none'})")
+        shared.die(f"only Decision, Pattern, and Fact notes can be shared (type: {kind or 'none'})")
 
     source = Path(args.source or args.file)
     sid = paths.source_id(team.author, paths.to_stored_path(source, paths.resolve()))

@@ -1,5 +1,55 @@
 # Changelog
 
+## 2.4.0 — 2026-11-06 — Fact notes; create-note stays inside the vault
+
+No store schema change; update with `claude plugin marketplace update
+synapse` and `claude plugin update synapse@synapse`, then start new sessions.
+
+### Added
+
+- **Fact notes** (#7). A fourth kind of note beside Sessions, Decisions,
+  and Patterns: what the user stated or confirmed about a project's
+  real-world context that the code does not show (one customer despite
+  multi-tenant code, a deploy target, a contract limit).
+  `/synapse:extract-session` proposes them with Decisions and Patterns
+  (stated or confirmed by the user, absent from the code, changes what an
+  agent does) and writes them to the vault's `Facts/`.
+- **Facts at session start.** A SessionStart hook lists the current
+  project's active Facts, one line each (at most 20 lines and 8,000
+  characters), on startup, `/clear`, and compaction. Teammates' Facts are
+  listed apart and weighed like shared hits. It reads the DB only (no
+  Ollama) and marks the listed notes as shown so recall hints don't repeat
+  them. `synapse facts` prints the list; `[recall] facts = false` turns it
+  off.
+- Facts work everywhere notes do: `synapse recall --type fact`,
+  `synapse extract supersede ... --folder Facts`, and `/synapse:share`
+  (team folders gain `Facts/`).
+
+### Fixed
+
+- **A note written into the working directory** (#8). `synapse vault`
+  now uses the store's configured `vault_path` first and asks the Obsidian
+  CLI only when it is unset; an empty, relative, or missing path from the
+  CLI is an error, and `create-note` refuses any target outside the vault.
+  `synapse vault verify` prints the vault path and fails when `vault_path`
+  is not the folder of the vault Obsidian has open; `/synapse:doctor` warns
+  on the same mismatch and reports a `vault_path` that is relative or
+  missing.
+
+### Changed
+
+- **`vault_path` now decides where notes are written**, not only where
+  recall points. Set it to Obsidian's folder for the vault (doctor shows
+  it); `SYNAPSE_VAULT` naming another vault ignores it.
+- **A git worktree belongs to its repository's project.** Sessions in a
+  linked worktree (such as the Claude desktop app's) now archive under the
+  repository's folder name, not the worktree's, so Facts and pending
+  reminders follow the project. Archives made in worktrees before 2.4.0
+  stay under the worktree's name.
+- `synapse extract supersede` finds the old note's folder (Decisions or
+  Facts) when `--folder` is not given, and `--folder` accepts only vault
+  folders.
+
 ## 2.3.2 — 2026-11-02 — Extraction on Windows without extra turns
 
 No store schema change; update with `claude plugin marketplace update

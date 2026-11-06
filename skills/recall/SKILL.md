@@ -1,6 +1,6 @@
 ---
 name: recall
-description: Use to surface relevant prior sessions, decisions, and patterns from the local knowledge base. Returns ranked snippets with source paths — not full content. Treat results as navigation hints, not context.
+description: Use to surface relevant prior sessions, decisions, patterns, and project facts from the local knowledge base. Returns ranked snippets with source paths — not full content. Treat results as navigation hints, not context.
 allowed-tools: Bash(synapse recall *), Bash(synapse where *)
 ---
 
@@ -67,11 +67,11 @@ synapse recall "<query>" --format text
 
 Optional filters when relevant:
 - `--project <name>` — limit to one project's archives
-- `--type decision|pattern|archive` — limit to one note type (Session notes
+- `--type decision|pattern|fact|archive` — limit to one note type (Session notes
   are not embedded)
 - `--mode hybrid|vector|keyword` — default `hybrid` (meaning and exact words
   together); `keyword` for an exact identifier, file name, or issue number
-- `--include-superseded` — also return replaced decisions, labeled
+- `--include-superseded` — also return replaced decisions and facts, labeled
 - `--top-k N` (or `--limit N`, `-n N`) — default 5; raise to 8–10 for
   broader scans, lower to 3 for precision-critical lookups
 - `--since YYYY-MM-DD` — only chunks embedded on or after that date
@@ -79,7 +79,7 @@ Optional filters when relevant:
   teams' shared notes; `local` or `shared` for one side only
 
 Filters are exact and run inside the search; `--project` ignores case.
-Superseded decisions are hidden unless `--include-superseded` is passed.
+Superseded decisions and facts are hidden unless `--include-superseded` is passed.
 
 ### 3. Read the output structure
 
