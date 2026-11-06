@@ -163,6 +163,45 @@ Facts belong to one project. Every new session in that project starts with
 its Facts listed, so promote only what deserves that place; a correction
 the user had to repeat is a strong signal. Zero Facts is a normal outcome.
 
+### 5b. Check each candidate against prior notes
+
+An earlier session may already have decided the same thing, under another
+title and in other words. Before building specs, run one recall for every
+Decision, Fact, and Pattern candidate:
+
+```
+synapse recall "e2e workflow trigger schedule" --type decision --scope local --top-k 3 --format json
+```
+
+- **Query the concept, not the title.** Name what the candidate decides
+  about, without the choice: "e2e workflow trigger schedule", not "Keep the
+  e2e workflow scheduled". An older note on that concept may have chosen
+  the opposite.
+- `--type fact` for a Fact, `--type pattern` for a Pattern.
+- `--scope local`: `synapse extract supersede` marks only the user's own
+  notes, so a teammate's note is never a `supersedes` target.
+- `--format json` gives each hit's `session_id`. Skip hits from the session
+  being extracted: they are its own notes from an earlier run (`--force`).
+- No results exits 1 with an empty `results` list: no prior note, not an
+  error.
+
+Judge each prior note with a hit whose `score` is **0.70** or more (the
+recall-hint threshold; unrelated concepts score below about 0.67). Read the
+snippet:
+
+- **Same concept, different choice** (Decision or Fact): propose
+  `supersedes` set to that note's title.
+- **Same concept, same choice:** propose dropping the candidate as a
+  duplicate, or, if it adds something the old note lacks, keeping it with
+  the old note in `related`. For a Pattern this is the only case that
+  counts: a Pattern never supersedes.
+- **Another concept:** ignore it. A high score means a close topic, not the
+  same decision.
+
+Do not show hits below 0.70. Recall hides superseded notes, so a note that
+was already replaced is never proposed again. Carry each result into the
+step 8 summary.
+
 ### 6. Build the Session note spec
 
 Always create exactly one Session note per extraction run. Each note spec is
@@ -240,10 +279,10 @@ supersedes: "[[<title>]]"
 <bullets, optional>
 ```
 
-If this decision *replaces* an earlier decision (a recall of similar
-prior work returned a Decision note that this one overturns), set
-`supersedes` to that note's wikilink; otherwise leave the line out. Run a recall before promoting a
-decision if it might be revisiting prior territory.
+Set `supersedes` to the wikilink of the note step 5b found this decision
+replaces, unless the user declines it in step 8; otherwise leave the line
+out. A duplicate the user keeps goes in `related` with the old note's
+wikilink.
 
 For each Pattern identified in step 4:
 
@@ -267,6 +306,9 @@ applies_to: [<domain tags, e.g. python, retrieval>]
 ## Why
 <the underlying reason>
 ```
+
+A Pattern kept beside a duplicate from step 5b lists the old note in
+`related`.
 
 For each Fact identified in step 5:
 
@@ -293,9 +335,8 @@ supersedes: "[[<title>]]"
 
 `project` is required. The title and the `## Fact` section are what every
 new session in the project sees at start, so each must make sense alone.
-If this Fact replaces an earlier one (check with
-`synapse recall "<topic>" --type fact`), set `supersedes`; otherwise leave
-the line out.
+Set `supersedes` and `related` from step 5b as for a Decision; otherwise
+leave the `supersedes` line out.
 
 ### 8. Show the user the proposed extractions
 
@@ -309,31 +350,41 @@ Session note:
 
 Decision notes (3):
   1. Use sqlite-vec for local vector store
-  2. Use nomic-embed-text via Ollama for embeddings
+  2. Keep the e2e workflow scheduled (supersedes: Keep it manual-dispatch only, 0.82)
   3. Cosine distance metric for vec0 table
 
 Pattern notes (1):
-  1. Store embedding model name with each vector
+  1. Store embedding model name with each vector (related: Record the model beside every embedding, 0.86)
 
 Fact notes (1):
   1. Deployed for one company despite multi-tenant support
 
+Dropped as duplicates (1):
+  - Use nomic-embed-text via Ollama for embeddings (same as: Embed locally with nomic-embed-text, 0.88)
+
 Embedding: 31 chunks across PLAN/EXECUTION/NOTES files.
 
-Proceed? Reply yes, no, or the items to skip (for example: skip decision 2).
+Proceed? Reply yes, no, or the changes (for example: skip decision 2, or keep decision 2 without supersedes).
 ```
+
+Each step 5b result appears on its candidate's line with the old note's
+title and score. Leave out the "Dropped as duplicates" section when there
+are none.
 
 Write the prompt with real examples, not angle-bracket placeholders: some
 terminals (PowerShell) show `<numbers>` as `&lt;numbers&gt;`. Obsidian is
 already handled (step 1), so this is the only question.
 
-Wait for the user's response. Three response shapes:
+Wait for the user's response. Four response shapes:
 
-- **yes / proceed / go**: write everything.
+- **yes / proceed / go**: write everything as proposed.
 - **no / cancel**: write nothing.
 - **skip and item numbers**: drop the specified items, write the rest.
   Example: "skip decision 2 and pattern 1" means write decisions 1 and 3
   and the session note only.
+- **step 5b overrides**: "keep decision 2 without supersedes" writes it with
+  no `supersedes`; "keep the duplicate" writes a dropped candidate with the
+  old note in `related`.
 
 If the user proposes title edits ("rename decision 1 to..."), incorporate
 the changes and re-display the summary once before proceeding.
@@ -482,6 +533,11 @@ as part of extraction.
   successfully but decision 3 fails, do not roll back. Report what
   succeeded, what failed, and stop. The user can re-run extraction with
   the failed item only, or fix and re-run from scratch.
+
+- **The step 5b recall fails** (Ollama unreachable, DB missing). Go on
+  without the check and say so in one line of the step 8 summary
+  ("Prior-note check skipped: Ollama is not running"). The embed steps
+  need Ollama too, so mention it before the user approves.
 
 - **Embedding fails.** If `synapse extract embed-archive` fails (Ollama
   unreachable, etc.), the vault notes are still written. Report the

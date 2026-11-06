@@ -5,7 +5,7 @@ execute in small verified steps, archive the working state, and promote
 durable decisions into a local knowledge base the next session can recall.
 It installs once for the whole machine and works in every project.
 
-**Version:** 2.4.0 (2026-11-06). See [CHANGELOG.md](CHANGELOG.md).
+**Version:** 2.4.1 (2026-11-06). See [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
