@@ -173,6 +173,18 @@ class ContextCostTests(unittest.TestCase):
         write(self.main, [asst("m1", 1, 1, 0, 1)])
         self.assertEqual(self.run_tool(self.main).stderr, "")
 
+    def test_nested_workflow_agents_and_journal(self):
+        sub = self.dir / "sess" / "subagents"
+        write(self.main, [asst("m1", 0, 100, 0, 1)])
+        write(sub / "a.jsonl", [asst("s1", 0, 200, 0, 1)])
+        write(sub / "workflows" / "run-1" / "agent-1.jsonl", [asst("w1", 0, 300, 0, 1)])
+        write(sub / "workflows" / "run-1" / "journal.jsonl", [asst("j1", 0, 9999, 0, 1)])
+        write(sub / "workflows" / "run-1" / "empty.jsonl", [{"type": "user", "message": {"content": "x"}}])
+        r = cc.analyze(self.main)
+        self.assertEqual(r["subagent_files"], 2)  # journal and request-less files excluded
+        self.assertEqual(r["subagent"]["requests"], 2)
+        self.assertEqual(r["subagent"]["cache_reads"], 500)
+
     def test_mean_and_p90_context(self):
         write(self.main, [asst(f"m{i}", i * 10, 0, 0, 0) for i in range(1, 11)])  # 10..100
         r = cc.analyze(self.main)

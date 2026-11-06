@@ -5,8 +5,9 @@ context-cost.py — token and cost numbers from Claude Code transcripts.
   python3 tools/context-cost.py TRANSCRIPT... [--json]
 
 Each TRANSCRIPT is a main transcript (projects/<project>/<session>.jsonl).
-Subagent transcripts in the sibling folder <session>/subagents/*.jsonl are
-read too. The line schema is undocumented, so any line that does not parse or
+Subagent transcripts under the sibling folder <session>/subagents/ are read
+too, recursively (Workflow agents sit in subagents/workflows/<run-id>/);
+journal.jsonl files are lifecycle ledgers and are skipped. The line schema is undocumented, so any line that does not parse or
 lacks the fields is skipped.
 
 Each request counts once, keyed on message.id: one response is written as
@@ -278,9 +279,13 @@ def analyze(main_path):
     events = {"checkpoints": 0, "compactions": [], "seen": set(), "compact_keys": set()}
     read_file(main_path, "main", requests, events)
     sub_dir = main_path.with_suffix("") / "subagents"
-    sub_files = sorted(sub_dir.glob("*.jsonl")) if sub_dir.is_dir() else []
+    # Workflow agents sit deeper (subagents/workflows/<run-id>/*.jsonl); a
+    # journal.jsonl there is a lifecycle ledger, not a transcript.
+    sub_files = sorted(f for f in sub_dir.rglob("*.jsonl") if f.name != "journal.jsonl") \
+        if sub_dir.is_dir() else []
     for f in sub_files:
         read_file(f, "subagent", requests, events)
+    sub_with_requests = {k[0] for k, v in requests.items() if v["role"] == "subagent"}
     reqs = sorted(requests.values(), key=lambda r: r["time"] or "")
     main = [r for r in reqs if r["role"] == "main"]
     sub = [r for r in reqs if r["role"] == "subagent"]
@@ -293,7 +298,7 @@ def analyze(main_path):
         "session": main_path.stem if re.match(r"^[A-Za-z0-9._-]{1,80}$", main_path.stem) else "session",
         "first": times[0] if times else None,
         "last": times[-1] if times else None,
-        "subagent_files": len(sub_files),
+        "subagent_files": len(sub_with_requests),
         "models": models,
         "main": sm, "subagent": ss, "all": sa,
         "main_share_pct": {
