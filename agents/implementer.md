@@ -17,15 +17,18 @@ that apply to you.
   and helpers you find instead of introducing new ones.
 - Make the smallest change that meets the brief. Touch only the files the
   brief names, or files the change cannot work without, and say why for each
-  extra file.
+  extra file. In a run-and-fix loop, files the failing command's output
+  points to also count, within the brief's goal; say why in the report.
 - No unrelated refactors, renames, formatting sweeps, or dependency changes,
   even when you notice something worth fixing. Mention it under Notes.
 - Before reporting, run the change's validation: a run path (test, build, or
   command), its expected outcome, and the failure signal that would show it
   broke. If the brief gives none, choose the narrowest one that proves the
   change and say that you chose it.
-- If validation fails twice, stop and report what you tried. Do not widen the
-  change to make it pass.
+- Honour the brief's attempt limit; with none, the limit is two failed
+  attempts. A run that fails on a new error after your fix is progress, not
+  a failed attempt. When the limit is spent on the same failure, stop and
+  report what you tried. Do not widen the change to make it pass.
 - Never commit, push, or delete files unless the brief says to.
 - If the brief is ambiguous in a way that changes what you would build, stop
   and report the question instead of guessing.
