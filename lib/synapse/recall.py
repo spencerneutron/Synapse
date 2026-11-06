@@ -299,20 +299,24 @@ def check_candidates(conn: sqlite3.Connection, candidates: list[dict], session_i
     for c in candidates:
         pool = search_all(conn, c["concept"], CANDIDATE_POOL, resolved, scope="local",
                           source_type=c["type"])
-        hits, seen = [], set()
+        best = {}  # stored_path -> that note's highest-scoring passing chunk
         for h in pool:
-            if h["session_id"] == session_id or h["stored_path"] in seen or h["score"] < threshold:
+            if h["session_id"] == session_id or h["score"] < threshold:
                 continue
-            seen.add(h["stored_path"])
-            hits.append({
-                "title": Path(h["stored_path"]).stem,
-                "score": h["score"],
-                "session_id": h["session_id"],
-                "snippet": h["snippet"],
-                "path": h["stored_path"],
-            })
-            if len(hits) == CANDIDATE_TOP:
-                break
+            if h["stored_path"] not in best or h["score"] > best[h["stored_path"]]["score"]:
+                best[h["stored_path"]] = h
+        # Score order, not hybrid-rank order: a paraphrase with a high cosine
+        # but no shared words must not lose its place to word-sharing notes.
+        # sorted() is stable, so ties keep hybrid-rank order.
+        ranked = sorted(best.values(), key=lambda h: -h["score"])[:CANDIDATE_TOP]
+        hits = [{
+            "title": Path(h["stored_path"]).stem,
+            "score": h["score"],
+            "session_id": h["session_id"],
+            "project": h["project"],
+            "snippet": h["snippet"],
+            "path": h["stored_path"],
+        } for h in ranked]
         out.append({"type": c["type"], "title": c["title"], "concept": c["concept"], "hits": hits})
     return out
 

@@ -42,10 +42,12 @@ class CheckCandidatesTests(unittest.TestCase):
         self.conn.close()
         extract.embed_text, recall.embed_text = self._saved
 
-    def add(self, title, kind, text, session="old-session", status="active"):
+    def add(self, title, kind, text, session="old-session", status="active", project="App",
+            chunk_index=0):
         folder = {"decision": "Decisions", "fact": "Facts", "pattern": "Patterns"}[kind]
         chunk = extract.Chunk(text=text, source_path=f"vault/{folder}/{title}.md", source_type=kind,
-                              session_id=session, project="App", chunk_index=0, metadata={})
+                              session_id=session, project=project, chunk_index=chunk_index,
+                              metadata={})
         extract.store_chunks(self.conn, [chunk], status=status)
 
     def cands(self, *items):
@@ -111,6 +113,42 @@ class CheckCandidatesTests(unittest.TestCase):
             self.add(f"Note {i}", "decision", f"e2e workflow trigger schedule variant{i}")
         hits = self.check(self.cand(), extra=("--threshold", "0.1"))[0]["hits"]
         self.assertEqual(len(hits), 3)
+
+    def stub_pool(self, pool):
+        """Make search_all return `pool` (hybrid order), as a fused ranking can put a
+        high-cosine paraphrase below word-sharing notes; the bag-of-words embedder
+        cannot produce that on its own."""
+        real = recall.search_all
+        recall.search_all = lambda *a, **kw: list(pool)
+        self.addCleanup(setattr, recall, "search_all", real)
+
+    @staticmethod
+    def chunk(title, score, session="old-session", project="App"):
+        return {"stored_path": f"vault/Decisions/{title}.md", "score": score, "session_id": session,
+                "project": project, "snippet": f"{title} @ {score}"}
+
+    def test_high_score_note_ranked_low_in_hybrid_order_is_still_returned(self):
+        # The paraphrase scores 1.0 but ranks last; the first three passing hits in
+        # hybrid order score 0.75. The old loop stopped at those three.
+        self.stub_pool([self.chunk(f"Wordy {i}", 0.75) for i in range(3)]
+                       + [self.chunk("Paraphrase", 1.0)])
+        hits = self.check(self.cand())[0]["hits"]
+        self.assertEqual([h["title"] for h in hits], ["Paraphrase", "Wordy 0", "Wordy 1"])
+        self.assertEqual([h["score"] for h in hits], [1.0, 0.75, 0.75])  # stable ties
+
+    def test_one_note_with_several_chunks_appears_once_with_its_best_score(self):
+        # The note's weaker chunk comes first in hybrid order; the old code kept it.
+        self.stub_pool([self.chunk("Multi", 0.72), self.chunk("Other", 0.80),
+                        self.chunk("Multi", 0.95), self.chunk("Multi", 0.90)])
+        hits = self.check(self.cand())[0]["hits"]
+        self.assertEqual([(h["title"], h["score"]) for h in hits], [("Multi", 0.95), ("Other", 0.80)])
+
+    def test_hits_carry_the_project(self):
+        self.add("In app", "decision", "e2e workflow trigger schedule", project="App")
+        self.add("In other", "decision", "e2e workflow trigger schedule", project="Other")
+        hits = self.check(self.cand())[0]["hits"]
+        self.assertEqual({h["title"]: h["project"] for h in hits},
+                         {"In app": "App", "In other": "Other"})
 
     def test_own_session_hits_are_dropped_before_the_cap(self):
         for i in range(3):
