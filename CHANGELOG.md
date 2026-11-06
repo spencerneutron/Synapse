@@ -28,7 +28,14 @@ synapse` and `claude plugin update synapse@synapse`, then start new sessions.
 - **Latency:** about 44 ms per matched call on macOS (bash, `lib/py.sh`,
   and Python startup; the counter itself is two syscalls). Windows is not
   measured.
-- Measured: EVAL_TBD.
+- **Measured** on `evals/loop-goes-to-implementer` (Sonnet, 2 runs, $0.34):
+  implementer dispatches went from 0 of 2 to 1 of 2. The run that
+  dispatched did so right after the fifth call, "as the Synapse hook
+  suggests". The other run finished the fix on its fifth call.
+  `suite-passes` 2 of 2. Five short-task cases (`answer-first`,
+  `scope-discipline`, `implement-with-validation`, `delegate-and-verify`,
+  `verify-before-done`, once each, $0.63) all pass, and none reached five
+  hands-on calls, so the nudge never fired on them.
 
 ### Changed
 
