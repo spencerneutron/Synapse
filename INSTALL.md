@@ -47,11 +47,12 @@ from the folder where the user usually starts Claude Code.
 | Always-on rules about planning files, recall, memory, or output style | `ls ~/.claude/CLAUDE.md ~/.claude/rules CLAUDE.md AGENTS.md CLAUDE.local.md .claude/CLAUDE.md 2>/dev/null`, then read them | Where a project's rules conflict, Synapse defers to them; tell the user which rules overlap |
 | Other `Stop` hooks, an `outputStyle`, or `disableAllHooks` | `grep -n -e '"Stop"' -e outputStyle -e disableAllHooks ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Another blocking Stop hook can stack rewrite requests. `disableAllHooks` stops Synapse from working at all |
 | Other `PreCompact` hooks | `grep -n -e '"PreCompact"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Each hook's stdout is capped on its own, so two sets of compaction-summary instructions can conflict with Synapse's |
+| Other `PostToolUse` hooks | `grep -n -e '"PostToolUse"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | A blocking PostToolUse hook stops the turn; one that adds context on every Bash or Edit call stacks text with Synapse's nudge |
 | No auto-compact window on a 1M-context model | `grep -n -e autoCompactWindow -e '\[1m\]' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null; echo "$CLAUDE_CODE_AUTO_COMPACT_WINDOW"` | Auto-compaction then triggers near 967k tokens, so the PreCompact hook rarely runs. Tell the user about the README's "Long sessions" paragraph (`/autocompact 300k`); never change the setting yourself |
 | Managed settings that allow only managed hooks | macOS `/Library/Application Support/ClaudeCode/managed-settings.json`, Linux `/etc/claude-code/managed-settings.json`, Windows `C:\Program Files\ClaudeCode\managed-settings.json` | `allowManagedHooksOnly` means Synapse cannot load; stop and tell the user |
 | A V1 or v1.5 install, here, in a parent folder, or in a child folder | `ls -d kb/scripts .claude-work/archive .claude-work/kb ../.claude-work/archive */.claude-work/archive 2>/dev/null` | Offer migration in step 6 |
 | Working files a repo would commit | `git check-ignore -q .claude-work/current/PLAN.md; echo $?` inside a repo (`1` means not ignored) | Suggest adding `.claude-work/` to that repo's `.gitignore` (ask first) |
-| An earlier v1.6+ install | `ls ~/.claude/synapse 2>/dev/null` | Setup reuses it and never overwrites it |
+| An earlier v1.6+ install (its `config.toml`) | `ls ~/.claude/synapse/config.toml 2>/dev/null` | Setup reuses it and never overwrites it |
 
 Summarize what you found, then *ask* whether to continue.
 
@@ -271,7 +272,7 @@ background sync off.
 |----------|------|------------|
 | `~/.claude/plugins/` | The plugin itself | Claude Code's installer |
 | `~/.claude/settings.json` | `enabledPlugins`, `extraKnownMarketplaces` entries | Claude Code's installer |
-| `~/.claude/synapse/` | Config, stores (archives + `vectors.db`), venv, `state/` (which hints a session has seen, pruned after 7 days; each team's last sync), `shared/<team>/` (a git team's clone and every team's index) | `synapse setup`, `archive`, `extract`, `migrate`, `shared`, the hooks |
+| `~/.claude/synapse/` | Config, stores (archives + `vectors.db`), venv, `state/` (which hints a session has seen, pruned after 7 days; the nudge hook's call counters, one small file per session, pruned after a day; each team's last sync), `shared/<team>/` (a git team's clone and every team's index) | `synapse setup`, `archive`, `extract`, `migrate`, `shared`, the hooks |
 | A folder team's synced folder | `Decisions/`, `Patterns/`, `Facts/`, `Retracted/`, `.synapse-team.toml` | `synapse shared init`, `/synapse:share`, `synapse shared retract` |
 | `<project>/.claude-work/current/` | `PLAN.md`, `EXECUTION.md` | The agent, during structured work |
 | The store's Obsidian vault | `Sessions/`, `Decisions/`, `Patterns/`, `Facts/`, `Projects/` notes | `/synapse:extract-session` |

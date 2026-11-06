@@ -1,5 +1,5 @@
 {
-  "description": "Synapse: always-on rules, an extraction reminder, the project's Facts, and team sync at session start; recall hints on prompts; emission-contract check at stop; summary guidance at compaction",
+  "description": "Synapse: always-on rules, an extraction reminder, the project's Facts, and team sync at session start; recall hints on prompts; emission-contract check at stop; summary guidance at compaction; a dispatch reminder after a run of hands-on tool calls",
   "hooks": {
     "SessionStart": [
       {
@@ -27,6 +27,35 @@
           {
             "type": "command",
             "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" shared hook",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" nudge --hook",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit|Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" nudge --hook",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit|Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" nudge --hook",
             "timeout": 10
           }
         ]
@@ -60,6 +89,11 @@
           {
             "type": "command",
             "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" recall-hint",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" nudge --hook",
             "timeout": 10
           }
         ]

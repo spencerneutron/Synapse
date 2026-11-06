@@ -1,6 +1,6 @@
 ---
 name: doctor
-description: Read-only health and conflict check for Synapse — runtime (Python, venv, vector DB, Ollama, Obsidian), where data resolves, and conflicts with the user's existing setup (same-named skills, competing rules, other Stop and PreCompact hooks, output styles, disabled hooks, old installs, unignored working files). Use after install, when Synapse misbehaves, or before changing the user's Claude Code setup.
+description: Read-only health and conflict check for Synapse — runtime (Python, venv, vector DB, Ollama, Obsidian), where data resolves, and conflicts with the user's existing setup (same-named skills, competing rules, other Stop, PreCompact, and PostToolUse hooks, output styles, disabled hooks, old installs, unignored working files). Use after install, when Synapse misbehaves, or before changing the user's Claude Code setup.
 allowed-tools: Bash(synapse doctor *), Bash(synapse where *)
 ---
 
@@ -37,6 +37,7 @@ each conflict into a finding and a recommendation the user decides on.
 | rules | `~/.claude/CLAUDE.md`, `~/.claude/rules/`, `CLAUDE.md` / `AGENTS.md` / `CLAUDE.local.md` in the project and its parents | Competing always-on rules about planning files, recall, or output |
 | stop-hooks | every settings layer, other enabled plugins | Two hooks that block on Stop can both ask for rewrites |
 | precompact-hooks | every settings layer, other enabled plugins | Each PreCompact hook's stdout is capped on its own; two sets of compaction instructions can conflict |
+| posttooluse-hooks | every settings layer, other enabled plugins | Info only: a PostToolUse hook conflicts with Synapse's nudge only if it blocks or adds its own context on the same calls |
 | autocompact-window | every settings layer (`autoCompactWindow`, also per model under `modelSettings`, `env`), the `CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `ANTHROPIC_MODEL` environment | With no window set, a 1M-context model compacts near 967k tokens and the PreCompact hook rarely runs; info normally, warn when the model name has `[1m]`. Read-only: see the README's "Long sessions" |
 | output-style | settings `outputStyle` | May contradict the emission contract |
 | hooks | `disableAllHooks`, managed `allowManagedHooksOnly` | Synapse's rules and Stop hook never load |

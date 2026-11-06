@@ -59,6 +59,9 @@ vault = "Synapse"
 # max_hits = 3
 # facts = true         # at session start, list this project's Fact notes
 
+[nudge]
+# calls = 5            # hands-on calls in a row before the dispatch reminder; 0 turns it off
+
 [extract]
 # remind = true        # at session start, mention archived sessions never extracted
 
@@ -131,6 +134,8 @@ def settings() -> dict:
                                  lambda v: isinstance(v, (int, float)) and 0 <= v <= 1, "a number from 0 to 1")),
         "max_hits": value("recall", "max_hits", DEFAULT_MAX_HITS,
                           lambda v: isinstance(v, int) and v >= 0, "a whole number, 0 or more"),
+        "nudge_calls": value("nudge", "calls", 5, lambda v: isinstance(v, int) and v >= 0,
+                             "a whole number, 0 or more"),
         "extract_remind": value("extract", "remind", True, lambda v: True, "true or false"),
         "facts_at_start": value("recall", "facts", True, lambda v: True, "true or false"),
     }
@@ -308,6 +313,12 @@ def hint_state(session_id: str) -> Path:
     """Stored paths already shown to this session (recall hints, the Facts list)."""
     safe = "".join(c for c in session_id if c.isalnum() or c in "-_")
     return home() / "state" / f"hints-{safe}.json"
+
+
+def nudge_state(session_id: str) -> Path:
+    """Count of consecutive hands-on main-session tool calls (one byte per call)."""
+    safe = "".join(c for c in session_id if c.isalnum() or c in "-_")
+    return home() / "state" / f"nudge-{safe}.count"
 
 
 def teams() -> dict[str, Team]:
