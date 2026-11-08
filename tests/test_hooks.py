@@ -80,9 +80,15 @@ class EmissionCheckTests(unittest.TestCase):
         self.assertTrue(blocks("Fixed.\n\nWant me to open the PR?"))
         self.assertTrue(blocks("Fixed.\n\nShall I merge it?"))
         self.assertTrue(blocks("Fixed.\n\nI can fix the accent handling too if you'd like."))
+        self.assertTrue(blocks("Fixed.\n\nI can fix any of these, such as the Unicode handling."))
+        self.assertTrue(blocks("Fixed.\n\nThe accent fix is the one I'd do first if you want one."))
+        self.assertTrue(blocks("Fixed.\n\nIf you need any of these, the accents are the cheapest."))
         # Offers outside the last paragraph, and plain "I can" facts, pass.
         self.assertFalse(blocks("I can also reproduce it on 3.11.\n\nFixed in `a.py:3`."))
         self.assertFalse(blocks("Fixed.\n\nI can't run the GPU tests here: no CUDA device."))
+        self.assertFalse(blocks("Fixed.\n\nI can't run the GPU tests if you want proof: no CUDA."))
+        self.assertFalse(blocks("Fixed.\n\nIf you need Windows support, set `SHELL` first."))
+        self.assertFalse(blocks("Fixed.\n\nThe accent handling is the one I'd fix next."))
         self.assertFalse(blocks("Fixed.\n\nMerge it now?"))
         self.assertFalse(blocks("Deployed.\n\nWhen you want me to check the result, start a new session."))
 

@@ -43,8 +43,9 @@ for a rewrite when the message contains any of these:
 - A summary paragraph at the end, opening with "In summary", "To recap",
   "To summarize", or "Overall,"
 - Offers in the last paragraph: "I can also", "Would you like me to",
-  "Want me to", "Shall I", "I can … if you'd like". State the next step, or
-  ask the one decision directly ("Merge it now?")
+  "Want me to", "Shall I", "I can … if you'd like", "I can fix any of
+  these", "… if you want one", "If you need any of these". State the next
+  step, or ask the one decision directly ("Merge it now?")
 - "It's not just X, it's Y" in its plain forms ("This is not only X; it is Y")
 - More than 3 headings in a message under 500 words
 - Tics: delve, tapestry, "testament to", "it's worth noting",

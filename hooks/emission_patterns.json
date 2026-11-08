@@ -60,8 +60,8 @@
     {
       "id": "closer-offer",
       "where": "end",
-      "regex": "\\b(i can also|would you like me to|shall i)\\b|(^|[.!?:]\\s+)\\W*want me to\\b|\\bi can\\b[^.!?\\n]{0,120}\\bif you(?:'d| would)? (like|want|prefer)\\b|\\bif you(?:'d| would)? (like|want)\\b[^.!?\\n]{0,20}\\bi can\\b",
-      "message": "ends with an offer of more work (I can also, Would you like me to, Want me to, Shall I, I can ... if you like); state the next step or ask the one decision directly"
+      "regex": "\\b(i can also|would you like me to|shall i)\\b|(^|[.!?:]\\s+)\\W*want me to\\b|\\bi can\\b(?!'|\\u2019|not)[^.!?\\n]{0,120}\\bif you(?:'d| would)? (like|want|prefer|need)\\b|\\bi can (also )?(fix|add|handle|implement|do|make|write|update|change|tackle|address)\\b[^.!?\\n]{0,40}\\b(any|all|either|both|those|these|them)\\b|\\bif you(?:'d| would)? (like|want|need|prefer)( (one|them|it|that|those|these|either|both))?\\s*[.!]|(^|[.!?]\\s+)\\W*if you(?:'d| would)? (like|want|need)\\b[^.!?\\n]{0,30}\\b(any|one|either|both|me)\\b",
+      "message": "ends with an offer of more work (I can also, Would you like me to, Want me to, Shall I, I can fix any of these, ... if you want); state the next step or ask the one decision directly"
     },
     {
       "id": "not-just",
