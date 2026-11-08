@@ -37,6 +37,14 @@ otherwise) and is safe to re-run: it keeps an existing config and venv.
      name in Obsidian, or to point the store at an existing vault by editing
      `vault` (and optionally `vault_path`) in `config.toml`.
 
+   - *Auto-compact advice* — when `synapse setup` prints an `auto-compact:`
+     line (no window is set), ask the user whether to set one. Suggest `300k`,
+     the value the README's "Long sessions" section documents. Only on their
+     yes, run `synapse setup --autocompact 300k` (or the value they pick). It
+     backs up `settings.json` beside itself and refuses if a window is already
+     set. Never run the flag form without that yes; it is left out of this
+     skill's allowed tools, so Claude Code also asks before it runs.
+
 3. **Check.** Run `synapse doctor` and walk the user through each `warn` or
    `error` line. Fix nothing it reports outside the Synapse home without the
    user's explicit go-ahead; most fixes there are the user's call.

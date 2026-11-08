@@ -17,7 +17,7 @@ rules decide *when*.
 | Plan | `/synapse:plan-session` | Starting or resuming structured, multi-step work |
 | Recall | `/synapse:recall` | See "Local Knowledge Recall" below |
 | Execute | (these rules) | Briefs to roles; the main session runs what takes a handful of calls |
-| Emit | `synapse:emission-contract` | Before the final user-facing message of every turn |
+| Emit | `synapse:emission-contract` | Reference only; the Stop hook checks every final message |
 | Checkpoint | `/synapse:checkpoint` | Between stages of a long request, before a pause, or when Synapse reports a large context; then continue |
 | Archive | `/synapse:end-session` | The session itself is closing, not just a task |
 | Extract | `/synapse:extract-session` | After `/synapse:end-session`, once the user agrees |
@@ -169,8 +169,6 @@ not synced for days, mention it once.
 
 ## Emission
 
-At the end of every turn, load the `synapse:emission-contract` skill
-immediately before writing the user-facing message, and follow it for that
-message only. Its rules stay out of the context while the work happens; the
-plugin's Stop hook checks the message and asks for one rewrite if it breaks a
-mechanical rule.
+The plugin's Stop hook enforces the emission contract on each final message,
+and its block reason carries the rules to follow in the rewrite.
+`synapse:emission-contract` is the reference text, with exemplars.

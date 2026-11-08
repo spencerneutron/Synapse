@@ -66,6 +66,76 @@ class EmissionCheckTests(unittest.TestCase):
         self.assertFalse(blocks("It returns List<String>, Promise<void>, or Vec<u8>; if a<b and c>d."))
         self.assertFalse(blocks("Press <Enter>. | one <br> two | a <kbd>Ctrl</kbd> key |"))
 
+    def test_closer_recap(self):
+        self.assertTrue(blocks("Fixed the regex.\n\nIn summary, the slug is clean now."))
+        self.assertTrue(blocks("Fixed the regex.\n\nTo recap: two changes."))
+        self.assertTrue(blocks("Fixed the regex.\n\nOverall, the change is small."))
+        # Only at the start of the last paragraph, and "overall" needs its comma.
+        self.assertFalse(blocks("In summary, three tests failed.\n\nAll pass now at `a.py:3`."))
+        self.assertFalse(blocks("Fixed.\n\nOverall latency dropped from 90 ms to 40 ms."))
+
+    def test_closer_offer(self):
+        self.assertTrue(blocks("Fixed.\n\nI can also add tests."))
+        self.assertTrue(blocks("Fixed.\n\nWould you like me to add tests?"))
+        self.assertTrue(blocks("Fixed.\n\nWant me to open the PR?"))
+        self.assertTrue(blocks("Fixed.\n\nShall I merge it?"))
+        self.assertTrue(blocks("Fixed.\n\nI can fix the accent handling too if you'd like."))
+        self.assertTrue(blocks("Fixed.\n\nI can fix any of these, such as the Unicode handling."))
+        self.assertTrue(blocks("Fixed.\n\nThe accent fix is the one I'd do first if you want one."))
+        self.assertTrue(blocks("Fixed.\n\nIf you need any of these, the accents are the cheapest."))
+        # Offers outside the last paragraph, and plain "I can" facts, pass.
+        self.assertFalse(blocks("I can also reproduce it on 3.11.\n\nFixed in `a.py:3`."))
+        self.assertFalse(blocks("Fixed.\n\nI can't run the GPU tests here: no CUDA device."))
+        self.assertFalse(blocks("Fixed.\n\nI can't run the GPU tests if you want proof: no CUDA."))
+        self.assertFalse(blocks("Fixed.\n\nIf you need Windows support, set `SHELL` first."))
+        self.assertFalse(blocks("Fixed.\n\nThe accent handling is the one I'd fix next."))
+        self.assertFalse(blocks("Fixed.\n\nMerge it now?"))
+        self.assertFalse(blocks("Deployed.\n\nWhen you want me to check the result, start a new session."))
+
+    def test_not_just_shape(self):
+        self.assertTrue(blocks("It's not just a typo, it's a design flaw."))
+        self.assertTrue(blocks("This is not only slow; it is wrong."))
+        self.assertTrue(blocks("That's not merely a warning \u2014 it's a crash."))
+        self.assertFalse(blocks("It's not just slow; the build fails at step 2."))
+        self.assertFalse(blocks("It is not only the cache that grows."))
+
+    def test_header_cap(self):
+        heads = "".join(f"## Part {i}\nText {i}.\n\n" for i in range(4))
+        self.assertTrue(blocks("Done.\n\n" + heads))
+        self.assertFalse(blocks("Done.\n\n" + "".join(f"## Part {i}\nText {i}.\n\n" for i in range(3))))
+        long_body = " ".join(["word"] * 520)
+        self.assertFalse(blocks("Done.\n\n" + heads + long_body))
+        self.assertFalse(blocks("Done.\n\n```\n# a\n# b\n# c\n# d\n```"))
+
+    def test_reason_carries_the_contract(self):
+        reason = json.loads(run_hook({"last_assistant_message": "Fixed.\n\nWant me to add tests?"}))["reason"]
+        self.assertIn("ends with an offer", reason)
+        for phrase in ("Lead with the outcome", "Report evidence, not effort", "Size to the ask",
+                       "Specifics over adjectives", "End on substance", "Plain words"):
+            self.assertIn(phrase, reason)
+        self.assertNotIn("Load the", reason)
+        self.assertNotIn("skill", reason)
+
+    def test_directive_matches_skill(self):
+        spec = json.loads((ROOT / "hooks" / "emission_patterns.json").read_text(encoding="utf-8"))
+        skill = (ROOT / "skills" / "emission-contract" / "SKILL.md").read_text(encoding="utf-8")
+        titles = [d.split(":")[0] for d in spec["directive"]]
+        import re
+        skill_titles = re.findall(r"^\d+\. \*\*(.+?)\.\*\*", skill, re.M)
+        self.assertEqual(titles, skill_titles)
+
+    def test_every_pattern_has_unique_id_and_message(self):
+        spec = json.loads((ROOT / "hooks" / "emission_patterns.json").read_text(encoding="utf-8"))
+        ids = [p["id"] for p in spec["patterns"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertTrue(all(p["message"] and p["where"] in ("start", "end", "anywhere") for p in spec["patterns"]))
+
+    def test_fail_open_logs_to_stderr(self):
+        out = subprocess.run([sys.executable, str(HOOK)], input=b"not json", capture_output=True)
+        self.assertEqual(out.returncode, 0)
+        self.assertEqual(out.stdout, b"")
+        self.assertIn(b"emission_check: skipped (JSONDecodeError", out.stderr)
+
     def test_guard_and_fail_open(self):
         self.assertFalse(blocks("Great question!", stop_hook_active=True))
         self.assertEqual(run_hook(b"not json"), "")

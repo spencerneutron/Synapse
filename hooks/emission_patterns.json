@@ -1,5 +1,5 @@
 {
-  "_comment": "Mechanical subset of the emission contract. where = start (first paragraph), end (last paragraph), or anywhere. Regexes are case-insensitive unless ignore_case is false, and run on prose with fenced code, inline code, and > quotes removed.",
+  "_comment": "Mechanical subset of the emission contract, plus the compact directive the Stop hook puts in its block reason (keep it in step with skills/emission-contract/SKILL.md's Directive). where = start (first paragraph), end (last paragraph), or anywhere. Regexes are case-insensitive unless ignore_case is false, and run on prose with fenced code, inline code, and > quotes removed. A pattern with max_count counts multiline matches and fires only above max_count in a message under max_words words.",
   "patterns": [
     {
       "id": "opener-praise",
@@ -50,6 +50,41 @@
       "where": "anywhere",
       "regex": "[\\U0001F300-\\U0001FAFF\\u2705\\u274C\\u2728]",
       "message": "contains emoji"
+    },
+    {
+      "id": "closer-recap",
+      "where": "end",
+      "regex": "^\\W*(in summary|to (recap|summarize|summarise|sum up)|overall)\\s*[,:]",
+      "message": "ends with a summary paragraph (In summary, To recap, To summarize, Overall)"
+    },
+    {
+      "id": "closer-offer",
+      "where": "end",
+      "regex": "\\b(i can also|would you like me to|shall i)\\b|(^|[.!?:]\\s+)\\W*want me to\\b|\\bi can\\b(?!'|\\u2019|not)[^.!?\\n]{0,120}\\bif you(?:'d| would)? (like|want|prefer|need)\\b|\\bi can (also )?(fix|add|handle|implement|do|make|write|update|change|tackle|address)\\b[^.!?\\n]{0,40}\\b(any|all|either|both|those|these|them)\\b|\\bif you(?:'d| would)? (like|want|need|prefer)( (one|them|it|that|those|these|either|both))?\\s*[.!]|(^|[.!?]\\s+)\\W*if you(?:'d| would)? (like|want|need)\\b[^.!?\\n]{0,30}\\b(any|one|either|both|me)\\b",
+      "message": "ends with an offer of more work (I can also, Would you like me to, Want me to, Shall I, I can fix any of these, ... if you want); state the next step or ask the one decision directly"
+    },
+    {
+      "id": "not-just",
+      "where": "anywhere",
+      "regex": "\\b(it'?s|it is|this is|that'?s|that is) not (just|only|merely|simply)\\b[^.!?\\n]{1,80}?(,|;|:|\\u2014|\\u2013| - )\\s*(but\\s+)?(it'?s|it is|this is|that'?s|that is)\\b",
+      "message": "uses the \"it's not just X, it's Y\" shape; say what it is"
+    },
+    {
+      "id": "header-cap",
+      "where": "anywhere",
+      "multiline": true,
+      "regex": "^#{1,6}[ \\t]+\\S",
+      "max_count": 3,
+      "max_words": 500,
+      "message": "uses more than 3 headings in a message under 500 words; use plain paragraphs"
     }
+  ],
+  "directive": [
+    "Lead with the outcome: the first sentence is the answer, the result, or the blocker",
+    "Report evidence, not effort: what changed, what you ran, what it showed; state a failure plainly",
+    "Size to the ask: one to three sentences for a quick question; headings only for three or more distinct parts",
+    "Specifics over adjectives: path:line, numbers with units, exact commands",
+    "End on substance: at most one concrete next step or one question; no recap, no offers, no pleasantries",
+    "Plain words: no tics (delve, tapestry, testament to, it's worth noting), no emoji"
   ]
 }

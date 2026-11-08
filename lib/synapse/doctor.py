@@ -244,32 +244,38 @@ def plugin_stop_hooks(settings: dict, event: str = "Stop") -> list[str]:
     return found
 
 
-def find_key(obj, key: str):
-    """First value of `key` anywhere in a settings dict (top level, or per model in modelSettings)."""
-    if isinstance(obj, dict):
-        if key in obj:
-            return obj[key]
-        for v in obj.values():
-            found = find_key(v, key)
-            if found is not None:
-                return found
-    return None
+def autocompact_values(s) -> list[tuple[str, object]]:
+    """Every autoCompactWindow in one settings dict: ('top level', v), then (model, v) per modelSettings entry."""
+    found: list[tuple[str, object]] = []
+    if not isinstance(s, dict):
+        return found
+    if "autoCompactWindow" in s:
+        found.append(("top level", s["autoCompactWindow"]))
+    models = s.get("modelSettings")
+    if isinstance(models, dict):
+        for name, cfg in models.items():
+            if isinstance(cfg, dict) and "autoCompactWindow" in cfg:
+                found.append((str(name), cfg["autoCompactWindow"]))
+    return found
 
 
-def check_autocompact(rep: Report, window: tuple[str, object] | None, models: list[str]) -> None:
-    """Read-only: the auto-compact window, and whether a 1M-context model runs on the default."""
-    if window:
-        rep.add("info", "autocompact-window", f"auto-compact window set to {window[1]} ({window[0]})")
+AUTOCOMPACT_UNSET = ("no auto-compact window is set, so the default applies "
+                     "(about 967k tokens on a native 1M-context model)")
+AUTOCOMPACT_FIX = ("see 'Long sessions' in the README: /autocompact 300k, autoCompactWindow, or "
+                   "CLAUDE_CODE_AUTO_COMPACT_WINDOW; or ask Synapse to write it: synapse setup --autocompact 300k")
+
+
+def check_autocompact(rep: Report, windows: list[str], models: list[str]) -> None:
+    """Read-only: the auto-compact window(s) found, and whether a 1M-context model runs on the default."""
+    if windows:
+        rep.add("info", "autocompact-window", "auto-compact window: " + "; ".join(windows))
         return
     big = [m for m in models if "[1m]" in m.lower()]
-    detail = ("no auto-compact window is set, so the default applies "
-              "(about 967k tokens on a native 1M-context model)")
-    fix = "see 'Long sessions' in the README: /autocompact 300k, autoCompactWindow, or CLAUDE_CODE_AUTO_COMPACT_WINDOW"
     if big:
-        rep.add("warn", "autocompact-window", f"{detail}; model {big[0]!r} has a 1M context, "
-                "so the PreCompact hook rarely runs", fix)
+        rep.add("warn", "autocompact-window", f"{AUTOCOMPACT_UNSET}; model {big[0]!r} has a 1M context, "
+                "so the PreCompact hook rarely runs", AUTOCOMPACT_FIX)
     else:
-        rep.add("info", "autocompact-window", detail, fix)
+        rep.add("info", "autocompact-window", AUTOCOMPACT_UNSET, AUTOCOMPACT_FIX)
 
 
 POSTTOOLUSE_FIX = ("Synapse's nudge hook runs here too; another PostToolUse hook only conflicts if it "
@@ -281,23 +287,22 @@ def check_settings(rep: Report, project_dir: Path) -> None:
               project_dir / ".claude" / "settings.json",
               project_dir / ".claude" / "settings.local.json"]
     managed = MANAGED_SETTINGS.get(sys.platform)
-    window = None
+    windows: list[str] = []
     env_window = os.environ.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW")
     if env_window:
-        window = ("CLAUDE_CODE_AUTO_COMPACT_WINDOW in the environment", env_window)
+        windows.append(f"{env_window} (CLAUDE_CODE_AUTO_COMPACT_WINDOW in the environment)")
     models = [m for m in [os.environ.get("ANTHROPIC_MODEL")] if m]
     for path in [*layers, managed] if managed else layers:
         s = read_json(path, rep)
         if not s:
             continue
         env_block = s.get("env") if isinstance(s.get("env"), dict) else {}
-        if window is None:
-            if env_block.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW"):
-                window = (f"env in {tilde(path)}", env_block["CLAUDE_CODE_AUTO_COMPACT_WINDOW"])
-            else:
-                value = find_key(s, "autoCompactWindow")
-                if value is not None:
-                    window = (tilde(path), value)
+        if env_block.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW"):
+            windows.append(f"{env_block['CLAUDE_CODE_AUTO_COMPACT_WINDOW']} "
+                           f"(CLAUDE_CODE_AUTO_COMPACT_WINDOW in env of {tilde(path)})")
+        for scope, value in autocompact_values(s):
+            windows.append(f"{value} (top level, {tilde(path)})" if scope == "top level"
+                           else f"{scope}: {value} (modelSettings, {tilde(path)})")
         models += [m for m in (s.get("model"), env_block.get("ANTHROPIC_MODEL")) if isinstance(m, str)]
         for group in s.get("hooks", {}).get("Stop", []):
             for h in group.get("hooks", []):
@@ -329,7 +334,7 @@ def check_settings(rep: Report, project_dir: Path) -> None:
                         "check its compaction instructions do not conflict with Synapse's")
             for pid in plugin_stop_hooks(s, "PostToolUse"):
                 rep.add("info", "posttooluse-hooks", f"plugin {pid} also has a PostToolUse hook", POSTTOOLUSE_FIX)
-    check_autocompact(rep, window, models)
+    check_autocompact(rep, windows, models)
 
 
 def migrated_count(old_archive: Path, r: paths.Resolved) -> tuple[int, int]:

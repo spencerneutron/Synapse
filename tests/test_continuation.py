@@ -37,6 +37,9 @@ def write(path, lines):
     Path(path).write_text("\n".join(lines) + "\n", "utf-8")
 
 
+DIGEST_START = "Synapse: a step over about five tool calls"
+
+
 class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -54,7 +57,14 @@ class Base(unittest.TestCase):
             return None
         out = json.loads(text)
         self.assertEqual(set(out), {"hookSpecificOutput"})
-        return out["hookSpecificOutput"]
+        out = out["hookSpecificOutput"]
+        if out.get("hookEventName") == "UserPromptSubmit":
+            # the always-on prompt digest is tested in test_nudge; drop it here
+            rest = [x for x in out["additionalContext"].split("\n") if not x.startswith(DIGEST_START)]
+            if not rest:
+                return None
+            out = dict(out, additionalContext="\n".join(rest))
+        return out
 
     def config(self, text):
         (self.home / "config.toml").write_text(text, "utf-8")

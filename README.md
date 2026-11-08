@@ -46,8 +46,9 @@ setup are reported for the user to decide.
    (`synapse:implementer`, `verifier`, `researcher`, `reviewer`, `scout`),
    each carrying its own rules and model. A sixth role, `synapse:extractor`,
    is dispatched by `/synapse:extract-session`.
-3. **Emit:** the `synapse:emission-contract` skill shapes each final message,
-   and a Stop hook enforces its mechanical rules.
+3. **Emit:** a Stop hook checks each final message against the emission
+   contract and, on a violation, asks for one rewrite with the rules in its
+   reason; the `synapse:emission-contract` skill is the reference text.
 4. **Checkpoint (any time):** `/synapse:checkpoint` writes a `## Resume`
    section in `EXECUTION.md` and the working `NOTES.md`, and work goes on.
    `/synapse:end-session` later archives them.

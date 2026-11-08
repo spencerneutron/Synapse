@@ -1,9 +1,39 @@
 # Changelog
 
-## Unreleased
+## 2.6.1 — 2026-11-08 — Enforcement over instruction
+
+No store schema change; update with `claude plugin marketplace update
+synapse` and `claude plugin update synapse@synapse`, then start new sessions.
+Why: issues #11 and #18 measured that a rule the model reads holds only while
+fresh. The emission contract was loaded in 5 of 91 turns, always in a
+session's first two turns or the first turn after a compaction, and in none
+of 18 turns after a resume. Hook gates hold. So the Stop hook now carries the
+contract, and the per-turn skill load (one extra full-context request per
+turn) is gone.
 
 ### Changed
 
+- **The Stop hook carries the emission contract.** When `emission_check.py`
+  blocks, its reason lists what it found and then the contract's directive in
+  compact form: lead with the outcome, evidence not effort, size to the ask,
+  specifics, end on substance, plain words. The rewrite needs no skill load,
+  and the reason no longer asks for one. The directive lives in
+  `hooks/emission_patterns.json` (`directive`), and a test keeps it in step
+  with the skill's Directive. The hook still fails open, and now logs the
+  exception type and message to stderr.
+- **New mechanical checks.** A closing summary paragraph ("In summary",
+  "To recap", "To summarize", "Overall,"). Offers in the last paragraph ("I
+  can also", "Would you like me to", sentence-initial "Want me to", "Shall
+  I", "I can … if you'd like", "I can fix any of these", "… if you want
+  one"). "It's not just X, it's Y" in its plain forms. More than 3 headings
+  in a message under 500 words. Over 729 real final messages on the
+  maintainer's machine, the new checks fire on 2 (the same offer, counted
+  twice) and on no false positive found.
+- **`core.md` Emission** is two sentences: the Stop hook enforces the
+  contract and its block reason carries the rules; `synapse:emission-contract`
+  is the reference. The skill's description no longer asks for a load before
+  every final message, and the lifecycle table's Emit row now reads
+  "Reference only; the Stop hook checks every final message".
 - **Context-nudge window is derived per session.** The default of 300000 never
   fired on 200k-window models. With `[nudge] context_window` unset, the 60%
   and 90% marks use a rule on the model name: 300000 for 1M-window models
@@ -17,6 +47,30 @@
 
 ### Added
 
+- **Prompt digest.** On every prompt, `synapse nudge --hook` adds one line
+  (148 characters): a step over about five tool calls or three files is a
+  brief for a role, and the Stop hook checks the final message.
+  `[nudge] digest = false` turns it off.
+- **`synapse setup --autocompact N`** (`N` or `Nk`) writes top-level
+  `autoCompactWindow` into the user's `~/.claude/settings.json`, after copying
+  the file to `settings.json.synapse-backup-<time>` beside itself. It refuses,
+  and changes nothing, when a window is already set at the top level or under
+  `modelSettings`. Without the flag, `synapse setup` prints the doctor's
+  advice and this command when no window is set; `/synapse:setup` asks before
+  running it, and the flag form is not in the skill's allowed tools, so Claude
+  Code asks too. `synapse doctor` reports every value found (top level and per
+  model, with the file) or its absence. INSTALL.md's preflight table has a
+  row for it.
+- **`tools/emission-stats.py TRANSCRIPT...`** counts, per transcript and main
+  session only: turns (`stop_hook_summary`), Stop-hook blocks (`hasOutput`),
+  and emission-contract loads (deduped by tool_use id), split by turn origin
+  (user prompt, slash command, notification or agent hand-back), with the
+  Synapse version from the plugin cache path, the model, and compactions.
+  `--json` for machine output.
+- **Eval case `emission-contract`** (`core`): a small fix whose natural ending
+  tempts a recap, an offer, and a header-heavy overview. Regex graders for
+  the mechanical patterns and the header cap, an LLM judge for "leads with
+  the outcome" and "ends on substance".
 - **`[continuation] compact_guide = false`** turns the PreCompact guidance
   off: `synapse compact-guide --hook` then prints nothing. A missing or
   invalid config leaves it on.
@@ -42,6 +96,14 @@
   any OS instead of on Windows CI (it caught `build_context.py`,
   `build_eval_home.py` and `eval-report.py`). Installed paths were never
   affected: `lib/py.sh` sets `PYTHONUTF8=1`.
+
+### Dropped
+
+- **Small-model judge for the judgment-only rules.** A `claude -p --model
+  haiku` call does run inside a Stop hook (no nested-session refusal), but it
+  took 4.1 s for a trivial prompt and 6.0 to 6.5 s for a 324-word message,
+  over the 5-second budget for every turn end. `--bare` would be faster but
+  needs an API key, which subscription users do not have. No config key.
 
 ## 2.6.0 — 2026-11-06 — Continuation assist
 
