@@ -28,6 +28,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import autocompact  # noqa: E402
 import doctor  # noqa: E402
 import paths  # noqa: E402
 
@@ -90,6 +91,8 @@ def set_autocompact(text: str) -> int:
         Path(tmp).unlink(missing_ok=True)
         raise
     print(f"done: autoCompactWindow set to {n} in {doctor.tilde(target)}")
+    print(f"  Claude Code {autocompact.marks(n, doctor.gate_min_context(Path.cwd()))} "
+          "(on a 1M-window model)")
     return 0
 
 

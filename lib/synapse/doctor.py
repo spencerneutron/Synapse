@@ -27,6 +27,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import autocompact  # noqa: E402
 import paths  # noqa: E402
 
 OLLAMA_BASE = "http://localhost:11434"
@@ -36,11 +37,7 @@ SKILL_NAMES = ("plan-session", "end-session", "recall", "extract-session", "shar
                "setup", "doctor")
 RULE_KEYWORDS = ("PLAN.md", "EXECUTION.md", ".claude-work", "/recall",
                  "extract-session", "emission", "Stop hook", "vector")
-MANAGED_SETTINGS = {
-    "darwin": Path("/Library/Application Support/ClaudeCode/managed-settings.json"),
-    "linux": Path("/etc/claude-code/managed-settings.json"),
-    "win32": Path(r"C:\Program Files\ClaudeCode\managed-settings.json"),
-}
+MANAGED_SETTINGS = autocompact.MANAGED_SETTINGS
 
 
 class Report:
@@ -60,7 +57,7 @@ def tilde(p) -> str:
 
 
 def claude_dir() -> Path:
-    return Path(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude").expanduser()
+    return autocompact.claude_dir()
 
 
 def read_json(path: Path, rep: Report) -> dict:
@@ -244,19 +241,7 @@ def plugin_stop_hooks(settings: dict, event: str = "Stop") -> list[str]:
     return found
 
 
-def autocompact_values(s) -> list[tuple[str, object]]:
-    """Every autoCompactWindow in one settings dict: ('top level', v), then (model, v) per modelSettings entry."""
-    found: list[tuple[str, object]] = []
-    if not isinstance(s, dict):
-        return found
-    if "autoCompactWindow" in s:
-        found.append(("top level", s["autoCompactWindow"]))
-    models = s.get("modelSettings")
-    if isinstance(models, dict):
-        for name, cfg in models.items():
-            if isinstance(cfg, dict) and "autoCompactWindow" in cfg:
-                found.append((str(name), cfg["autoCompactWindow"]))
-    return found
+autocompact_values = autocompact.values
 
 
 AUTOCOMPACT_UNSET = ("no auto-compact window is set, so the default applies "
@@ -265,10 +250,25 @@ AUTOCOMPACT_FIX = ("see 'Long sessions' in the README: /autocompact 300k, autoCo
                    "CLAUDE_CODE_AUTO_COMPACT_WINDOW; or ask Synapse to write it: synapse setup --autocompact 300k")
 
 
-def check_autocompact(rep: Report, windows: list[str], models: list[str]) -> None:
-    """Read-only: the auto-compact window(s) found, and whether a 1M-context model runs on the default."""
+def gate_min_context(project_dir: Path) -> float:
+    try:
+        return paths.settings(project_dir)["gate_min_context"]
+    except SystemExit:
+        return 0.5   # a bad config is reported by its own check
+
+
+def check_autocompact(rep: Report, windows: list[str], models: list[str],
+                      values: list | None = None, min_context: float = 0.5) -> None:
+    """Read-only: the auto-compact window(s) found, where Claude Code compacts for each
+    and where Synapse's marks land before it, and whether a 1M-context model runs on the default."""
     if windows:
-        rep.add("info", "autocompact-window", "auto-compact window: " + "; ".join(windows))
+        lines = []
+        for v in dict.fromkeys(values or []):
+            m = autocompact.marks(v, min_context)
+            if m:
+                lines.append(f"{v}: {m}")
+        rep.add("info", "autocompact-window", "auto-compact window: " + "; ".join(windows)
+                + "".join(f"; {x}" for x in lines))
         return
     big = [m for m in models if "[1m]" in m.lower()]
     if big:
@@ -298,8 +298,10 @@ def check_settings(rep: Report, project_dir: Path) -> None:
     managed = MANAGED_SETTINGS.get(sys.platform)
     windows: list[str] = []
     env_window = os.environ.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW")
+    values: list = []
     if env_window:
         windows.append(f"{env_window} (CLAUDE_CODE_AUTO_COMPACT_WINDOW in the environment)")
+        values.append(env_window)
     models = [m for m in [os.environ.get("ANTHROPIC_MODEL")] if m]
     for path in [*layers, managed] if managed else layers:
         s = read_json(path, rep)
@@ -309,7 +311,9 @@ def check_settings(rep: Report, project_dir: Path) -> None:
         if env_block.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW"):
             windows.append(f"{env_block['CLAUDE_CODE_AUTO_COMPACT_WINDOW']} "
                            f"(CLAUDE_CODE_AUTO_COMPACT_WINDOW in env of {tilde(path)})")
+            values.append(env_block["CLAUDE_CODE_AUTO_COMPACT_WINDOW"])
         for scope, value in autocompact_values(s):
+            values.append(value)
             windows.append(f"{value} (top level, {tilde(path)})" if scope == "top level"
                            else f"{scope}: {value} (modelSettings, {tilde(path)})")
         models += [m for m in (s.get("model"), env_block.get("ANTHROPIC_MODEL")) if isinstance(m, str)]
@@ -355,7 +359,7 @@ def check_settings(rep: Report, project_dir: Path) -> None:
                 rep.add("info", "sessionend-hooks", f"plugin {pid} also has a SessionEnd hook", SESSIONEND_FIX)
             for pid in plugin_stop_hooks(s, "PostToolUse"):
                 rep.add("info", "posttooluse-hooks", f"plugin {pid} also has a PostToolUse hook", POSTTOOLUSE_FIX)
-    check_autocompact(rep, windows, models)
+    check_autocompact(rep, windows, models, values, gate_min_context(project_dir))
 
 
 def migrated_count(old_archive: Path, r: paths.Resolved) -> tuple[int, int]:

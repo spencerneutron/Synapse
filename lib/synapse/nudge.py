@@ -16,7 +16,8 @@ nudge.py — hook-time reminders for the main session, in one process.
 2. Context nudge. After each matched tool call (Bash, PowerShell, Edit, Write,
    MultiEdit, NotebookEdit, Agent, Task; Read, Grep and MCP calls do not run
    the hook) it reads the transcript tail and, at 60%
-   and 90% of the window (from [nudge] context_window; unset: 300000 for 1M-window
+   and 90% of the window (from [nudge] context_window; unset: Claude Code's
+   auto-compact point when its settings set a window, else 300000 for 1M-window
    models and 150000 for older ones, by model name, lowered by the smallest
    auto-compaction seen in the session; 0 turns 2 and 3 off),
    suggests /synapse:checkpoint. At most 3 times per session; re-armed when the

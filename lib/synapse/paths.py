@@ -64,7 +64,8 @@ vault = "Synapse"
 [nudge]
 # calls = 5            # hands-on calls in a row before the dispatch reminder; 0 turns it off
 # context_window = 300000   # tokens; context nudge at 60% and 90% of it, and the resume-time line; 0 turns both off
-#                           # unset: the session's last auto-compaction, else the model (see README)
+#                           # unset: Claude Code's auto-compact point (its window less 33k), else the
+#                           # model; lowered by the session's last auto-compaction (see README)
 # digest = true        # one line on every prompt: when to brief a role, and that the Stop hook checks the final message; false turns it off
 
 [gate]
