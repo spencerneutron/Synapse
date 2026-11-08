@@ -13,6 +13,7 @@ synapse — command-line entry point for the Synapse plugin.
   synapse facts [--project P] [--hook]   this project's Fact notes (listed at session start)
   synapse compact-guide --hook           PreCompact: what the compaction summary should keep
   synapse nudge --hook   hooks: dispatch reminder, context-size nudge, resume pointer
+  synapse gate --hook                    hooks: cost-aware deny (PreToolUse), checkpoint ask (Stop)
   synapse checkpoint --stamp             record the time in EXECUTION.md's Resume section
   synapse share <subcommand> [...]       scrub | lint | add (share a note with a team)
   synapse shared <subcommand> [...]      init | join | sync | status | retract | push
@@ -48,6 +49,7 @@ COMMANDS = {
     "facts": "facts",
     "compact-guide": "compact_guide",
     "nudge": "nudge",
+    "gate": "gate",
     "checkpoint": "checkpoint",
     "share": "share",
     "shared": "shared",

@@ -12,6 +12,8 @@ location; everything asks resolve().
            split all three at once.
   Project  an explicit --project, else the nearest .synapse.toml's `project`,
            else the git root's folder name, else the working directory's name.
+  Settings config.toml's behaviour tables; the nearest .synapse.toml may
+           override [nudge] and [gate] keys for its project.
   Team     a [shared.<team>] table in the config: a shared notes folder (git
            checkout or synced folder) and its local index in
            <home>/shared/<team>/. Recall on a store includes its teams.
@@ -65,6 +67,12 @@ vault = "Synapse"
 #                           # unset: the session's last auto-compaction, else the model (see README)
 # digest = true        # one line on every prompt: when to brief a role, and that the Stop hook checks the final message; false turns it off
 
+[gate]
+# enabled = true       # PreToolUse: deny the next hands-on call once at [nudge] calls, 2x and 4x, above min_context
+# min_context = 0.5    # share of the context window the gate needs; below it the [nudge] reminder line runs instead
+# checkpoint = true    # Stop: ask once for /synapse:checkpoint at 60% and at 90% of the window
+# A project's .synapse.toml may override [nudge] and [gate] keys for that project.
+
 [continuation]
 # compact_guide = true     # PreCompact: guidance for the compaction summary; false prints nothing
 
@@ -117,21 +125,33 @@ def load_toml(path: Path) -> dict:
         sys.exit(f"error: cannot parse {path}: {e}")
 
 
-def settings() -> dict:
-    """Behaviour switches from config.toml, with defaults. Exits with a clear
-    error on a wrong type, so doctor reports it and the hooks stay silent."""
+PROJECT_TABLES = ("nudge", "gate")   # behaviour a project's .synapse.toml may override
+
+
+def settings(cwd: Path | None = None) -> dict:
+    """Behaviour switches from config.toml, with defaults. The nearest
+    .synapse.toml (from cwd) may override keys of PROJECT_TABLES. Exits with a
+    clear error on a wrong type, so doctor reports it and the hooks stay silent."""
     cfg = load_toml(config_path())
+    marker = find_upwards((cwd or Path.cwd()), MARKER)
+    mk = load_toml(marker) if marker else {}
 
     def table(name: str) -> dict:
         t = cfg.get(name, {})
         if not isinstance(t, dict):
             sys.exit(f"error: [{name}] in {config_path()} must be a table")
+        if name in PROJECT_TABLES and name in mk:
+            if not isinstance(mk[name], dict):
+                sys.exit(f"error: [{name}] in {marker} must be a table")
+            t = {**t, **mk[name]}
         return t
 
     def value(name: str, key: str, default, ok, want: str):
         v = table(name).get(key, default)
         if isinstance(v, bool) != isinstance(default, bool) or not ok(v):
-            sys.exit(f"error: [{name}] {key} in {config_path()} must be {want}, got {v!r}")
+            src = (marker if name in PROJECT_TABLES and isinstance(mk.get(name), dict)
+                   and key in mk[name] else config_path())
+            sys.exit(f"error: [{name}] {key} in {src} must be {want}, got {v!r}")
         return v
 
     return {
@@ -147,6 +167,11 @@ def settings() -> dict:
                                 lambda v: v is None or (isinstance(v, int) and v >= 0),
                                 "a whole number, 0 or more"),
         "nudge_digest": value("nudge", "digest", True, lambda v: True, "true or false"),
+        "gate_enabled": value("gate", "enabled", True, lambda v: True, "true or false"),
+        "gate_min_context": float(value("gate", "min_context", 0.5,
+                                        lambda v: isinstance(v, (int, float)) and 0 <= v <= 1,
+                                        "a number from 0 to 1")),
+        "gate_checkpoint": value("gate", "checkpoint", True, lambda v: True, "true or false"),
         "compact_guide": value("continuation", "compact_guide", True, lambda v: True, "true or false"),
         "extract_remind": value("extract", "remind", True, lambda v: True, "true or false"),
         "facts_at_start": value("recall", "facts", True, lambda v: True, "true or false"),

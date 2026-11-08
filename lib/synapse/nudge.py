@@ -9,8 +9,10 @@ nudge.py — hook-time reminders for the main session, in one process.
    default 5; 0 turns it off), and again at twice and four times that, it adds
    one line telling the main session to brief the rest to a role. Synapse's own
    CLI calls and edits under .claude-work/ are not counted. A dispatch (Agent,
-   Task) or a new prompt resets the count; calls made inside a sub-agent (hook
-   input has agent_id) are ignored.
+   Task) or a new prompt resets the count (and re-arms gate.py's deny); calls
+   made inside a sub-agent (hook input has agent_id) are ignored. When the
+   context is at or above [gate] min_context, gate.py denies the next call
+   instead and this line is not printed.
 2. Context nudge. After each matched tool call (Bash, PowerShell, Edit, Write,
    MultiEdit, NotebookEdit, Agent, Task; Read, Grep and MCP calls do not run
    the hook) it reads the transcript tail and, at 60%
@@ -76,6 +78,11 @@ def reset(paths, sid: str) -> None:
         paths.nudge_state(sid).unlink()
     except OSError:
         pass
+    try:
+        import gate
+        gate.clear(paths, sid)
+    except Exception:
+        pass
 
 
 def prune(paths, sid: str) -> None:
@@ -122,6 +129,12 @@ def dispatch_line(paths, sid: str, data: dict) -> str:
             return ""
         count = count_call(paths, sid)
         if count in (n, 2 * n, 4 * n):
+            try:
+                import gate
+                if gate.applies(paths, sid, data):
+                    return ""   # above [gate] min_context the PreToolUse gate denies instead
+            except Exception:
+                pass
             return (f"Synapse: {count} hands-on calls in a row in the main session. "
                     "Brief the rest of this step to a role instead of continuing here: "
                     "synapse:implementer for changes or a fix loop (goal, files, failing "
@@ -178,7 +191,11 @@ def main(argv: list[str]) -> int:
             print(__doc__.strip())
             return 0
         sys.path.insert(0, str(Path(__file__).resolve().parent))
-        out = handle(read_input())
+        data = read_input()
+        cwd = data.get("cwd")
+        if isinstance(cwd, str) and os.path.isdir(cwd):
+            os.chdir(cwd)   # a project's .synapse.toml applies
+        out = handle(data)
         if out:
             print(out)
     except BaseException:
