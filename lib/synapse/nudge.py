@@ -20,7 +20,8 @@ nudge.py — hook-time reminders for the main session, in one process.
    auto-compact point when its settings set a window, else 300000 for 1M-window
    models and 150000 for older ones, by model name, lowered by the smallest
    auto-compaction seen in the session; 0 turns 2 and 3 off),
-   suggests /synapse:checkpoint. At most 3 times per session; re-armed when the
+   adds one line naming /synapse:checkpoint (advisory; gate.py's Stop gate
+   blocks to ask for it). At most 3 times per session; re-armed when the
    context drops below 60% (after a compaction).
 3. Prompt digest. On every new prompt, one line (under 200 characters) saying
    a step over about five tool calls or three files is a brief for a role, and

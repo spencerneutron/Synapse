@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-emission-stats.py — emission-contract loads and Stop-hook blocks per transcript.
+emission-stats.py — Stop-hook verdicts (blocks per turn) and emission-contract skill loads per transcript.
 
   python3 tools/emission-stats.py TRANSCRIPT... [--json]
 
@@ -11,6 +11,7 @@ sub-agent files are not opened. Any line that does not parse is skipped.
   turn    a system entry with subtype stop_hook_summary
   block   a turn whose summary has hasOutput true (the Stop hook spoke)
   load    a Skill tool_use of synapse:emission-contract, counted once per id
+          Since 2.6.1 the block count is the metric (issue #18); loads should be 0.
   origin  the user entry that started the turn: the last user entry before the
           turn's first assistant entry that is not a tool_result.
           slash = command tags; notification = <task-notification> and other
@@ -178,7 +179,7 @@ def main(argv=None):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors=errors)
     ap = argparse.ArgumentParser(
-        description="Emission-contract loads and Stop-hook blocks per transcript "
+        description="Stop-hook verdicts and emission-contract loads per transcript "
                     "(origins: u = user, s = slash, n = notification – numbers only).")
     ap.add_argument("transcripts", nargs="+", help="main transcript .jsonl files")
     ap.add_argument("--json", action="store_true", help="print JSON")

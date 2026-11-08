@@ -6,9 +6,10 @@ doctor.py — read-only health and conflict report for a Synapse install.
 
 Checks the runtime (Python, venv, DB, Ollama, the obsidian CLI), where data
 resolves, and the conflicts INSTALL.md lists: same-named skills, competing
-always-on rules, other Stop hooks, an output style, hooks disabled by
-settings, an old V1/v1.5 install, and an unignored .claude-work/. It changes
-nothing. Exit code 1 when any check is an error.
+always-on rules, other Stop, PreCompact, PreToolUse, PostToolUse and SessionEnd hooks, the
+auto-compact window (and where Synapse's marks land for it), an output style,
+hooks disabled by settings, an old V1/v1.5 install, and an unignored
+.claude-work/. It changes nothing. Exit code 1 when any check is an error.
 """
 
 import argparse

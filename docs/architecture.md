@@ -32,14 +32,21 @@ hooks enforce what instructions can only request.
    and `/compact` is lossy. `synapse checkpoint --stamp` records the time.
    After `/clear` or a compaction, SessionStart adds a one-line pointer to
    the Resume section.
-5. **Archive** (`/synapse:end-session`). `synapse archive` copies `PLAN` and
-   `EXECUTION` into the active store as `archive/<project>/<FILE>_<id>.md`
-   under a session ID such as `2026-05-01-1515`; the skill adds `NOTES`,
-   starting from the working `NOTES.md` that checkpoints filled.
-6. **Extract** (`/synapse:extract-session`). At teardown, the
+5. **Archive** (SessionEnd hook, or `/synapse:end-session`). At exit, `/clear`
+   and a `/resume` switch, `synapse archive --auto --hook` copies `PLAN`,
+   `EXECUTION`, `REPORT` and `NOTES` into the active store as
+   `archive/<project>/<FILE>_<id>.md` with no model call, in about 60 ms
+   (`[archive] on_exit = false` turns it off). `/synapse:end-session` archives
+   on request under a session ID such as `2026-05-01-1515`, writes `NOTES`
+   from the working `NOTES.md` that checkpoints filled, and runs extraction
+   last.
+6. **Extract** (`/synapse:extract-session`). The
    `synapse:extractor` sub-agent reads the archive on disk, without the
-   conversation, and proposes Decision, Pattern, and Fact notes; the user
-   confirms once. Facts the user stated reach it through NOTES
+   conversation, and drafts Decision, Pattern, and Fact notes. With
+   `[extract] accept = auto` (the default) the skill writes them without
+   asking and `synapse extract review` lists them later; `accept = review`
+   asks once first. `[extract] on_exit` (off by default) runs the same
+   extraction detached after the SessionEnd archive. Facts the user stated reach it through NOTES
    `## User-stated facts`.
    Promoted notes and a Session note go to the vault; the archive and new
    notes are embedded; a `.processed/<id>.json` marker records the run.
@@ -77,10 +84,12 @@ it harvests finished agents' results from disk before anything is relaunched.
 | Skills | `/synapse:setup`, `/synapse:doctor` | Provision the Synapse home; read-only health and conflict report |
 | Agents | `synapse:implementer`, `verifier`, `researcher`, `reviewer`, `scout`, `extractor` | Wave roles with their own models and tool limits (the extractor is dispatched by `/synapse:extract-session`, not by waves); each body carries the rules its job needs, because sub-agents do not receive the `SessionStart` rules |
 | Hooks | `emission_check.py` (Stop) | Blocks a non-compliant final message once; the reason names the violations and carries the contract's directive (from `emission_patterns.json`); allows the stop on `stop_hook_active` or any internal error, which it logs to stderr |
-| Hooks | `synapse recall-hint` (UserPromptSubmit), `synapse pending --hook` and `synapse shared hook` (SessionStart) | Automatic recall hints, the extraction reminder, and the team sync (started in the background); all fail silently |
+| Hooks | `synapse gate --hook` (PreToolUse on Edit, Write, MultiEdit, NotebookEdit, Bash, PowerShell; Stop) | Denies a hands-on call once per crossing at 5, 10 and 20 calls in a step when the context is at least `[gate] min_context` (0.5) of the window, naming the role to brief; the retry goes through and a dispatch or new prompt re-arms it. On Stop, blocks once at 60% and once at 90% of the window to ask for `/synapse:checkpoint` when `## Resume` is stale, and once per prompt while a dispatched sub-agent is still running. A project's `.synapse.toml` may override `[gate]` and `[nudge]` |
+| Hooks | `synapse archive --auto --hook` (SessionEnd) | Copies `.claude-work/current/` into the store at exit, `/clear` and a `/resume` switch: no model call, about 60 ms inside Claude Code's shared 1.5 s SessionEnd budget; skips when nothing changed; `[extract] on_exit = true` then starts a detached headless extraction (off by default) |
+| Hooks | `synapse recall-hint` (UserPromptSubmit), `synapse pending --hook` and `synapse shared hook` (SessionStart) | Automatic recall hints, the extraction reminder, the count of notes automatic extraction wrote (`synapse extract review`), and the team sync (started in the background); all fail silently |
 | Hooks | `synapse compact-guide --hook` (PreCompact) | Tells the compaction summary what to keep and drop; defers to the user's `/compact` text; never blocks; fails silently |
-| Hooks | `synapse nudge --hook` (PostToolUse, PostToolUseFailure, UserPromptSubmit, SessionStart) | Dispatch reminder after consecutive hands-on calls; context-size nudge at 60% and 90% of the window (`[nudge] context_window`, else Claude Code's auto-compact point when its settings set a window (the window, capped at the model's, less a 33k buffer; `autocompact.py`), else the model-name rule: 300000 for 1M-window models (Fable, Opus 4.7 and later, any 5-series model), 150000 for older ones, lowered by the smallest auto-compaction `preTokens` seen in the session, kept in `context-<sid>.json`)), read from the transcript's tail; resume-time line when the cache expired on a large context; resume pointer after `compact` or `clear`. One process, no new matcher in 2.6.0; never blocks; no Ollama or DB; silent on any error |
-| CLI | `bin/synapse` → `lib/synapse/` | On the Bash PATH from any folder: `where`, `setup`, `doctor`, `archive`, `recall`, `recall-check`, `recall-hint`, `pending`, `compact-guide`, `extract` (incl. `upgrade`, `supersede`, `check-candidates`), `vault`, `share` (`scrub`, `lint`, `add`), `shared` (`init`, `join`, `sync`, `status`, `retract`, `push`), `backfill`, `migrate`; `lib/py.sh` finds Python 3.11+ |
+| Hooks | `synapse nudge --hook` (PostToolUse, PostToolUseFailure, UserPromptSubmit, SessionStart) | Dispatch reminder after consecutive hands-on calls (below `[gate] min_context`; above it the PreToolUse gate denies instead); context-size nudge at 60% and 90% of the window (`[nudge] context_window`, else Claude Code's auto-compact point when its settings set a window (the window, capped at the model's, less a 33k buffer; `autocompact.py`), else the model-name rule: 300000 for 1M-window models (Fable, Opus 4.7 and later, any 5-series model), 150000 for older ones, lowered by the smallest auto-compaction `preTokens` seen in the session, kept in `context-<sid>.json`)), read from the transcript's tail; resume-time line when the cache expired on a large context; resume pointer after `compact` or `clear`. One process, no new matcher in 2.6.0; never blocks; no Ollama or DB; silent on any error |
+| CLI | `bin/synapse` → `lib/synapse/` | On the Bash PATH from any folder: `where`, `setup` (incl. `--autocompact`), `doctor`, `archive` (incl. `--auto --hook`), `recall`, `recall-check`, `recall-hint`, `pending`, `facts`, `compact-guide`, `nudge`, `gate`, `checkpoint`, `extract` (incl. `upgrade`, `supersede`, `check-candidates`, `review`), `vault`, `share` (`scrub`, `lint`, `add`), `shared` (`init`, `join`, `sync`, `status`, `retract`, `push`), `backfill`, `migrate`; `lib/py.sh` finds Python 3.11+ |
 | Resolver | `lib/synapse/paths.py` | The only code that decides locations: home, store, project, archive, DB, vault |
 | Store | `~/.claude/synapse/stores/<store>/archive/<project>/` | Canonical session history |
 | Store | `~/.claude/synapse/stores/<store>/vectors.db` | Schema v2: sqlite-vec vectors with project/type/status metadata filtered inside the search, an FTS5 keyword index, `nomic-embed-text` via Ollama, cosine distance, store-relative source paths, supersession status |
@@ -141,7 +150,17 @@ list, or every store by default.
 - Keep style constraints out of the reasoning context.
 - Keep the output contract out of the context until it is needed: the Stop
   hook's block reason carries it, only when a message breaks it.
-- Enforce deterministically with a Stop hook rather than trusting the model to self-trigger.
+- Enforcement over instruction: a rule the model reads decays within a
+  session (2.6.1 measured the per-turn skill load at 5 of 91 turns, all
+  early); a hook gate holds. The Stop hook carries the emission contract,
+  the PreToolUse gate denies the hands-on call the rules only discouraged,
+  and the Stop gate asks for the checkpoint the nudge only suggested.
+- A per-turn skill load is one extra full-context request per turn, a cost
+  anti-pattern; rules the model must see every turn go into the hook's block
+  reason or a one-line prompt digest, not a skill.
+- Tail-end work (archive, extraction) runs from hooks and the CLI, not from
+  the model's memory of a rule: SessionEnd archives, extraction writes by
+  default and lists for review.
 
 ---
 
@@ -181,8 +200,8 @@ flowchart TD
     DN -- yes --> ND
 
     subgraph M["Memory"]
-        ND["/synapse:end-session"] --> AR[("Store archive<br/>canonical")]
-        AR --> XS["/synapse:extract-session<br/>propose, confirm once"]
+        ND["SessionEnd hook /<br/>/synapse:end-session"] --> AR[("Store archive<br/>canonical")]
+        AR --> XS["/synapse:extract-session<br/>writes (accept = auto) or asks once"]
         XS --> GT{"Choice, rationale,<br/>durable, non-obvious?"}
         GT -- yes --> VT[("Obsidian vault<br/>Decisions, Patterns, Facts, Sessions")]
         GT -- no --> AO["Stays in archive only"]
@@ -210,16 +229,16 @@ V1 enforced the output contract with a hook but left recall, extraction, and
 role selection to instructions. V2 took each seam below in a measured slice
 ([plan and results](design/v2.md)); the last column is what could come next.
 
-| Seam | Today (2.6) | Further option | Trade-off |
+| Seam | Today (2.7) | Further option | Trade-off |
 |------|------------|-----------|-----------|
 | Recall triggering | **Done in V2 slice D:** a `UserPromptSubmit` hook adds up to three hints scoring ≥ 0.70, once per session, failing silently | Per-project thresholds | Calibrated on the author's store: 0 of 24 unrelated prompts hinted |
-| Extraction | **Done in V2 slice D:** a session-start reminder lists archived sessions never extracted; the user still runs `/synapse:extract-session` | Auto-embed pending archives without promotion | Nothing is forgotten silently; the user still confirms every note |
+| Extraction | **Done in V2 slice D, 2.7.0:** a session-start reminder lists archived sessions never extracted; a SessionEnd hook archives at exit; `/synapse:end-session` runs extraction last, writing notes by default (`[extract] accept = auto`) for `synapse extract review` | Detached extraction after exit (`[extract] on_exit`, shipped off; macOS verified, Windows not) | Nothing is forgotten silently; notes written without asking are listed for review |
 | Role orchestration | **Done in V2 slice C:** six plugin agents with per-role models, tool limits, and their own rules; measured with an eval suite | Hooks that route work to a role | Right-sizing is config; agent files to maintain |
 | Memory hygiene | **Done in V2 slice 1:** `synapse extract supersede` marks the old decision in the DB and its front matter; recall hides it by default. **2.5.0:** extraction recalls every candidate by concept and proposes `supersedes` or a duplicate for hits ≥ 0.70 | Find conflicts among notes already active | Fewer near-duplicate decisions left active |
 | Retrieval | **Done in V2 slice 1:** hybrid keyword + vector with reciprocal rank fusion; exact, case-insensitive filters inside the search | Tuned chunking; a cross-encoder re-ranker | Measured with `synapse recall-check` |
 | Memory scope | **Done in V2 slice E:** optional teams share Decisions and Patterns through a git repo or a synced folder, behind a scrub gate and per-note approval, with provenance and local-first ranking | Encryption, access control beyond the git host's | Team leverage; a leak cannot be unshared from teammates' clones. **Gate:** the share step scrubs paths, secrets, identifiers, and session-local references (bare `#17`, "Wave B", "this session"), and sync re-checks every incoming note |
 | Evaluation | **Done in V2 slice A:** a `claude plugin eval` suite (core loop, role agents, triggers, teams) run with and without Synapse by `tools/run-bench.sh`, reported by `tools/eval-report.py` ([V2 plan](design/v2.md)) | Evals in CI; more cases per seam | Each run costs money; benchmark upkeep is real work |
-| Cost | **Done in 2.5.0:** the main session conducts and roles work (more than about five tool calls or three files go to a role); extraction runs in a fresh context as `synapse:extractor`; a PreCompact hook guides the compaction summary; `tools/context-cost.py` measures the baseline ([design](design/cost-sweep.md)). **Done in 2.6.0:** continuation assist: `/synapse:checkpoint`, a resume pointer after `/clear` or compaction, a context-size nudge and a resume-time line in the nudge hook ([design](design/continuation-assist.md)) | Per-project windows; a checkpoint eval case | Smaller main context; one more agent file to maintain |
+| Cost | **Done in 2.5.0:** the main session conducts and roles work (more than about five tool calls or three files go to a role); extraction runs in a fresh context as `synapse:extractor`; a PreCompact hook guides the compaction summary; `tools/context-cost.py` measures the baseline ([design](design/cost-sweep.md)). **Done in 2.6.0:** continuation assist: `/synapse:checkpoint`, a resume pointer after `/clear` or compaction, a context-size nudge and a resume-time line in the nudge hook ([design](design/continuation-assist.md)). **Done in 2.6.1 and 2.7.x:** the Stop hook carries the emission contract (no per-turn skill load; `tools/emission-stats.py` counts its verdicts); a PreToolUse gate denies hands-on calls at 5, 10 and 20 above half the window; the Stop hook asks for a checkpoint at 60% and 90%; the window is Claude Code's auto-compact point, the setting less 33k (`autocompact.py`) | Per-project windows; a checkpoint eval case | Smaller main context; one more agent file to maintain |
 
 Closed since V1: v1.5 merged the instruction files and split out the platform
 conventions; v1.6 packaged Synapse as a user-scope plugin with a global store

@@ -19,8 +19,8 @@ rules decide *when*.
 | Execute | (these rules) | Briefs to roles; the main session runs what takes a handful of calls |
 | Emit | `synapse:emission-contract` | Reference only; the Stop hook checks every final message |
 | Checkpoint | `/synapse:checkpoint` | Between stages of a long request, before a pause, when Synapse reports a large context, or when the Stop gate asks; then continue |
-| Archive | `/synapse:end-session` | The session itself is closing, not just a task |
-| Extract | `/synapse:extract-session` | After `/synapse:end-session`, once the user agrees |
+| Archive | `/synapse:end-session` | The session itself is closing, not just a task (a SessionEnd hook archives the files on exit anyway; this adds notes and extraction) |
+| Extract | `/synapse:extract-session` | Runs last inside `/synapse:end-session`; on its own when the user asks |
 | Recover | `/synapse:workflow-recovery` | A background workflow or agent fleet died or was stopped |
 
 ---
@@ -102,8 +102,9 @@ Prefer Synapse's role agents, which carry the rules for their job:
   briefs, and reading reports. It keeps work that takes a handful of calls.
   A step that needs more than about five tool calls or three files is a
   brief for a role, not a step to run here: each main-session call re-reads
-  the whole context. At five hands-on calls in a step, above a context threshold, a
-  Synapse gate denies the next call and names the role to brief: brief the rest.
+  the whole context. At five hands-on calls in a step (then ten and twenty), above half the
+  context window, a Synapse gate denies the next call once and names the role
+  to brief: brief the rest.
 - Hand a run-test, read-log, fix loop to `synapse:implementer` with the
   failing command, the done condition, and an attempt limit; read its
   report, not the logs.
@@ -150,7 +151,8 @@ same way: check a source before relying on it, ignore hints that do not fit,
 and never present a hint as a decision. It does not replace
 `/synapse:recall` when you need more. If a session starts with a note that
 archived sessions were never extracted, mention it once and offer
-`/synapse:extract-session`; do not extract without the user's go-ahead.
+`/synapse:extract-session`; outside `/synapse:end-session`, do not start extraction without the user's
+go-ahead.
 
 A session may start with a "Synapse facts" list: what the user stated or
 confirmed about this project (deploy targets, customers, constraints). Treat

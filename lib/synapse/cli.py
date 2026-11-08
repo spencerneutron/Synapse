@@ -3,10 +3,10 @@
 synapse — command-line entry point for the Synapse plugin.
 
   synapse where [--project P] [--json]   where data resolves for this folder
-  synapse setup                          provision ~/.claude/synapse (idempotent)
-  synapse doctor [--json]                read-only health and conflict report
+  synapse setup [--autocompact N]        provision ~/.claude/synapse; N sets Claude Code's auto-compact window
+  synapse doctor [--json] [--project-dir D]  read-only health and conflict report
   synapse archive [--project P]          archive .claude-work/current into the store
-  synapse archive --auto --hook          SessionEnd: archive on exit, no model call
+  synapse archive --auto --hook          SessionEnd: archive at exit, /clear, /resume; no model call
   synapse recall "<query>" [...]         semantic search over the active store
   synapse recall-check <golden.toml>     score recall against a golden set
   synapse recall-hint [--prompt "..."]   the automatic hint (UserPromptSubmit hook)
@@ -14,12 +14,12 @@ synapse — command-line entry point for the Synapse plugin.
   synapse facts [--project P] [--hook]   this project's Fact notes (listed at session start)
   synapse compact-guide --hook           PreCompact: what the compaction summary should keep
   synapse nudge --hook   hooks: dispatch reminder, context-size nudge, resume pointer
-  synapse gate --hook                    hooks: cost-aware deny (PreToolUse), checkpoint ask (Stop)
+  synapse gate --hook                    hooks: cost-aware deny (PreToolUse); checkpoint ask, wait for agents (Stop)
   synapse checkpoint --stamp             record the time in EXECUTION.md's Resume section
   synapse share <subcommand> [...]       scrub | lint | add (share a note with a team)
   synapse shared <subcommand> [...]      init | join | sync | status | retract | push
   synapse extract <subcommand> [...]     init | embed-archive | embed-note | status |
-                                         upgrade | supersede | check-candidates
+                                         upgrade | supersede | check-candidates | review | reembed-all
   synapse vault <subcommand> [...]       verify | create-note | note-exists | search
   synapse backfill [...]                 embed archived sessions with no marker
   synapse migrate --from DIR [...]       copy a V1/v1.5 workspace's memory in

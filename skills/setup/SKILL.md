@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Provision Synapse after the plugin is installed, or repair a broken install — creates the Synapse home (config, global store, Python venv, vector DB), checks Ollama, the embedding model, and Obsidian, and offers to import an old V1/v1.5 workspace. Use when the user asks to set up Synapse, when recall reports the DB is missing, or after a fresh install.
+description: Provision Synapse after the plugin is installed, or repair a broken install — creates the Synapse home (config, global store, Python venv, vector DB), checks Ollama, the embedding model, and Obsidian, on the user's yes sets Claude Code's auto-compact window (`synapse setup --autocompact N`), and offers to import an old V1/v1.5 workspace. Use when the user asks to set up Synapse, when recall reports the DB is missing, or after a fresh install.
 allowed-tools: Bash(synapse setup), Bash(synapse doctor *), Bash(synapse where *), Bash(synapse migrate * --dry-run)
 ---
 
@@ -11,7 +11,9 @@ allowed-tools: Bash(synapse setup), Bash(synapse doctor *), Bash(synapse where *
 Make the plugin's memory features work on this machine without touching
 anything Synapse does not own. `synapse setup` writes only under the Synapse
 home (`~/.claude/synapse/` unless `SYNAPSE_HOME` or `CLAUDE_CONFIG_DIR` says
-otherwise) and is safe to re-run: it keeps an existing config and venv.
+otherwise); the one exception, `--autocompact N`, edits `settings.json` on
+the user's yes after backing it up. It is safe to re-run: it keeps an existing
+config and venv.
 
 ---
 

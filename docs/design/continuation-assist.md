@@ -19,6 +19,15 @@ the maintainer's decisions of 2026-11-06:
   denies a hands-on call once per threshold above `[gate] min_context`, and
   the Stop hook asks once for a checkpoint at 60% and 90% when `## Resume` is
   stale. Below `min_context` the nudge line still runs.
+- 2.7.0: the tail end. A SessionEnd hook archives `.claude-work/current/`
+  at exit, `/clear` and a `/resume` switch; extraction writes its notes by
+  default (`[extract] accept = auto`) and `synapse extract review` lists
+  them; `/synapse:end-session` runs extraction last.
+- 2.7.1: the window is Claude Code's auto-compact point when a per-model
+  `autoCompactWindow` is set: the setting less the 33k compaction buffer
+  (`lib/synapse/autocompact.py`), so 300k compacts near 267k and the marks
+  land at 134k, 160k and 240k. The rest of this document is the 2026-11-06
+  design record and keeps its figures.
 - Pointers only. The resume pointer names the Resume section; nothing is
   inlined.
 - The resume-time line (cache expired on a large context) is on
