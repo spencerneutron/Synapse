@@ -17,7 +17,7 @@ rules decide *when*.
 | Plan | `/synapse:plan-session` | Starting or resuming structured, multi-step work |
 | Recall | `/synapse:recall` | See "Local Knowledge Recall" below |
 | Execute | (these rules) | Briefs to roles; the main session runs what takes a handful of calls |
-| Emit | `synapse:emission-contract` | Before the final user-facing message of every turn |
+| Emit | `synapse:emission-contract` | Reference only; the Stop hook checks every final message |
 | Checkpoint | `/synapse:checkpoint` | Between stages of a long request, before a pause, or when Synapse reports a large context; then continue |
 | Archive | `/synapse:end-session` | The session itself is closing, not just a task |
 | Extract | `/synapse:extract-session` | After `/synapse:end-session`, once the user agrees |

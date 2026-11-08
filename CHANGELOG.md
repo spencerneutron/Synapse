@@ -32,8 +32,8 @@ turn) is gone.
 - **`core.md` Emission** is two sentences: the Stop hook enforces the
   contract and its block reason carries the rules; `synapse:emission-contract`
   is the reference. The skill's description no longer asks for a load before
-  every final message. (The lifecycle table's Emit row is unchanged in this
-  release.)
+  every final message, and the lifecycle table's Emit row now reads
+  "Reference only; the Stop hook checks every final message".
 - **Context-nudge window is derived per session.** The default of 300000 never
   fired on 200k-window models. With `[nudge] context_window` unset, the 60%
   and 90% marks use a rule on the model name: 300000 for 1M-window models
