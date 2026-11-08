@@ -71,6 +71,7 @@ vault = "Synapse"
 # enabled = true       # PreToolUse: deny the next hands-on call once at [nudge] calls, 2x and 4x, above min_context
 # min_context = 0.5    # share of the context window the gate needs; below it the [nudge] reminder line runs instead
 # checkpoint = true    # Stop: ask once for /synapse:checkpoint at 60% and at 90% of the window
+# wait_for_agents = true  # Stop: once per prompt, ask to wait while a dispatched sub-agent is still running
 # A project's .synapse.toml may override [nudge] and [gate] keys for that project.
 
 [continuation]
@@ -78,6 +79,11 @@ vault = "Synapse"
 
 [extract]
 # remind = true        # at session start, mention archived sessions never extracted
+# accept = "auto"      # auto: write every proposed note, list them later with `synapse extract review`; review: ask once first
+# on_exit = false      # SessionEnd: after the auto archive, extract it in a detached headless `claude -p` (Sonnet, costs money per session)
+
+[archive]
+# on_exit = true       # SessionEnd: copy .claude-work/current into the archive (no model call); false turns it off
 
 # A team shares Decisions, Patterns, and Facts through a git repo or a synced folder.
 # `synapse shared init` or `synapse shared join` writes this table.
@@ -172,8 +178,13 @@ def settings(cwd: Path | None = None) -> dict:
                                         lambda v: isinstance(v, (int, float)) and 0 <= v <= 1,
                                         "a number from 0 to 1")),
         "gate_checkpoint": value("gate", "checkpoint", True, lambda v: True, "true or false"),
+        "gate_wait_for_agents": value("gate", "wait_for_agents", True, lambda v: True, "true or false"),
         "compact_guide": value("continuation", "compact_guide", True, lambda v: True, "true or false"),
         "extract_remind": value("extract", "remind", True, lambda v: True, "true or false"),
+        "extract_accept": value("extract", "accept", "auto", lambda v: v in ("auto", "review"),
+                                '"auto" or "review"'),
+        "extract_on_exit": value("extract", "on_exit", False, lambda v: True, "true or false"),
+        "archive_on_exit": value("archive", "on_exit", True, lambda v: True, "true or false"),
         "facts_at_start": value("recall", "facts", True, lambda v: True, "true or false"),
     }
 
@@ -362,6 +373,23 @@ def context_state(session_id: str) -> Path:
     """Context-size nudge state for a session: fired levels and fire count (JSON)."""
     safe = "".join(c for c in session_id if c.isalnum() or c in "-_")
     return home() / "state" / f"context-{safe}.json"
+
+
+def auto_archive_state(r: Resolved, session_id: str) -> Path:
+    """What the SessionEnd archive last wrote for a Claude session: archive ID and content hash."""
+    safe = "".join(c for c in session_id if c.isalnum() or c in "-_")
+    return r.archive_dir / ".auto" / f"{safe}.json"
+
+
+def detached_log(session_id: str) -> Path:
+    """Log of the detached on-exit extraction for an archive session ID."""
+    safe = "".join(c for c in session_id if c.isalnum() or c in "-_.")
+    return home() / "state" / f"extract-{safe}.log"
+
+
+def review_ledger(r: Resolved) -> Path:
+    """Notes written without per-note approval ([extract] accept = auto), until reviewed."""
+    return r.store_path / "review.json"
 
 
 def teams() -> dict[str, Team]:

@@ -64,7 +64,8 @@ class SettingsTests(unittest.TestCase):
                                             "nudge_digest": True, "compact_guide": True,
                                             "extract_remind": True, "facts_at_start": True,
                                             "gate_enabled": True, "gate_min_context": 0.5,
-                                            "gate_checkpoint": True})
+                                            "gate_checkpoint": True, "gate_wait_for_agents": True, "extract_accept": "auto", "extract_on_exit": False,
+                                            "archive_on_exit": True})
         (self.tmp / "config.toml").write_text(
             "[recall]\nauto = false\nmin_score = 0.8\nfacts = false\n[extract]\nremind = false\n")
         s = paths.settings()

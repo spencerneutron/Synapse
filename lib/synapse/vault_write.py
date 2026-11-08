@@ -613,6 +613,12 @@ def cmd_create_note(args: argparse.Namespace) -> int:
 
     # Forward slashes: a Windows path with backslashes breaks when an agent
     # pastes it into a bash loop (`\$f` escapes the `$`).
+    if getattr(args, "review_batch", None):
+        import review
+        r = paths.resolve()
+        review.append(r, {"path": f"vault/{folder}/{name}.md", "title": spec["title"], "folder": folder,
+                          "session": args.review_batch, "project": spec.get("project") or r.project})
+
     print(json.dumps({
         "created": True,
         "folder": folder,
@@ -667,6 +673,8 @@ def main(argv: list[str] | None = None) -> int:
     p_create.add_argument("--on-conflict", choices=["error", "suffix"],
                           default="error",
                           help="behavior when a note with this name already exists")
+    p_create.add_argument("--review-batch", default=None, metavar="SESSION_ID",
+                          help="record the note in the review ledger (synapse extract review)")
     p_create.set_defaults(func=cmd_create_note)
 
     p_exists = sub.add_parser("note-exists",

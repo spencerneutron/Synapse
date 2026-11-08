@@ -18,8 +18,11 @@ gate.py — hook gates for the main session, where a reminder line was not enoug
    reached that mark, block the stop once asking for /synapse:checkpoint. At
    most once at 60% and once at 90% per session; never when stop_hook_active
    is true; below 90% only when .claude-work/current/ exists.
+3. Wait for agents (Stop, after 2). When the Stop input's background_tasks
+   lists a sub-agent still running, block once per prompt asking the session
+   to wait for its report and verify it. [gate] wait_for_agents switches it.
 
-[gate] enabled, min_context and checkpoint switch them; a project's
+[gate] enabled, min_context, checkpoint and wait_for_agents switch them; a project's
 .synapse.toml may override them. State sits next to context-<sid>.json:
 context-<sid>.gate.<n> (cleared with the count) and context-<sid>.ckpt.<level>,
 each claimed with O_EXCL so parallel hooks act once. Stdlib only. It never
@@ -43,6 +46,8 @@ DENY = ("Synapse gate: {n} hands-on calls in this step at about {ctx} context (e
         "(goal, files, failing command, done condition, attempt limit) or synapse:scout / "
         "synapse:researcher for searches, then read the report. This gate lifts after a dispatch "
         "or on the next prompt.")
+WAIT = ("Synapse: a dispatched agent is still running. Wait for its report and verify it before "
+        "ending the turn; if it asked a question, answer it or relay it.")
 CHECKPOINT = ("Synapse: the context is about {ctx} tokens. Run /synapse:checkpoint now (rewrite "
               "## Resume in EXECUTION.md, append to NOTES.md, `synapse checkpoint --stamp`), then "
               "finish your message.")
@@ -151,11 +156,37 @@ def pre_tool(paths, sid: str, data: dict) -> str:
                                               "permissionDecisionReason": reason}})
 
 
+def running_agent(data: dict) -> bool:
+    """True when the Stop input's background_tasks lists a sub-agent still running.
+    The field (Claude Code docs, 2026-11) lists in-flight tasks: type "subagent"
+    with agent_type, status such as "running". It says nothing about which turn
+    started a task, so any running sub-agent counts."""
+    tasks = data.get("background_tasks")
+    if not isinstance(tasks, list):
+        return False
+    return any(isinstance(t, dict) and t.get("type") == "subagent"
+               and str(t.get("status", "running")).lower() in ("running", "pending", "in_progress")
+               for t in tasks)
+
+
 def stop(paths, sid: str, data: dict) -> str:
     if data.get("stop_hook_active") or data.get("agent_id"):
         return ""
-    import continuation
     s = paths.settings()
+    return checkpoint_ask(paths, sid, data, s) or wait_ask(paths, sid, data, s)
+
+
+def wait_ask(paths, sid: str, data: dict, s: dict) -> str:
+    """Block once per prompt (the marker is cleared with the count) while a sub-agent runs."""
+    if not s["gate_wait_for_agents"] or not running_agent(data):
+        return ""
+    if not _claim(_marker(paths, sid, "gate.wait")):
+        return ""
+    return json.dumps({"decision": "block", "reason": WAIT})
+
+
+def checkpoint_ask(paths, sid: str, data: dict, s: dict) -> str:
+    import continuation
     if not s["gate_checkpoint"]:
         return ""
     ctx, window = context_now(paths, sid, data, s)

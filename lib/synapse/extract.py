@@ -15,6 +15,8 @@ Subcommands:
   check-candidates <file> --session <id>
                              For each candidate note in a JSON file, list prior
                              local notes on its concept (score >= 0.70, top 3).
+  review [--json] [--done]  List notes written by automatic extraction since the
+                             last review; --done marks them reviewed.
   reembed-all                Detect embedding-model mismatches and re-embed.
 
 The script is deterministic and idempotent. Atomic-note extraction (deciding
@@ -1007,7 +1009,36 @@ def cmd_check_candidates(args: argparse.Namespace) -> int:
         results = recall.check_candidates(conn, candidates, args.session,
                                           paths.resolve(), threshold=args.threshold)
     print(json.dumps({"session_id": args.session, "threshold": args.threshold,
+                      "accept": paths.settings()["extract_accept"],
                       "candidates": results}, indent=2))
+    return 0
+
+
+def cmd_review(args: argparse.Namespace) -> int:
+    import review  # file scan only: no DB, no Ollama
+    r = paths.resolve()
+    ledger = review.load(r)
+    entries = review.unreviewed(ledger)
+    since = ledger["reviewed_at"]
+    if args.json:
+        print(json.dumps({"accept": paths.settings()["extract_accept"], "reviewed_at": since,
+                          "entries": [{**e, "display_path": paths.to_display_path(e.get("path", ""), r)}
+                                      for e in entries]}, indent=2))
+    elif not entries:
+        print(f"Nothing to review since {since[:10] if since else 'ever'}.")
+    else:
+        print(f"{len(entries)} note{'s' if len(entries) != 1 else ''} written by automatic "
+              f"extraction since {since[:10] if since else 'the first run'}:")
+        for e in entries:
+            print(f"  {paths.to_display_path(e.get('path', ''), r)}\n"
+                  f"    {e.get('title')} ({e.get('folder')}), session {e.get('session')}, {e.get('time')}")
+        print('To replace a note: synapse extract supersede "[[OLD]]" --by "[[NEW]]". '
+              "To drop one: delete the file in the vault. "
+              "Then `synapse extract review --done` marks these reviewed.")
+    if args.done:
+        review.mark_reviewed(r)
+        if not args.json:
+            print("Marked as reviewed.")
     return 0
 
 
@@ -1067,6 +1098,11 @@ def main(argv: list[str] | None = None) -> int:
     p_cc.add_argument("--threshold", type=float, default=None,
                       help="minimum cosine score (default: recall.CANDIDATE_MIN_SCORE, 0.70)")
     p_cc.set_defaults(func=cmd_check_candidates)
+
+    p_rv = sub.add_parser("review", help="list notes written by automatic extraction since the last review")
+    p_rv.add_argument("--json", action="store_true", help="machine output")
+    p_rv.add_argument("--done", action="store_true", help="mark everything listed as reviewed")
+    p_rv.set_defaults(func=cmd_review)
 
     p_re = sub.add_parser("reembed-all", help="detect model mismatches")
     p_re.set_defaults(func=cmd_reembed_all)

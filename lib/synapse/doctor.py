@@ -286,6 +286,11 @@ PRETOOLUSE_FIX = ("Synapse's gate (synapse gate --hook) denies a hands-on call o
                   "only conflicts if it also denies or rewrites input on the same calls")
 
 
+SESSIONEND_FIX = ("all SessionEnd hooks share a 1.5 s budget, and Synapse's archive hook needs a fraction of it; "
+                  "raise it with a per-hook `timeout` in your settings, or set the "
+                  "CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS environment variable (milliseconds)")
+
+
 def check_settings(rep: Report, project_dir: Path) -> None:
     layers = [claude_dir() / "settings.json",
               project_dir / ".claude" / "settings.json",
@@ -324,6 +329,10 @@ def check_settings(rep: Report, project_dir: Path) -> None:
             for h in group.get("hooks", []):
                 rep.add("info", "posttooluse-hooks", f"{tilde(path)} runs a PostToolUse hook: {h.get('command', h)}",
                         POSTTOOLUSE_FIX)
+        for group in s.get("hooks", {}).get("SessionEnd", []):
+            for h in group.get("hooks", []):
+                rep.add("info", "sessionend-hooks", f"{tilde(path)} runs a SessionEnd hook: {h.get('command', h)}",
+                        SESSIONEND_FIX)
         if s.get("outputStyle"):
             rep.add("info", "output-style", f"{tilde(path)} sets outputStyle {s['outputStyle']!r}",
                     "make sure it does not contradict /synapse:emission-contract")
@@ -342,6 +351,8 @@ def check_settings(rep: Report, project_dir: Path) -> None:
                         "check its compaction instructions do not conflict with Synapse's")
             for pid in plugin_stop_hooks(s, "PreToolUse"):
                 rep.add("info", "pretooluse-hooks", f"plugin {pid} also has a PreToolUse hook", PRETOOLUSE_FIX)
+            for pid in plugin_stop_hooks(s, "SessionEnd"):
+                rep.add("info", "sessionend-hooks", f"plugin {pid} also has a SessionEnd hook", SESSIONEND_FIX)
             for pid in plugin_stop_hooks(s, "PostToolUse"):
                 rep.add("info", "posttooluse-hooks", f"plugin {pid} also has a PostToolUse hook", POSTTOOLUSE_FIX)
     check_autocompact(rep, windows, models)

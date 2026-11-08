@@ -1,7 +1,7 @@
 ---
 name: end-session
 description: Use when the session itself is closing (not merely when a task finishes). Archives PLAN.md and EXECUTION.md under a session tag and ensures any open questions or deferred actions are captured in a session notes file.
-allowed-tools: Bash(synapse archive *), Bash(synapse where *)
+allowed-tools: Bash(synapse archive *), Bash(synapse where *), Bash(synapse extract *)
 ---
 
 # End Session Skill
@@ -128,21 +128,25 @@ Before reporting "done":
 - Cross-check: for every `- [ ]` unchecked item and every `Blocked`/`Open question`/`Deferred` heading content in the working files, ensure it is reflected (or deliberately excluded) in the notes file. If something in the working files is *not* in the notes and was *not* deliberately excluded, that's a miss — add it.
 - Report the three file paths and a one-line summary of what was captured.
 
-### 5b. Suggest extraction (recommended)
+### 5b. Extract (last step)
 
-After verification succeeds, recommend that the user run
-`/synapse:extract-session <session-id>` to project this session into the
-Obsidian vault and the local knowledge base. Phrase it as a default
-next step, not an open question:
+After verification succeeds, learn the mode with `synapse extract review
+--json`: its `accept` key is `auto` or `review`.
+
+- `auto`, and the user has not said otherwise (such as "don't extract" or
+  "review first"): continue straight into the `/synapse:extract-session`
+  procedure for the session just archived, in this same turn, so the tail is
+  one turn. Do not stop to ask; that skill prints its own summary and how to
+  review.
+- `review`, or the user declined extraction: recommend, do not run:
 
 > "Archive complete. Recommend running `/synapse:extract-session 2026-04-23-1645`
 > to promote this session's decisions and patterns into the vault and
 > embed it for recall. Skip if this was a throwaway session or if
 > Obsidian isn't running."
 
-Do **not** invoke `/synapse:extract-session` automatically. Skill-to-skill
-invocation makes orchestration hard to reason about; the user should
-make the call. Extraction can also be run later — there's no expiration.
+If the `accept` check fails, fall back to the recommendation. Extraction can
+also be run later; there is no expiration.
 
 If the user has previously declined extraction in this workspace and
 explicitly indicated a "stop suggesting" preference, omit this step.
