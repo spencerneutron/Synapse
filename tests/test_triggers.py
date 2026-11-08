@@ -62,12 +62,27 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(paths.settings(), {"recall_auto": True, "min_score": paths.DEFAULT_MIN_SCORE,
                                             "max_hits": 3, "nudge_calls": 5, "context_window": None,
                                             "nudge_digest": True, "compact_guide": True,
-                                            "extract_remind": True, "facts_at_start": True})
+                                            "extract_remind": True, "facts_at_start": True,
+                                            "gate_enabled": True, "gate_min_context": 0.5,
+                                            "gate_checkpoint": True})
         (self.tmp / "config.toml").write_text(
             "[recall]\nauto = false\nmin_score = 0.8\nfacts = false\n[extract]\nremind = false\n")
         s = paths.settings()
         self.assertEqual((s["recall_auto"], s["min_score"], s["extract_remind"], s["facts_at_start"]),
                          (False, 0.8, False, False))
+
+    def test_project_marker_overrides_nudge_and_gate_only(self):
+        proj = self.tmp / "proj"
+        proj.mkdir()
+        marker = proj / paths.MARKER
+        marker.write_text("[gate]\nmin_context = 0.2\n[nudge]\ncalls = 3\n[recall]\nauto = false\n")
+        s = paths.settings(cwd=proj)
+        self.assertEqual((s["gate_min_context"], s["nudge_calls"], s["recall_auto"]), (0.2, 3, True))
+        self.assertEqual(paths.settings(cwd=self.tmp)["gate_min_context"], 0.5)
+        marker.write_text('[gate]\nmin_context = "high"\n')
+        with self.assertRaises(SystemExit) as cm:
+            paths.settings(cwd=proj)
+        self.assertIn(str(marker), str(cm.exception))
 
     def test_wrong_types_are_errors_not_guesses(self):
         cfg = self.tmp / "config.toml"

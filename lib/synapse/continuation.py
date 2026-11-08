@@ -8,11 +8,14 @@ Called from nudge.handle; it never prints and never raises on its own account.
   context_nudge(...)       PostToolUse: one line at 60% and 90% of the context window
   resume_time_line(...)    UserPromptSubmit: the prompt cache expired while idle
   resume_pointer(...)      SessionStart (compact or clear): point at EXECUTION.md ## Resume
+  cross / uncross          when the context reached 60% / 90% (for the Stop gate in gate.py)
+  resume_written(path)     when EXECUTION.md's ## Resume was last written
 """
 
 import json
 import os
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -251,6 +254,31 @@ def _claim(path: Path, level: str, epoch: int) -> bool:
         return False
 
 
+def cross(path: Path, level: str) -> float:
+    """When the context first reached `level` ("low" 60%, "high" 90%) since it was
+    last below 60%: recorded in the state file on first sight, now if absent."""
+    d = _state(path).get("crossed")
+    d = d if isinstance(d, dict) else {}
+    t = d.get(level)
+    if isinstance(t, (int, float)) and not isinstance(t, bool):
+        return float(t)
+    now = time.time()
+    d[level] = now
+    if level == "high":
+        d.setdefault("low", now)
+    _write_state(path, crossed=d)
+    return now
+
+
+def uncross(path: Path) -> None:
+    """The context is below 60% (after a compaction): forget the crossing times."""
+    if _state(path).get("crossed"):
+        try:
+            _write_state(path, crossed=None)
+        except OSError:
+            pass
+
+
 def context_nudge(paths, sid: str, data: dict) -> str:
     """The context-size line for this call, or "". Main session only.
 
@@ -274,7 +302,12 @@ def context_nudge(paths, sid: str, data: dict) -> str:
     if ctx < window * LOW:
         if here("low") or here("high"):
             _write_state(path, epoch=epoch + 1)
+        uncross(path)
         return ""
+    try:
+        cross(path, "high" if ctx >= window * HIGH else "low")
+    except OSError:
+        pass
     if ctx >= window * HIGH:
         level, ok = "high", not here("high")
     else:
@@ -327,17 +360,9 @@ STAMP = re.compile(r"Checkpoint written:\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2} [+-]\d
 HEADING = re.compile(r"^##\s+Resume\b", re.I)
 
 
-def resume_pointer(paths, data: dict) -> str:
-    """SessionStart after /compact or /clear: point at EXECUTION.md ## Resume."""
-    if data.get("source") not in ("compact", "clear"):
-        return ""
-    cwd = data.get("cwd")
-    if not isinstance(cwd, str) or not cwd:
-        return ""
-    work = paths.find_work_dir(Path(cwd))
-    f = work / "EXECUTION.md"
-    if not f.is_file():
-        return ""
+def _resume(f: Path):
+    """(when, label) for EXECUTION.md's ## Resume section, or None without one:
+    the section's checkpoint stamp, else the file's modification time."""
     with open(f, "rb") as fh:
         text = fh.read(1024 * 1024).decode("utf-8", "replace")
     section = None
@@ -350,18 +375,41 @@ def resume_pointer(paths, data: dict) -> str:
         else:
             section.append(ln)
     if section is None:
-        return ""
-    when, label = None, "file modified"
+        return None
     m = STAMP.search("\n".join(section))
     if m:
         try:
-            when = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M %z")
-            label = "checkpoint written"
+            return datetime.strptime(m.group(1), "%Y-%m-%d %H:%M %z"), "checkpoint written"
         except ValueError:
-            when = None
-    if when is None:
-        when = datetime.fromtimestamp(f.stat().st_mtime, timezone.utc)
-        label = "file modified"
+            pass
+    return datetime.fromtimestamp(f.stat().st_mtime, timezone.utc), "file modified"
+
+
+def resume_written(f: Path):
+    """When ## Resume in EXECUTION.md was last written (its stamp, else the file's
+    modification time), or None when the file or the section is missing."""
+    try:
+        found = _resume(Path(f)) if Path(f).is_file() else None
+    except OSError:
+        return None
+    return found[0] if found else None
+
+
+def resume_pointer(paths, data: dict) -> str:
+    """SessionStart after /compact or /clear: point at EXECUTION.md ## Resume."""
+    if data.get("source") not in ("compact", "clear"):
+        return ""
+    cwd = data.get("cwd")
+    if not isinstance(cwd, str) or not cwd:
+        return ""
+    work = paths.find_work_dir(Path(cwd))
+    f = work / "EXECUTION.md"
+    if not f.is_file():
+        return ""
+    found = _resume(f)
+    if found is None:
+        return ""
+    when, label = found
     age = fmt_age(max(0.0, (datetime.now(timezone.utc) - when).total_seconds()))
     age = age if age == "just now" else f"{age} ago"
     shown = when.astimezone().strftime("%Y-%m-%d %H:%M")

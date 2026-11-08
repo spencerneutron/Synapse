@@ -1,5 +1,5 @@
 {
-  "description": "Synapse: always-on rules, an extraction reminder, the project's Facts, and team sync at session start; recall hints on prompts; emission-contract check at stop; summary guidance at compaction; a dispatch reminder after a run of hands-on tool calls",
+  "description": "Synapse: always-on rules, an extraction reminder, the project's Facts, and team sync at session start; recall hints on prompts; a dispatch reminder after a run of hands-on tool calls, and above a context threshold a one-time deny of the next one; emission-contract check and a one-time checkpoint ask at stop; summary guidance at compaction",
   "hooks": {
     "SessionStart": [
       {
@@ -37,6 +37,18 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" gate --hook",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit|Agent|Task",
@@ -68,6 +80,11 @@
             "type": "command",
             "command": "SYNAPSE_MIN_PY=3.9 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/emission_check.py\"",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" gate --hook",
+            "timeout": 10
           }
         ]
       }

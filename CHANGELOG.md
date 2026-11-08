@@ -1,5 +1,78 @@
 # Changelog
 
+## 2.7.0 — 2026-11-08 — Gates
+
+No store schema change; update with `claude plugin marketplace update
+synapse` and `claude plugin update synapse@synapse`, then start new sessions.
+Why: rules decay. Issues #11 and #18 measured that the main session's share
+of cost stayed at 88-96%, that the context nudge fired three times with no
+checkpoint after it, and that the emission skill was loaded in 5 of 91 turns.
+A line the model reads is advice; a hook gate holds. 2.7.0 adds two.
+
+### Added
+
+- **PreToolUse cost-aware deny.** `synapse gate --hook` runs before Edit,
+  Write, MultiEdit, NotebookEdit, Bash and PowerShell calls. When the step's
+  hands-on count reaches `[nudge] calls` (5), then 10, then 20, and the
+  context is at least `[gate] min_context` (default 0.5) of the window, the
+  next hands-on call is denied once with this reason: "Synapse gate: N
+  hands-on calls in this step at about Xk context (each call here costs about
+  Yk base-equivalent). Brief the rest of this step to synapse:implementer
+  (goal, files, failing command, done condition, attempt limit) or
+  synapse:scout / synapse:researcher for searches, then read the report. This
+  gate lifts after a dispatch or on the next prompt." The retry is allowed.
+  The `synapse` CLI, edits under `.claude-work/`, and `git commit`, `git
+  push` and `gh pr` are never denied.
+- **Stop checkpoint ask.** At 60% of the window or more, if `## Resume` in
+  `EXECUTION.md` was not written since the context crossed that mark, the
+  Stop hook blocks once: "Synapse: the context is about Xk tokens. Run
+  /synapse:checkpoint now (rewrite ## Resume in EXECUTION.md, append to
+  NOTES.md, `synapse checkpoint --stamp`), then finish your message." At most
+  once at 60% and once at 90% per session; never when `stop_hook_active` is
+  set; below 90% only when `.claude-work/current/` exists.
+- **Project overrides.** A project's `.synapse.toml` may set `[nudge]` and
+  `[gate]` keys for that project. Other tables there are ignored.
+- **Config.** `[gate] enabled = true`, `min_context = 0.5`, `checkpoint =
+  true`.
+- **Eval cases** `long-loop-gate` and `checkpoint-gate` (tag `gate`).
+- **Doctor** reports other `PreToolUse` hooks (`pretooluse-hooks`, info).
+
+### Measured (Sonnet, 3 runs per arm, eval contexts under 40k)
+
+`checkpoint-gate` (window set to 30000 so the gate fires in an eval):
+
+| Arm | `## Resume` written | Bug fixed | Reply ends on the answer | Cost per run |
+|---|---|---|---|---|
+| 2.6.1 (context nudge, same window) | 0/3 | 3/3 | 3/3 | $0.076 |
+| 2.7.0 Stop gate | 3/3 | 3/3 | 3/3 | $0.116 |
+| No plugin | 0/3 | 3/3 | 3/3 | $0.050 |
+
+`long-loop-gate` (`min_context = 0`; the prompt calls the ten-round loop a
+one-line fix, so the main session starts hands-on):
+
+| Arm | Dispatched | Main hands-on calls before the dispatch | Suite passes | Cost |
+|---|---|---|---|---|
+| 2.6.1 nudge | 3/3 | 5, 5, 5 | 2/3 | $0.94 |
+| 2.7.0 gate | 3/3 (each right after one deny) | 6, 6, 7 (the denied call included) | 2/3 | $1.11 |
+
+In fresh eval sessions the nudge already works, so the deny adds nothing
+measurable there; it is aimed at long sessions where the line stopped
+working (#11, #18), which an eval cannot reach. The one failure per arm
+dispatched in the background and ended the turn before the report came
+back. With the case's first prompt ("get it passing") both versions
+dispatched on the first call and the gate never fired. `emission-contract`
+with the recalibrated grader: 1.00 with Synapse, 0.75 without.
+
+### Changed
+
+- **The nudge's dispatch line runs only below `min_context`.** Above it, the
+  gate's deny replaces that line.
+- **`core.md`, two edits.** The five-calls sentence now says the gate denies;
+  the Checkpoint row adds "or when the Stop gate asks".
+- **Grader calibration.** `evals/emission-contract/graders/outcome-and-substance.md`
+  accepts one closing decision question ("Should I do that?") and still fails
+  offers.
+
 ## 2.6.1 — 2026-11-08 — Enforcement over instruction
 
 No store schema change; update with `claude plugin marketplace update

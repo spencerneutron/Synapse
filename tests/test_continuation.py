@@ -183,7 +183,7 @@ class ContextNudge(Base):
         self.assertTrue(self.post(200000))
 
     def test_combined_with_dispatch(self):
-        self.config("[nudge]\ncalls = 1\n")
+        self.config("[nudge]\ncalls = 1\ncontext_window = 300000\n[gate]\nmin_context = 0.9\n")
         out = self.post(200000)
         lines = out["additionalContext"].split("\n")
         self.assertEqual(len(lines), 2)
