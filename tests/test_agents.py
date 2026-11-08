@@ -95,7 +95,7 @@ class AgentTests(unittest.TestCase):
 
     def test_extract_session_skill_dispatches_the_extractor(self):
         skill = (ROOT / "skills" / "extract-session" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertLess(len(skill), 4000)
+        self.assertLess(len(skill), 5000)
         self.assertIn("synapse:extractor", skill)
         _, body = frontmatter(AGENTS / "extractor.md")
         self.assertIn("check-candidates", body)

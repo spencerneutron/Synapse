@@ -25,7 +25,17 @@ Input: a session ID (default: the one just archived, else the newest unprocessed
    the session ID, the project, whether this is a `--force` re-run, and the
    spec folder: absolute path, forward slashes, of `.claude-work/.tmp/extract-ID`
    under the project root (the folder holding `.claude-work`, else the git top level).
-3. **Ask once.** Show the extractor's summary as given, with its
+3. **Accept mode.** Read `accept` from the output of `synapse extract
+   check-candidates --json`. If the user said in this conversation to review
+   first, treat it as `review`.
+   - `auto`: ask nothing. Write every proposal as the extractor gave it
+     (duplicates skipped, supersedes honoured), passing `--review-batch
+     SESSION_ID` to each create-note in step 4. After step 5 print one line:
+     counts per folder (e.g. "Wrote 2 Decisions, 1 Pattern, 3 Facts, 1 Session")
+     and "review with `synapse extract review`". Skip the rest of this step.
+   - `review`: the single question below.
+
+   **Ask once.** Show the extractor's summary as given, with its
    "Proceed?" line, the only question. If its prior-note check was skipped,
    add that embedding needs Ollama too. Replies: yes (all), no (write nothing; `rm -rf` the spec folder),
    skip with item numbers, or overrides ("keep decision 2 without supersedes",
@@ -35,7 +45,7 @@ Input: a session ID (default: the one just archived, else the newest unprocessed
    add a kept duplicate's.
 4. **Write.** For each approved spec file, Decisions, Patterns, and Facts
    first, the Session note last (links resolve):
-   `synapse vault create-note --from-md PATH`. Never pipe or inline a spec. Check exit 0 and `"created": true`. A title that exists: pass
+   `synapse vault create-note --from-md PATH` (`auto`: add `--review-batch SESSION_ID`). Never pipe or inline a spec. Check exit 0 and `"created": true`. A title that exists: pass
    `--on-conflict suffix`, always for the Session note on a re-run. Never
    suffix a Fact: drop it, or retitle it with `supersedes` if changed.
    For each note with `supersedes`, create-note does not mark the old one, so
@@ -49,7 +59,7 @@ Input: a session ID (default: the one just archived, else the newest unprocessed
    NAME`, plus `--force` on a re-run and `--include-report` if the user wants
    REPORT embedded. It writes the `.processed` marker. Then remove the spec
    folder (only that folder).
-6. **Report** briefly: notes created (store-relative paths, forward slashes),
+6. **Report** briefly (`auto`: the one summary line plus embed counts): notes created (store-relative paths, forward slashes),
    chunks embedded. If `synapse shared status` lists a team and notes were
    promoted, offer `/synapse:share` in one line; never share here.
 

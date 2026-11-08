@@ -6,6 +6,7 @@ synapse — command-line entry point for the Synapse plugin.
   synapse setup                          provision ~/.claude/synapse (idempotent)
   synapse doctor [--json]                read-only health and conflict report
   synapse archive [--project P]          archive .claude-work/current into the store
+  synapse archive --auto --hook          SessionEnd: archive on exit, no model call
   synapse recall "<query>" [...]         semantic search over the active store
   synapse recall-check <golden.toml>     score recall against a golden set
   synapse recall-hint [--prompt "..."]   the automatic hint (UserPromptSubmit hook)

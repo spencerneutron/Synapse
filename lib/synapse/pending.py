@@ -4,6 +4,7 @@ pending.py — archived sessions that were never extracted.
 
   synapse pending [--project P] [--json]
   synapse pending --hook            # SessionStart: reads hook JSON, prints a reminder
+                                    # (also counts unreviewed automatically extracted notes)
 
 A session is pending when its files are in <store>/archive/<project>/ but
 <store>/archive/<project>/.processed/<id>.json is not. The hook form covers
@@ -39,6 +40,18 @@ def reminder(project: str, ids: list[str]) -> str:
             "and offer /synapse:extract-session; do not extract without the user's go-ahead.")
 
 
+def review_line(r: paths.Resolved) -> str | None:
+    import review
+    old = review.unreviewed(review.load(r))
+    if not old:
+        return None
+    n = len(old)
+    first = min((str(e.get("time", ""))[:10] for e in old if e.get("time")), default="an unknown date")
+    return (f"Synapse: {n} note{'s' if n != 1 else ''} {'were' if n != 1 else 'was'} written by "
+            f"automatic extraction since {first}; `synapse extract review` lists "
+            f"{'them' if n != 1 else 'it'}.")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="synapse pending", description=__doc__.split("\n\n")[0])
     parser.add_argument("--project", default=None)
@@ -53,11 +66,12 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             r = paths.resolve(cwd=Path(event.get("cwd") or Path.cwd()))
             ids = pending_sessions(r)
+            lines = ([reminder(r.project, ids)] if ids else []) + [l for l in [review_line(r)] if l]
         except (Exception, SystemExit):  # fail open: a reminder must never break a session
             return 0
-        if ids:
+        if lines:
             print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart",
-                                                     "additionalContext": reminder(r.project, ids)}}))
+                                                     "additionalContext": "\n".join(lines)}}))
         return 0
 
     r = paths.resolve(project=args.project)

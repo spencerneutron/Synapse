@@ -66,5 +66,24 @@ class DoctorPreToolUseTests(DoctorPostToolUseTests):
         self.assertIn("other@m", found[0]["detail"])
 
 
+END_HOOK = {"hooks": {"SessionEnd": [{"hooks": [{"type": "command", "command": "echo hi"}]}]}}
+
+
+class DoctorSessionEndTests(DoctorPostToolUseTests):
+    check_id = "sessionend-hooks"
+
+    def test_settings_layer_hook_is_info(self):
+        found = self.run_check(project=END_HOOK)
+        self.assertEqual(len(found), 1, found)
+        self.assertEqual(found[0]["level"], "info")
+        self.assertIn("CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS", found[0]["fix"])
+
+    def test_plugin_hook_is_info(self):
+        found = self.run_check(plugin_hooks=END_HOOK["hooks"])
+        self.assertEqual(len(found), 1, found)
+        self.assertEqual(found[0]["level"], "info")
+        self.assertIn("other@m", found[0]["detail"])
+
+
 if __name__ == "__main__":
     unittest.main()

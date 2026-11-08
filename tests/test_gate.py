@@ -270,3 +270,44 @@ class StopTests(GateBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+WAIT = ("Synapse: a dispatched agent is still running. Wait for its report and verify it before "
+        "ending the turn; if it asked a question, answer it or relay it.")
+RUNNING = [{"id": "a1", "type": "subagent", "status": "running", "agent_type": "synapse:implementer",
+            "description": "fix loop"}]
+
+
+class WaitTests(GateBase):
+    """Stop: block once per prompt while background_tasks lists a running sub-agent."""
+
+    def setUp(self):
+        super().setUp()
+        self.config("[nudge]\ncontext_window = 1000000\n")   # keep the checkpoint ask out of the way
+
+    def stop(self, tasks, **kw):
+        return self.gate(event="Stop", ctx=10000, background_tasks=tasks, **kw)
+
+    def test_running_subagent_blocks_once_per_prompt(self):
+        self.assertEqual(self.stop(RUNNING), {"decision": "block", "reason": WAIT})
+        self.assertIsNone(self.stop(RUNNING))
+        self.nudge("UserPromptSubmit", ctx=10000)        # a new prompt re-arms it
+        self.assertEqual(self.stop(RUNNING), {"decision": "block", "reason": WAIT})
+
+    def test_finished_shell_or_no_tasks_pass(self):
+        self.assertIsNone(self.stop([dict(RUNNING[0], status="completed")]))
+        self.assertIsNone(self.stop([{"id": "b1", "type": "shell", "status": "running",
+                                      "command": "tail -f x"}]))
+        self.assertIsNone(self.stop([]))
+        self.assertIsNone(self.gate(event="Stop", ctx=10000))   # field absent
+        self.assertIsNone(self.stop("garbage"))
+
+    def test_stop_hook_active_and_switch(self):
+        self.assertIsNone(self.stop(RUNNING, stop_hook_active=True))
+        self.config("[nudge]\ncontext_window = 1000000\n[gate]\nwait_for_agents = false\n")
+        self.assertIsNone(self.stop(RUNNING))
+
+    def test_checkpoint_ask_comes_first(self):
+        self.config("[nudge]\ncontext_window = 10000\n")   # 10k of 10k: the 90% ask is due
+        out = self.stop(RUNNING)
+        self.assertIn("/synapse:checkpoint", out["reason"])

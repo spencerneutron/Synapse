@@ -71,6 +71,7 @@ vault = "Synapse"
 # enabled = true       # PreToolUse: deny the next hands-on call once at [nudge] calls, 2x and 4x, above min_context
 # min_context = 0.5    # share of the context window the gate needs; below it the [nudge] reminder line runs instead
 # checkpoint = true    # Stop: ask once for /synapse:checkpoint at 60% and at 90% of the window
+# wait_for_agents = true  # Stop: once per prompt, ask to wait while a dispatched sub-agent is still running
 # A project's .synapse.toml may override [nudge] and [gate] keys for that project.
 
 [continuation]
@@ -176,6 +177,7 @@ def settings(cwd: Path | None = None) -> dict:
                                         lambda v: isinstance(v, (int, float)) and 0 <= v <= 1,
                                         "a number from 0 to 1")),
         "gate_checkpoint": value("gate", "checkpoint", True, lambda v: True, "true or false"),
+        "gate_wait_for_agents": value("gate", "wait_for_agents", True, lambda v: True, "true or false"),
         "compact_guide": value("continuation", "compact_guide", True, lambda v: True, "true or false"),
         "extract_remind": value("extract", "remind", True, lambda v: True, "true or false"),
         "extract_accept": value("extract", "accept", "auto", lambda v: v in ("auto", "review"),
