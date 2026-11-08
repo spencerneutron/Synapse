@@ -237,6 +237,7 @@ facts = true       # false stops listing this project's Facts at session start
 remind = true      # false turns the reminder off
 accept = "auto"    # auto: write every proposed note, list them with `synapse extract review`; "review": ask first
 on_exit = false    # true: extract in a detached headless session at exit (costs money; see below)
+artifacts = true   # false stops recording published Artifact links in .claude-work/current/ARTIFACTS.md
 
 [archive]
 on_exit = true     # false stops the SessionEnd archive

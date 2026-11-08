@@ -509,6 +509,48 @@ def resolve_name_with_conflict(folder: str, name: str, on_conflict: str) -> str:
     sys.exit(f"error: unknown --on-conflict policy {on_conflict!r}")
 
 
+# ---------- Artifacts Base ----------
+
+ARTIFACTS_BASE_NAME = "Artifacts.base"
+ARTIFACTS_BASE = """filters:
+  and:
+    - file.hasProperty("artifacts")
+properties:
+  file.name:
+    displayName: Session
+  note.date:
+    displayName: Date
+  note.project:
+    displayName: Project
+  note.artifacts:
+    displayName: Artifacts
+views:
+  - type: table
+    name: Artifacts
+    order:
+      - file.name
+      - note.date
+      - note.project
+      - note.artifacts
+"""
+
+
+def ensure_artifacts_base(root: Path) -> bool:
+    """Create the Obsidian Base listing Session notes that carry artifacts, at
+    the vault root. Only when absent: an existing file (maybe edited) is never
+    touched. Returns True when it was created."""
+    target = Path(root) / ARTIFACTS_BASE_NAME
+    try:
+        with open(target, "x", encoding="utf-8", newline="\n") as fh:
+            fh.write(ARTIFACTS_BASE)
+    except FileExistsError:
+        return False
+    except OSError as e:
+        print(f"warning: could not create {target}: {e}", file=sys.stderr)
+        return False
+    return True
+
+
 # ---------- Subcommands ----------
 
 def cmd_verify(args: argparse.Namespace) -> int:
@@ -544,6 +586,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
             sys.exit(f"error: vault_path {root} is not the open vault's folder ({out}).\n"
                      f"notes would be written where Obsidian does not show them; fix vault_path "
                      f"in {paths.config_path()}.")
+    if ensure_artifacts_base(root):
+        print(f"created {ARTIFACTS_BASE_NAME}")
     print(f"folders will be created on first note write: "
           f"{', '.join(FOLDERS.values())}")
     print("verify OK")

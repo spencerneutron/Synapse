@@ -274,11 +274,12 @@ def reindex(team: paths.Team) -> dict:
             seen.discard(rel)
             continue
         fm, _ = extract.parse_frontmatter(content)
-        author = fm.get("author") if paths.AUTHOR.fullmatch(fm.get("author") or "") else None
+        author = extract.fm_str(fm, "author")
+        author = author if paths.AUTHOR.fullmatch(author) else None
         chunks = extract.chunk_document(content=content, source_path=rel,
-                                        source_type=fm.get("type") or f.parent.name.lower().rstrip("s"),
-                                        session_id=None, project=fm.get("project") or None)
-        status = "superseded" if fm.get("status") == "superseded" else "active"
+                                        source_type=extract.fm_str(fm, "type") or f.parent.name.lower().rstrip("s"),
+                                        session_id=None, project=extract.fm_str(fm, "project") or None)
+        status = "superseded" if extract.fm_str(fm, "status") == "superseded" else "active"
         drop(rel)
         extract.store_chunks(conn, chunks, status=status, origin=team.name, author=author)
         conn.execute("INSERT OR REPLACE INTO team_files VALUES (?, ?)", (rel, digest))

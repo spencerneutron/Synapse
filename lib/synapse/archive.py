@@ -5,16 +5,18 @@ archive.py — archive a session's working files into the active store.
   synapse archive [--project P] [--id SESSION_ID] [--workdir DIR]
   synapse archive --auto --hook     # SessionEnd: archive without a model call
 
-Copies DIR/.claude-work/current/{PLAN,EXECUTION,REPORT}.md (whichever exist)
+Copies DIR/.claude-work/current/{PLAN,EXECUTION,REPORT,ARTIFACTS}.md (whichever exist)
 to <store>/archive/<project>/<PREFIX>_<session-id>.md and prints JSON with the
 session ID, the copied files, and the path where /end-session writes NOTES.
-Copies, never moves: the working files stay for the next session.
+Copies, never moves: the working files stay for the next session. ARTIFACTS.md
+is archived by segment: only the links published since the last archive, after
+which a `<!-- archived: ID -->` marker is appended to the working file.
 
 The session ID defaults to the local time as YYYY-MM-DD-HHMM; a taken ID gets
 -v2, -v3, and so on.
 
 --auto --hook (SessionEnd hook) reads the event JSON from stdin and copies
-PLAN, EXECUTION, REPORT and NOTES (whichever exist) in one pass: no model call,
+PLAN, EXECUTION, REPORT, ARTIFACTS and NOTES (whichever exist) in one pass: no model call,
 no embedding, no DB. It skips when the content hash matches the last auto
 archive of this Claude session or the newest archived session, and reuses the
 session's archive ID until that ID is extracted. Off with [archive] on_exit =
@@ -37,10 +39,11 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import artifacts  # noqa: E402
 import paths  # noqa: E402
 
-PREFIXES = ("PLAN", "EXECUTION", "NOTES", "REPORT")
-SESSION_FILE_RE = re.compile(r"^(PLAN|EXECUTION|NOTES|REPORT)_(.+)\.md$")
+PREFIXES = ("PLAN", "EXECUTION", "NOTES", "REPORT", "ARTIFACTS")
+SESSION_FILE_RE = re.compile(r"^(PLAN|EXECUTION|NOTES|REPORT|ARTIFACTS)_(.+)\.md$")
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
@@ -74,13 +77,48 @@ def free_session_id(archive_dir: Path, base: str) -> str:
     return f"{base}-v{n}"
 
 
-def content_hash(files: dict[str, Path]) -> str:
-    """sha256 over the files in PREFIXES order, each preceded by its prefix."""
+def _data(src) -> bytes:
+    return src if isinstance(src, bytes) else src.read_bytes()
+
+
+def gather(current: Path, prefixes) -> dict:
+    """prefix -> file Path (bytes for ARTIFACTS: only the current segment, the link
+    lines after the last archive marker). ARTIFACTS is left out with no such lines."""
+    out = {}
+    for p in prefixes:
+        f = current / f"{p}.md"
+        if not f.is_file():
+            continue
+        if p == "ARTIFACTS":
+            seg = artifacts.segment_text(f.read_text(encoding="utf-8", errors="replace"))
+            if seg:
+                out[p] = seg.encode("utf-8")
+        else:
+            out[p] = f
+    return out
+
+
+def content_hash(files: dict) -> str:
+    """sha256 over the files (Paths or bytes) in PREFIXES order, each preceded by its prefix."""
     h = hashlib.sha256()
     for prefix in PREFIXES:
         if prefix in files:
-            h.update(prefix.encode() + b"\0" + files[prefix].read_bytes() + b"\0")
+            h.update(prefix.encode() + b"\0" + _data(files[prefix]) + b"\0")
     return h.hexdigest()
+
+
+def put(dest: Path, src) -> None:
+    """Copy a Path, or write bytes (ARTIFACTS segment). An ARTIFACTS file already in
+    the archive (a reused session id) is merged: its lines, then the new ones."""
+    if isinstance(src, Path):
+        shutil.copy2(src, dest)
+        return
+    text = src.decode("utf-8")
+    if dest.is_file():
+        text = artifacts.merge_text(dest.read_text(encoding="utf-8", errors="replace"), text)
+    tmp = dest.with_name(f"{dest.name}.{os.getpid()}.tmp")
+    tmp.write_text(text, encoding="utf-8", newline="\n")
+    os.replace(tmp, dest)
 
 
 def auto_archive(event: dict) -> None:
@@ -93,8 +131,7 @@ def auto_archive(event: dict) -> None:
     if not paths.settings()["archive_on_exit"]:
         return
     current = paths.find_work_dir(cwd)
-    sources = {p: current / f"{p}.md" for p in PREFIXES}
-    sources = {p: f for p, f in sources.items() if f.is_file()}
+    sources = gather(current, PREFIXES)
     if "PLAN" not in sources and "EXECUTION" not in sources:
         return
     digest = content_hash(sources)
@@ -114,7 +151,11 @@ def auto_archive(event: dict) -> None:
     if sessions:
         # end-session archives the planning files and writes its own NOTES_<id>
         # from the conversation, so NOTES is left out of this comparison.
-        plan = lambda files: {p: f for p, f in files.items() if p != "NOTES"}  # noqa: E731
+        # ARTIFACTS is compared only when the working file has a current segment
+        # (links published since the last archive); the marker an archive leaves
+        # behind never counts.
+        skip = {"NOTES"} if "ARTIFACTS" in sources else {"NOTES", "ARTIFACTS"}
+        plan = lambda files: {p: f for p, f in files.items() if p not in skip}  # noqa: E731
         newest, mine = plan(sessions[-1]["files"]), plan(sources)
         if mine and set(newest) == set(mine) and content_hash(newest) == content_hash(mine):
             return
@@ -126,7 +167,10 @@ def auto_archive(event: dict) -> None:
     if not reuse:
         session_id = free_session_id(r.archive_dir, datetime.now().strftime("%Y-%m-%d-%H%M"))
     for prefix, src in sources.items():
-        shutil.copy2(src, r.archive_dir / f"{prefix}_{session_id}.md")
+        put(r.archive_dir / f"{prefix}_{session_id}.md", src)
+    if "ARTIFACTS" in sources:
+        artifacts.mark_archived(current, session_id)
+        digest = content_hash(gather(current, PREFIXES))   # the state after the marker
 
     state_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = state_path.with_name(f"{state_path.name}.{os.getpid()}.tmp")
@@ -166,9 +210,8 @@ def main(argv: list[str] | None = None) -> int:
         return hook_main()
 
     current = paths.work_dir(args.workdir)
-    sources = {p: current / f"{p}.md" for p in ("PLAN", "EXECUTION", "REPORT")}
-    sources = {p: f for p, f in sources.items() if f.is_file()}
-    if not sources:
+    sources = gather(current, ("PLAN", "EXECUTION", "REPORT", "ARTIFACTS"))
+    if not (sources.keys() & {"PLAN", "EXECUTION", "REPORT"}):
         sys.exit(f"error: nothing to archive: no PLAN.md or EXECUTION.md in {current}")
 
     base = args.session_id or datetime.now().strftime("%Y-%m-%d-%H%M")
@@ -182,8 +225,10 @@ def main(argv: list[str] | None = None) -> int:
     copied = []
     for prefix, src in sources.items():
         dest = r.archive_dir / f"{prefix}_{session_id}.md"
-        shutil.copy2(src, dest)
+        put(dest, src)
         copied.append(str(dest))
+    if "ARTIFACTS" in sources:
+        artifacts.mark_archived(current, session_id)
 
     print(json.dumps({
         "session_id": session_id,

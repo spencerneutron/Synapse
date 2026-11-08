@@ -100,14 +100,15 @@ def count_now(paths, sid: str) -> int:
         return 0
 
 
-def context_now(paths, sid: str, data: dict, s: dict):
-    """(context tokens, window): 0 when unknown; window 0 when the context lines are off."""
+def context_now(paths, sid: str, data: dict, s: dict, scanned=None):
+    """(context tokens, window): 0 when unknown; window 0 when the context lines are off.
+    scanned: the (usage, observed) a Stop-hook scan already made, to skip a second read."""
     import continuation
     explicit = s["context_window"]
     if explicit == 0:
-        u, window = continuation.scan(data.get("transcript_path"))[0], 0
+        u, window = (scanned or continuation.scan(data.get("transcript_path")))[0], 0
     else:
-        u, observed = continuation.scan(data.get("transcript_path"), explicit is None)
+        u, observed = scanned or continuation.scan(data.get("transcript_path"), explicit is None)
         window, _ = continuation.window_for(paths, sid, u, observed)
     return (u["context"] if u else 0), window
 
@@ -169,11 +170,39 @@ def running_agent(data: dict) -> bool:
                for t in tasks)
 
 
+def capture_artifacts(paths, data: dict, s: dict):
+    """Record the Artifacts this turn published in ARTIFACTS.md, in the one transcript
+    scan the Stop hook makes. Returns that scan's (usage, observed) for context_now, or
+    None when the scan did not happen. Prints nothing and never raises."""
+    try:
+        import artifacts
+        import continuation
+        explicit = s["context_window"]
+        turn = []
+        scanned = continuation.scan(data.get("transcript_path"), explicit is None, turn)
+        try:
+            items = artifacts.from_turn(turn)
+            urls = artifacts.from_message(data.get("last_assistant_message"), turn)
+            known = {u for u, _ in items}
+            items += [(u, None) for u in urls if u not in known]
+            if items:
+                cwd = data.get("cwd") if isinstance(data.get("cwd"), str) else os.getcwd()
+                artifacts.record(paths.find_work_dir(Path(cwd)), items)
+        except Exception:
+            pass
+        return scanned
+    except Exception:
+        return None
+
+
 def stop(paths, sid: str, data: dict) -> str:
-    if data.get("stop_hook_active") or data.get("agent_id"):
+    if data.get("agent_id"):
         return ""
     s = paths.settings()
-    return checkpoint_ask(paths, sid, data, s) or wait_ask(paths, sid, data, s)
+    scanned = capture_artifacts(paths, data, s) if s["extract_artifacts"] else None
+    if data.get("stop_hook_active"):
+        return ""
+    return checkpoint_ask(paths, sid, data, s, scanned) or wait_ask(paths, sid, data, s)
 
 
 def wait_ask(paths, sid: str, data: dict, s: dict) -> str:
@@ -185,11 +214,11 @@ def wait_ask(paths, sid: str, data: dict, s: dict) -> str:
     return json.dumps({"decision": "block", "reason": WAIT})
 
 
-def checkpoint_ask(paths, sid: str, data: dict, s: dict) -> str:
+def checkpoint_ask(paths, sid: str, data: dict, s: dict, scanned=None) -> str:
     import continuation
     if not s["gate_checkpoint"]:
         return ""
-    ctx, window = context_now(paths, sid, data, s)
+    ctx, window = context_now(paths, sid, data, s, scanned)
     if not window or not ctx:
         return ""
     state = paths.context_state(sid)

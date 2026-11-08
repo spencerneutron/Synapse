@@ -220,6 +220,13 @@ class GateAndMergeTests(Members):
         self.assertEqual({a for _, _, a in self.team_hits("beta")}, {None})
         self.assertIn("held back", run(shared.main, "status")[1])
 
+    def test_list_valued_front_matter_does_not_stop_a_sync(self):
+        self.plant("Listy", "---\ntype:\n  - decision\nauthor:\n  - bob\nproject:\n  - p\n---\n# Listy\n\nPin the model.\n")
+        self.plant("Fine", "---\ntype: decision\nauthor: sam\n---\n# Fine\n\nPin the model too.\n")
+        res = shared.sync(self.team)
+        self.assertEqual(res["added"], 2)
+        self.assertIn("Decisions/Listy.md", {p for p, _, _ in self.team_hits("beta")})
+
     def test_merge_by_score_keeps_strong_local_hits_and_hides_own_copies(self):
         local = [self.note(f"Mail {i}", f"---\ntype: decision\n---\n# Mail {i}\n\nsign ops mail messages variant {i}\n")
                  for i in range(4)]

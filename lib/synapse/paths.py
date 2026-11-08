@@ -81,6 +81,7 @@ vault = "Synapse"
 [extract]
 # remind = true        # at session start, mention archived sessions never extracted
 # accept = "auto"      # auto: write every proposed note, list them later with `synapse extract review`; review: ask once first
+# artifacts = true     # Stop: record each Artifact the session publishes in .claude-work/current/ARTIFACTS.md for the Session note
 # on_exit = false      # SessionEnd: after the auto archive, extract it in a detached headless `claude -p` (Sonnet, costs money per session)
 
 [archive]
@@ -184,6 +185,7 @@ def settings(cwd: Path | None = None) -> dict:
         "extract_remind": value("extract", "remind", True, lambda v: True, "true or false"),
         "extract_accept": value("extract", "accept", "auto", lambda v: v in ("auto", "review"),
                                 '"auto" or "review"'),
+        "extract_artifacts": value("extract", "artifacts", True, lambda v: True, "true or false"),
         "extract_on_exit": value("extract", "on_exit", False, lambda v: True, "true or false"),
         "archive_on_exit": value("archive", "on_exit", True, lambda v: True, "true or false"),
         "facts_at_start": value("recall", "facts", True, lambda v: True, "true or false"),

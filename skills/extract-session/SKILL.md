@@ -9,7 +9,7 @@ allowed-tools: Bash(synapse extract *), Bash(synapse vault *), Bash(synapse wher
 Promote a closed session's knowledge into the vault (Session, Decision,
 Pattern, Fact notes) and the vector DB. The `synapse:extractor` agent judges;
 this skill orchestrates. It runs as the last step of `/synapse:end-session`; on its
-own for a session the SessionEnd hook archived (the failsafe case) or when the
+own for a session the SessionEnd hook archived or when the
 user asks; never before the archive exists. Vault commands start Obsidian themselves;
 embedding needs Ollama with `nomic-embed-text`.
 
@@ -37,7 +37,7 @@ Input: a session ID (default: the one just archived, else the newest unprocessed
    - `review`: the single question below.
 
    **Ask once.** Show the extractor's summary as given, with its
-   "Proceed?" line, the only question. If its prior-note check was skipped,
+   "Proceed?" line. If its prior-note check was skipped,
    add that embedding needs Ollama too. Replies: yes (all), no (write nothing; `rm -rf` the spec folder),
    skip with item numbers, or overrides ("keep decision 2 without supersedes",
    "keep the duplicate", renames). After a rename, show it again.
@@ -50,16 +50,17 @@ Input: a session ID (default: the one just archived, else the newest unprocessed
    `--on-conflict suffix`, always for the Session note on a re-run. Never
    suffix a Fact: drop it, or retitle it with `supersedes` if changed.
    For each note with `supersedes`, create-note does not mark the old one, so
-   run `synapse extract supersede "[[OLD]]" --by "[[NEW]]"` (`--folder Facts` for a Fact). Report `chunks_marked`; zero is fine. If it warns the
+   run `synapse extract supersede "[[OLD]]" --by "[[NEW]]"` (`--folder Facts` for a Fact). Report `chunks_marked` (zero is fine). If it warns the
    front matter was not updated, tell the user to set `vault_path`
    (`/synapse:doctor`).
 5. **Embed.** Once: `synapse extract embed-note` with every Decision, Pattern,
    and Fact `vault_relative_path` from create-note's output (no absolute
-   paths or shell loops; Facts must be embedded to show at session start),
+   paths or shell loops; Facts must be embedded to show at start),
    `--project NAME`. Then `synapse extract embed-archive SESSION_ID --project
    NAME`, plus `--force` on a re-run and `--include-report` if the user wants
-   REPORT embedded. It writes the `.processed` marker. Then remove the spec
-   folder (only that folder).
+   REPORT. It adds the Artifact links to the Session note (the extractor
+   lists none) and writes the `.processed` marker. Then remove only
+   the spec folder.
 6. **Report** briefly (`auto`: the one summary line plus embed counts): notes created (store-relative paths, forward slashes),
    chunks embedded. If `synapse shared status` lists a team and notes were
    promoted, offer `/synapse:share` in one line; never share here.

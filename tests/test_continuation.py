@@ -419,14 +419,28 @@ class ResumePointer(Base):
         s = s[:-2] + ":" + s[-2:]
         self.ex.write_text(f"# E\n## Resume\nCheckpoint written: {s}\nmore\n## Other\n")
         (self.cur / "NOTES.md").write_text("n")
-        text = self.start()
-        self.assertEqual(text,
-            f"Synapse: work in progress is recorded in .claude-work/current/EXECUTION.md under "
-            f"## Resume (checkpoint written {shown}, 12 min ago). If this conversation continues "
-            f"that work, read it before acting; NOTES.md beside it holds the checkpoint's facts "
-            f"and decisions.")
+        # The hook runs in a subprocess and reads its own clock; the stamp has minute
+        # resolution, so the age is 12 or 13 min depending on when the minute rolls.
+        # Accept exactly the ages fmt_age gives for the instants just before and after.
+        when = datetime.strptime(s, "%Y-%m-%d %H:%M %z")
+
+        def expected(source):
+            before = datetime.now(timezone.utc)
+            text = self.start(source)
+            after = datetime.now(timezone.utc)
+            ages = {continuation.fmt_age((t - when).total_seconds()) for t in (before, after)}
+            return text, {
+                f"Synapse: work in progress is recorded in .claude-work/current/EXECUTION.md under "
+                f"## Resume (checkpoint written {shown}, {age} ago). If this conversation continues "
+                f"that work, read it before acting; NOTES.md beside it holds the checkpoint's facts "
+                f"and decisions." for age in ages}
+
+        text, allowed = expected("compact")
+        self.assertIn(text, allowed)
+        self.assertTrue(any(f"{m} min ago" in text for m in (12, 13)), text)
         self.assertLess(len(text), 400)
-        self.assertEqual(self.start("clear"), text)
+        clear, allowed = expected("clear")
+        self.assertIn(clear, allowed)
 
     def test_stamp_outside_section_ignored(self):
         s, _ = self.stamp(5)
