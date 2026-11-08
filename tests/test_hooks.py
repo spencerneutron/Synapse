@@ -147,6 +147,19 @@ class EmissionCheckTests(unittest.TestCase):
 
 
 @unittest.skipUnless(BASH, "bash (Git Bash on Windows) not available")
+class HooksJsonShapeTests(unittest.TestCase):
+    def test_every_command_is_a_plain_path_invocation(self):
+        import re
+        shape = re.compile(r'^bash "R/[^"]+"( [^$`;&|<>=\s"]+)*( "R/[^"]+")?( [^$`;&|<>=]*)?$')
+        hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+        cmds = [h["command"] for groups in hooks.values() for g in groups for h in g["hooks"]]
+        self.assertEqual(len(cmds), 15)
+        for c in cmds:
+            with self.subTest(command=c):
+                # Only ${CLAUDE_PLUGIN_ROOT} may appear; no VAR=value prefix.
+                self.assertRegex(c.replace("${CLAUDE_PLUGIN_ROOT}", "R"), shape)
+
+
 class SessionStartTests(unittest.TestCase):
     def test_core_payload(self):
         out = subprocess.run([BASH, str(ROOT / "hooks" / "session_start.sh"), "core"],

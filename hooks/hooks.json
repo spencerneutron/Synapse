@@ -16,22 +16,22 @@
           },
           {
             "type": "command",
-            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" pending --hook",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" --optional \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" pending --hook",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" facts --hook",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" --optional \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" facts --hook",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" shared hook",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" --optional \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" shared hook",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" nudge --hook",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" --optional \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" nudge --hook",
             "timeout": 10
           }
         ]
@@ -43,7 +43,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" gate --hook",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" --optional \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" gate --hook",
             "timeout": 10
           }
         ]
@@ -55,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" nudge --hook",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" --optional \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" nudge --hook",
             "timeout": 10
           }
         ]
@@ -67,7 +67,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" nudge --hook",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" --optional \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" nudge --hook",
             "timeout": 10
           }
         ]
@@ -78,12 +78,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SYNAPSE_MIN_PY=3.9 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/emission_check.py\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" --min-py 3.9 \"${CLAUDE_PLUGIN_ROOT}/hooks/emission_check.py\"",
             "timeout": 15
           },
           {
             "type": "command",
-            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" gate --hook",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" --optional \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" gate --hook",
             "timeout": 10
           }
         ]
@@ -94,7 +94,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" compact-guide --hook",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" --optional \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" compact-guide --hook",
             "timeout": 10
           }
         ]
@@ -105,7 +105,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" archive --auto --hook",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" --optional \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" archive --auto --hook",
             "timeout": 2
           }
         ]
@@ -116,12 +116,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" recall-hint",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" --optional \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" recall-hint",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "SYNAPSE_OPTIONAL=1 bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" nudge --hook",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/lib/py.sh\" --optional \"${CLAUDE_PLUGIN_ROOT}/lib/synapse/cli.py\" nudge --hook",
             "timeout": 10
           }
         ]

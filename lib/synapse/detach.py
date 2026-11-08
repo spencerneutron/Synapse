@@ -18,9 +18,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import paths  # noqa: E402
 
+# Auto mode edits nothing (Edit is for review mode only), and the spec folder is removed by
+# `synapse extract cleanup`, so no Edit and no raw rm. Write stays until a live run shows the
+# extractor's spec writes (Bash heredocs, which this list does not pre-approve) need no fallback.
 ALLOWED_TOOLS = ("Bash(synapse extract *) Bash(synapse vault *) Bash(synapse where *) "
-                 "Bash(synapse shared status*) Bash(rm -rf *.claude-work/.tmp/extract-*) "
-                 "Read Write Edit Agent")
+                 "Bash(synapse shared status*) Read Write Agent")
 
 
 def command(claude: str, session_id: str, project: str) -> list[str]:

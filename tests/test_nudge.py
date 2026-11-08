@@ -242,7 +242,7 @@ class NudgeTests(unittest.TestCase):
                 self.assertEqual(len(hooks[event]), 1)
                 self.assertEqual(hooks[event][0]["matcher"], MATCHER)
                 h = hooks[event][0]["hooks"][0]
-                self.assertTrue(h["command"].startswith("SYNAPSE_OPTIONAL=1 "))
+                self.assertTrue("py.sh\" --optional " in h["command"])
                 self.assertTrue(h["command"].endswith("nudge --hook"))
                 self.assertEqual(h["timeout"], 10)
         for event in ("UserPromptSubmit", "SessionStart"):

@@ -55,6 +55,7 @@ from the folder where the user usually starts Claude Code.
 | Managed settings that allow only managed hooks | macOS `/Library/Application Support/ClaudeCode/managed-settings.json`, Linux `/etc/claude-code/managed-settings.json`, Windows `C:\Program Files\ClaudeCode\managed-settings.json` | `allowManagedHooksOnly` means Synapse cannot load; stop and tell the user |
 | A V1 or v1.5 install, here, in a parent folder, or in a child folder | `ls -d kb/scripts .claude-work/archive .claude-work/kb ../.claude-work/archive */.claude-work/archive 2>/dev/null` | Offer migration in step 6 |
 | Working files a repo would commit | `git check-ignore -q .claude-work/current/PLAN.md; echo $?` inside a repo (`1` means not ignored) | Suggest adding `.claude-work/` to that repo's `.gitignore` (ask first) |
+| Another plugin named `synapse` (the life-sciences Synapse.org connector wrapper) | `grep -n 'synapse@' ~/.claude/settings.json ~/.claude/plugins/installed_plugins.json 2>/dev/null` | Anything other than `synapse@synapse` shares the `/synapse:` namespace. Uninstall it with `claude plugin uninstall synapse@<marketplace>` (removed upstream on 2026-10-23; the Synapse.org connector is available directly), ask first. `synapse doctor` reports it |
 | An earlier v1.6+ install (its `config.toml`) | `ls ~/.claude/synapse/config.toml 2>/dev/null` | Setup reuses it and never overwrites it |
 
 Summarize what you found, then *ask* whether to continue.

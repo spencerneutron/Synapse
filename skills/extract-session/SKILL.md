@@ -1,7 +1,7 @@
 ---
 name: extract-session
 description: Project an archived session into the Obsidian vault and the local vector database. Runs as the last step of end-session, on its own for a session the SessionEnd hook archived (the failsafe case), or when the user asks. Writes notes without asking under [extract] accept = auto and lists them for `synapse extract review`. Idempotent.
-allowed-tools: Bash(synapse extract *), Bash(synapse vault *), Bash(synapse where *), Bash(synapse shared status*), Bash(rm -rf *.claude-work/.tmp/extract-*)
+allowed-tools: Bash(synapse extract *), Bash(synapse vault *), Bash(synapse where *), Bash(synapse shared status*)
 ---
 
 # Extract Session
@@ -38,7 +38,7 @@ Input: a session ID (default: the one just archived, else the newest unprocessed
 
    **Ask once.** Show the extractor's summary as given, with its
    "Proceed?" line. If its prior-note check was skipped,
-   add that embedding needs Ollama too. Replies: yes (all), no (write nothing; `rm -rf` the spec folder),
+   add that embedding needs Ollama too. Replies: yes (all), no (write nothing; `synapse extract cleanup SPEC`),
    skip with item numbers, or overrides ("keep decision 2 without supersedes",
    "keep the duplicate", renames). After a rename, show it again.
    Edit specs in the spec folder. Skip `duplicate-*.md` unless kept. Keep the session spec's link lists (Decisions made,
@@ -59,8 +59,8 @@ Input: a session ID (default: the one just archived, else the newest unprocessed
    `--project NAME`. Then `synapse extract embed-archive SESSION_ID --project
    NAME`, plus `--force` on a re-run and `--include-report` if the user wants
    REPORT. It adds the Artifact links to the Session note (the extractor
-   lists none) and writes the `.processed` marker. Then remove only
-   the spec folder.
+   lists none) and writes the `.processed` marker. Then run
+   `synapse extract cleanup SPEC_FOLDER`.
 6. **Report** briefly (`auto`: the one summary line plus embed counts): notes created (store-relative paths, forward slashes),
    chunks embedded. If `synapse shared status` lists a team and notes were
    promoted, offer `/synapse:share` in one line; never share here.

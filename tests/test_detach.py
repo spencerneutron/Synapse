@@ -59,6 +59,14 @@ class DetachTests(unittest.TestCase):
             self.assertTrue(kw["start_new_session"])
         self.assertTrue((self.home / "state").is_dir())
 
+    def test_allowed_tools_are_narrow(self):
+        argv = detach.command("claude", "id1", "p")
+        allowed = argv[argv.index("--allowedTools") + 1].split(" Bash(")
+        tools = " ".join(allowed)
+        for banned in ("rm ", "Edit"):
+            self.assertNotIn(banned, tools)
+        self.assertIn("Agent", tools)
+
     def test_plugin_dir_override(self):
         os.environ["SYNAPSE_PLUGIN_DIR"] = "/x/plugin"
         argv = detach.command("claude", "id1", "p")
@@ -99,6 +107,29 @@ class DetachTests(unittest.TestCase):
         with mock.patch("detach.shutil.which", return_value="/bin/claude"), \
                 mock.patch("detach.subprocess.Popen", side_effect=OSError("no")):
             self.end()   # does not raise
+
+
+class CleanupTests(unittest.TestCase):
+    def run_cleanup(self, folder):
+        import extract
+        with self.assertRaises(SystemExit) as cm:
+            extract.main(["cleanup", str(folder)])
+        return cm.exception.code
+
+    def test_removes_only_spec_folders(self):
+        import extract
+        with tempfile.TemporaryDirectory() as t:
+            spec = Path(t) / ".claude-work" / ".tmp" / "extract-s1"
+            spec.mkdir(parents=True)
+            (spec / "session.md").write_text("x")
+            self.assertEqual(extract.main(["cleanup", str(spec)]), 0)
+            self.assertFalse(spec.exists())
+            self.assertEqual(extract.main(["cleanup", str(spec)]), 0)   # already gone
+            for bad in (Path(t), Path(t) / ".claude-work", Path(t) / ".claude-work" / ".tmp",
+                        Path(t) / "extract-s1", Path(t) / ".claude-work" / "extract-s1"):
+                bad.mkdir(parents=True, exist_ok=True)
+                self.assertIn("refusing", str(self.run_cleanup(bad)))
+                self.assertTrue(bad.exists())
 
 
 if __name__ == "__main__":
