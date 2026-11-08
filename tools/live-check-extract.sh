@@ -12,7 +12,10 @@
 # Claude (this repo as the plugin, the installed Synapse disabled) to extract
 # that session and checks that the reply names the prior note as superseded,
 # ends with the "Proceed?" question, and that nothing was written to the vault
-# before approval. Read each printed reply. Needs Ollama with nomic-embed-text.
+# before approval. The fixture sets `[extract] accept = "review"`: the default
+# `auto` writes notes without asking, and this check exercises the
+# ask-before-write path. Read each printed reply. Needs Ollama with
+# nomic-embed-text.
 #
 # The real Obsidian app is never asked: `synapse vault verify` would see the
 # user's own vault open, not the fixture's. For the claude run only, stand-ins
@@ -55,7 +58,7 @@ build() {
     chmod +x "$S/obsidian" "$S/pgrep"
     rm -rf "$H"  # setup wants a new folder
     syn setup >/dev/null
-    printf 'default_store = "main"\n\n[stores.main]\nvault = "Fixture"\nvault_path = "%s"\n\n[recall]\nauto = false\n' \
+    printf 'default_store = "main"\n\n[stores.main]\nvault = "Fixture"\nvault_path = "%s"\n\n[recall]\nauto = false\n\n[extract]\naccept = "review"\n' \
         "$H/vault" > "$H/config.toml"
     mkdir -p "$H/vault/Decisions"
     cat > "$H/vault/Decisions/$PRIOR.md" <<NOTE
@@ -142,7 +145,7 @@ for i in $(seq 1 "$RUNS"); do
         --max-budget-usd 1 --output-format json)"
     after="$(ls "$H/vault/Decisions" | wc -l)"
     reply="$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("result",""))')"
-    sup="$(printf '%s' "$reply" | grep -iE 'supersede' | grep -ciE 'nightly' || true)"
+    sup="$(printf '%s' "$reply" | grep -iE 'supersed|replac' | grep -ciE 'nightly' || true)"
     asks="$(printf '%s' "$reply" | tail -n 3 | grep -c 'Proceed?' || true)"
     echo "== run $i: Decisions $before -> $after, supersession named: $sup, ends with Proceed?: $asks"
     printf '%s\n\n' "$reply"
