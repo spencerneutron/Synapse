@@ -106,12 +106,19 @@ summary.
   Edit, Write and Agent calls, not after reads. Set `context_window = 0` to
   turn both off.
   Neither line blocks anything; the gates below do.
-- **Gates (2.7.0).** Two hooks hold where a line did not. A PreToolUse gate
+- **Gates (2.7.0).** Hooks hold where a line did not. A PreToolUse gate
   denies a hands-on call once at 5, 10 and 20 calls in a step when the
   context is at least half the window, and names the role to brief. The Stop
   hook asks once for `/synapse:checkpoint` at 60% and 90% when `## Resume` is
-  stale. `[gate] enabled = false` and `[gate] checkpoint = false` turn them
-  off; a project's `.synapse.toml` may override `[nudge]` and `[gate]`.
+  stale, and once per prompt to wait for a dispatched agent still running.
+  `[gate] enabled = false`, `checkpoint = false` and `wait_for_agents =
+  false` turn them off; a project's `.synapse.toml` may override `[nudge]`
+  and `[gate]`.
+- **The tail end (2.7.0).** At exit, `/clear` and `/resume`, a SessionEnd
+  hook archives `.claude-work/current/` without a model call (about 60 ms).
+  Extraction writes its notes without asking (`[extract] accept = auto`);
+  `synapse extract review` lists what it wrote, and the next session start
+  says how many notes wait for review.
 
 ## Where things live
 

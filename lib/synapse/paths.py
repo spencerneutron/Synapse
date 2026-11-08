@@ -80,6 +80,7 @@ vault = "Synapse"
 [extract]
 # remind = true        # at session start, mention archived sessions never extracted
 # accept = "auto"      # auto: write every proposed note, list them later with `synapse extract review`; review: ask once first
+# on_exit = false      # SessionEnd: after the auto archive, extract it in a detached headless `claude -p` (Sonnet, costs money per session)
 
 [archive]
 # on_exit = true       # SessionEnd: copy .claude-work/current into the archive (no model call); false turns it off
@@ -182,6 +183,7 @@ def settings(cwd: Path | None = None) -> dict:
         "extract_remind": value("extract", "remind", True, lambda v: True, "true or false"),
         "extract_accept": value("extract", "accept", "auto", lambda v: v in ("auto", "review"),
                                 '"auto" or "review"'),
+        "extract_on_exit": value("extract", "on_exit", False, lambda v: True, "true or false"),
         "archive_on_exit": value("archive", "on_exit", True, lambda v: True, "true or false"),
         "facts_at_start": value("recall", "facts", True, lambda v: True, "true or false"),
     }
@@ -377,6 +379,12 @@ def auto_archive_state(r: Resolved, session_id: str) -> Path:
     """What the SessionEnd archive last wrote for a Claude session: archive ID and content hash."""
     safe = "".join(c for c in session_id if c.isalnum() or c in "-_")
     return r.archive_dir / ".auto" / f"{safe}.json"
+
+
+def detached_log(session_id: str) -> Path:
+    """Log of the detached on-exit extraction for an archive session ID."""
+    safe = "".join(c for c in session_id if c.isalnum() or c in "-_.")
+    return home() / "state" / f"extract-{safe}.log"
 
 
 def review_ledger(r: Resolved) -> Path:

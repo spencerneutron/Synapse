@@ -136,6 +136,9 @@ def auto_archive(event: dict) -> None:
         "files": list(sources),
     }), encoding="utf-8")
     os.replace(tmp, state_path)
+    if paths.settings()["extract_on_exit"]:
+        import detach
+        detach.spawn_extract(cwd, r.project, session_id)
 
 
 def hook_main() -> int:

@@ -225,11 +225,17 @@ facts = true       # false stops listing this project's Facts at session start
 
 [extract]
 remind = true      # false turns the reminder off
+accept = "auto"    # auto: write every proposed note, list them with `synapse extract review`; "review": ask first
+on_exit = false    # true: extract in a detached headless session at exit (costs money; see below)
+
+[archive]
+on_exit = true     # false stops the SessionEnd archive
 
 [gate]
 enabled = true       # false turns the PreToolUse deny and the Stop checkpoint ask off
 min_context = 0.5    # the PreToolUse deny starts at this share of the context window
 checkpoint = true    # false stops the Stop hook asking for /synapse:checkpoint
+wait_for_agents = true  # false stops the Stop hook asking to wait for a running sub-agent
 ```
 
 Prompts go only to the local Ollama server.
@@ -247,6 +253,16 @@ The budget is 1.5 s, shared by all SessionEnd hooks, and a plugin cannot raise
 it. You can, with `CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS` (milliseconds) in
 your environment or in the `env` block of your settings. `[archive] on_exit =
 false` in `config.toml` turns the hook off.
+
+`[extract] on_exit = true` (off by default) goes one step further: after a
+successful archive, the hook starts a detached headless `claude -p` that runs
+`/synapse:extract-session` on Sonnet and writes the notes without asking
+(`synapse extract review` lists them). It costs money at every exit: about
+$0.20 per session with a small archive, more with a large one. It uses your
+normal Claude login, runs with hooks off, and never blocks the exit. Its log,
+with the JSON result and `total_cost_usd`, is `<home>/state/extract-<id>.log`.
+Needs `claude` on PATH and, as for any extraction, Ollama and Obsidian running with the store's vault open (the extraction stops if `synapse vault verify` fails). SessionEnd
+never runs after a crash or a killed terminal, so nothing starts then.
 
 ## Share with a team (optional)
 

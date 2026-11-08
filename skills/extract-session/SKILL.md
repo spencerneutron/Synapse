@@ -26,8 +26,8 @@ Input: a session ID (default: the one just archived, else the newest unprocessed
    spec folder: absolute path, forward slashes, of `.claude-work/.tmp/extract-ID`
    under the project root (the folder holding `.claude-work`, else the git top level).
 3. **Accept mode.** Read `accept` from the output of `synapse extract
-   check-candidates --json`. If the user said in this conversation to review
-   first, treat it as `review`.
+   check-candidates --json`; missing or unreadable means `auto`. If the user
+   said in this conversation to review first, treat it as `review`.
    - `auto`: ask nothing. Write every proposal as the extractor gave it
      (duplicates skipped, supersedes honoured), passing `--review-batch
      SESSION_ID` to each create-note in step 4. After step 5 print one line:

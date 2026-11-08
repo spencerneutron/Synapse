@@ -1,13 +1,16 @@
 # Changelog
 
-## 2.7.0 — 2026-11-08 — Gates
+## 2.7.0 — 2026-11-08 — Gates and the tail end
 
 No store schema change; update with `claude plugin marketplace update
 synapse` and `claude plugin update synapse@synapse`, then start new sessions.
 Why: rules decay. Issues #11 and #18 measured that the main session's share
 of cost stayed at 88-96%, that the context nudge fired three times with no
 checkpoint after it, and that the emission skill was loaded in 5 of 91 turns.
-A line the model reads is advice; a hook gate holds. 2.7.0 adds two.
+A line the model reads is advice; a hook gate holds. 2.7.0 adds three, and
+moves the session's tail end (archive, extraction) off the model's memory:
+the archive runs from a SessionEnd hook, and extraction writes its notes
+for review afterwards instead of asking first.
 
 ### Added
 
@@ -36,6 +39,47 @@ A line the model reads is advice; a hook gate holds. 2.7.0 adds two.
   true`.
 - **Eval cases** `long-loop-gate` and `checkpoint-gate` (tag `gate`).
 - **Doctor** reports other `PreToolUse` hooks (`pretooluse-hooks`, info).
+- **Wait-for-agents Stop ask.** After the checkpoint ask, when the Stop
+  input's `background_tasks` lists a sub-agent still running, the Stop hook
+  blocks once per prompt: "Synapse: a dispatched agent is still running.
+  Wait for its report and verify it before ending the turn; if it asked a
+  question, answer it or relay it." Never when `stop_hook_active` is set.
+  The field does not say which turn started a task, so any running sub-agent
+  counts. `[gate] wait_for_agents = false` turns it off.
+- **Archive at session end.** A `SessionEnd` hook, `synapse archive --auto
+  --hook`, copies `.claude-work/current/` (PLAN, EXECUTION, REPORT, NOTES)
+  into the archive at exit, `/clear` and `/resume`. No model call, no
+  embedding, no DB. It skips when nothing changed since this session's last
+  auto archive or since the newest archived session (NOTES left out of that
+  comparison, so a hand `/synapse:end-session` is not archived twice), and
+  reuses the session's archive ID until that ID is extracted. Wall time on
+  this Mac: median 61 ms when it writes, 58 ms when it skips (budget 1.5 s,
+  shared by all SessionEnd hooks). SessionEnd never runs after a crash; INSTALL
+  says how to raise the budget. `[archive] on_exit = false` turns it off.
+  Doctor reports other `SessionEnd` hooks (`sessionend-hooks`, info).
+- **Extraction writes notes without asking (`[extract] accept = auto`).**
+  `/synapse:extract-session` now writes every proposed note and records the
+  batch in `<store>/review.json`; `synapse extract review` lists the notes
+  written since the last review (`--done` marks them reviewed, `--json` for
+  skills). `accept = review` keeps the old one-by-one approval.
+  `/synapse:end-session` runs extraction as its last step in either mode.
+- **Start-of-session review line.** When automatic extraction wrote notes
+  not yet reviewed, the session starts with: "Synapse: N notes were written
+  by automatic extraction since YYYY-MM-DD; `synapse extract review` lists
+  them."
+- **Config.** `[gate] wait_for_agents = true`, `[extract] accept = "auto"`,
+  `[archive] on_exit = true`, `[extract] on_exit = false`.
+- **Detached extraction at exit (`[extract] on_exit`, off by default).**
+  After an auto archive that wrote, the SessionEnd hook starts a detached
+  headless `claude -p "/synapse:extract-session ID"` on Sonnet (new session
+  group, hooks off, `SYNAPSE_DETACHED=1`, log at
+  `<home>/state/extract-<id>.log`) and returns. Checked on macOS with a real
+  `claude -p` parent: the child kept running with PPID 1 after the parent
+  exited, signed in with the normal login, wrote one Session, Decision,
+  Pattern and Fact note plus the review entries and the `.processed` marker,
+  for $0.21 (4 turns, 18 s) on a small archive. The hook with the spawn takes
+  61 ms. Off by default because it spends money at every exit. Windows
+  (`DETACHED_PROCESS`) is untested.
 
 ### Measured (Sonnet, 3 runs per arm, eval contexts under 40k)
 
