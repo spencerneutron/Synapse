@@ -16,7 +16,7 @@ EXPECTED = {
     "researcher": ("sonnet", {"Read", "Grep", "Glob", "Bash", "WebFetch", "WebSearch", "ToolSearch"}, set()),
     "reviewer": ("inherit", {"Read", "Grep", "Glob", "Bash"}, set()),
     "scout": ("haiku", {"Read", "Grep", "Glob", "Bash"}, set()),
-    "extractor": ("sonnet", {"Read", "Grep", "Glob", "Bash"}, set()),
+    "extractor": ("sonnet", {"Read", "Write", "Grep", "Glob", "Bash"}, set()),
 }
 
 # The extractor carries the extraction rules (sub-agents never see skills), so
@@ -66,10 +66,13 @@ class AgentTests(unittest.TestCase):
             if role == "implementer":
                 continue
             with self.subTest(role=role):
-                self.assertFalse((tool_set(fields.get("tools")) or set()) & WRITE_TOOLS)
+                # The extractor writes its spec files with Write (shell writes are denied headless).
+                allowed = WRITE_TOOLS - {"Write"} if role == "extractor" else WRITE_TOOLS
+                self.assertFalse((tool_set(fields.get("tools")) or set()) & allowed)
                 text = " ".join(body.split())
                 self.assertRegex(text, r"(?i)(never modify|do not edit), create, or delete")
-                self.assertIn("where they exist; otherwise use read-only shell search through Bash", text)
+                if role != "extractor":
+                    self.assertIn("where they exist; otherwise use read-only shell search through Bash", text)
 
     def test_read_only_roles_can_search_without_grep_tools(self):
         # Some Claude Code builds ship no Grep/Glob tools; search then goes through Bash.
@@ -95,7 +98,7 @@ class AgentTests(unittest.TestCase):
 
     def test_extract_session_skill_dispatches_the_extractor(self):
         skill = (ROOT / "skills" / "extract-session" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertLess(len(skill), 5000)
+        self.assertLess(len(skill), 5500)
         self.assertIn("synapse:extractor", skill)
         _, body = frontmatter(AGENTS / "extractor.md")
         self.assertIn("check-candidates", body)

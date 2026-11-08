@@ -66,6 +66,7 @@ class DetachTests(unittest.TestCase):
         for banned in ("rm ", "Edit"):
             self.assertNotIn(banned, tools)
         self.assertIn("Agent", tools)
+        self.assertIn("Write", tools)
 
     def test_plugin_dir_override(self):
         os.environ["SYNAPSE_PLUGIN_DIR"] = "/x/plugin"
@@ -130,6 +131,22 @@ class CleanupTests(unittest.TestCase):
                 bad.mkdir(parents=True, exist_ok=True)
                 self.assertIn("refusing", str(self.run_cleanup(bad)))
                 self.assertTrue(bad.exists())
+
+
+class ExtractorPromptTests(unittest.TestCase):
+    def test_extractor_writes_with_write_tool(self):
+        text = (ROOT / "agents" / "extractor.md").read_text(encoding="utf-8")
+        front = text.split("---")[1]
+        tools = [l for l in front.splitlines() if l.startswith("tools:")][0]
+        self.assertIn("Write", tools)
+        body = text.split("---", 2)[2]
+        self.assertNotIn("SYNAPSE_EOF", body)  # no heredoc delimiter; the prose names heredocs to forbid them
+        self.assertNotIn("<<'", body)
+        self.assertNotIn("mkdir -p", body)
+
+    def test_skill_uses_real_check_candidates_call(self):
+        text = (ROOT / "skills" / "extract-session" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertNotIn("check-candidates --json", text)
 
 
 if __name__ == "__main__":
