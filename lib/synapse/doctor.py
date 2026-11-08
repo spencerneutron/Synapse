@@ -281,6 +281,10 @@ def check_autocompact(rep: Report, windows: list[str], models: list[str]) -> Non
 POSTTOOLUSE_FIX = ("Synapse's nudge hook runs here too; another PostToolUse hook only conflicts if it "
                    "blocks (decision: block) or adds its own context on the same calls")
 
+PRETOOLUSE_FIX = ("Synapse's gate (synapse gate --hook) denies a hands-on call once per threshold above "
+                  "[gate] min_context; a deny wins over another hook's allow. Another PreToolUse hook "
+                  "only conflicts if it also denies or rewrites input on the same calls")
+
 
 def check_settings(rep: Report, project_dir: Path) -> None:
     layers = [claude_dir() / "settings.json",
@@ -312,6 +316,10 @@ def check_settings(rep: Report, project_dir: Path) -> None:
             for h in group.get("hooks", []):
                 rep.add("warn", "precompact-hooks", f"{tilde(path)} runs a PreCompact hook: {h.get('command', h)}",
                         "each hook's stdout is capped on its own; two sets of compaction instructions can conflict")
+        for group in s.get("hooks", {}).get("PreToolUse", []):
+            for h in group.get("hooks", []):
+                rep.add("info", "pretooluse-hooks", f"{tilde(path)} runs a PreToolUse hook: {h.get('command', h)}",
+                        PRETOOLUSE_FIX)
         for group in s.get("hooks", {}).get("PostToolUse", []):
             for h in group.get("hooks", []):
                 rep.add("info", "posttooluse-hooks", f"{tilde(path)} runs a PostToolUse hook: {h.get('command', h)}",
@@ -332,6 +340,8 @@ def check_settings(rep: Report, project_dir: Path) -> None:
             for pid in plugin_stop_hooks(s, "PreCompact"):
                 rep.add("warn", "precompact-hooks", f"plugin {pid} also has a PreCompact hook",
                         "check its compaction instructions do not conflict with Synapse's")
+            for pid in plugin_stop_hooks(s, "PreToolUse"):
+                rep.add("info", "pretooluse-hooks", f"plugin {pid} also has a PreToolUse hook", PRETOOLUSE_FIX)
             for pid in plugin_stop_hooks(s, "PostToolUse"):
                 rep.add("info", "posttooluse-hooks", f"plugin {pid} also has a PostToolUse hook", POSTTOOLUSE_FIX)
     check_autocompact(rep, windows, models)

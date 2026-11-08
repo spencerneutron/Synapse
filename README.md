@@ -105,7 +105,13 @@ summary.
   what the next request will rewrite. It is checked after Bash, PowerShell,
   Edit, Write and Agent calls, not after reads. Set `context_window = 0` to
   turn both off.
-  Neither line blocks anything.
+  Neither line blocks anything; the gates below do.
+- **Gates (2.7.0).** Two hooks hold where a line did not. A PreToolUse gate
+  denies a hands-on call once at 5, 10 and 20 calls in a step when the
+  context is at least half the window, and names the role to brief. The Stop
+  hook asks once for `/synapse:checkpoint` at 60% and 90% when `## Resume` is
+  stale. `[gate] enabled = false` and `[gate] checkpoint = false` turn them
+  off; a project's `.synapse.toml` may override `[nudge]` and `[gate]`.
 
 ## Where things live
 
@@ -125,7 +131,7 @@ summary.
 .claude-plugin/   plugin.json, marketplace.json (this repo is its own marketplace)
 instructions/     core.md, platform-macos.md, platform-windows.md (each < 10,000 chars)
 agents/           implementer, verifier, researcher, reviewer, scout, extractor (synapse:<role> sub-agents)
-hooks/            hooks.json (SessionStart, UserPromptSubmit, PreCompact, PostToolUse, Stop), session_start.sh,
+hooks/            hooks.json (SessionStart, UserPromptSubmit, PreCompact, PreToolUse, PostToolUse, Stop), session_start.sh,
                   context/*.json, emission_check.py
 bin/synapse       CLI on the Bash PATH: where, setup, doctor, archive, recall,
                   recall-check, recall-hint, pending, compact-guide, nudge, checkpoint, share, shared, extract

@@ -45,9 +45,10 @@ from the folder where the user usually starts Claude Code.
 |----------|---------|----------|
 | Skills named `plan-session`, `end-session`, `recall`, `extract-session`, `share`, `emission-contract`, `workflow-recovery`, `language-sweep`, `setup`, `doctor` | `ls ~/.claude/skills .claude/skills 2>/dev/null` | Both copies load beside `/synapse:<name>`. An older Synapse copy should be retired later (the user's call) |
 | Always-on rules about planning files, recall, memory, or output style | `ls ~/.claude/CLAUDE.md ~/.claude/rules CLAUDE.md AGENTS.md CLAUDE.local.md .claude/CLAUDE.md 2>/dev/null`, then read them | Where a project's rules conflict, Synapse defers to them; tell the user which rules overlap |
-| Other `Stop` hooks, an `outputStyle`, or `disableAllHooks` | `grep -n -e '"Stop"' -e outputStyle -e disableAllHooks ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Another blocking Stop hook can stack rewrite requests. `disableAllHooks` stops Synapse from working at all |
+| Other `Stop` hooks, an `outputStyle`, or `disableAllHooks` | `grep -n -e '"Stop"' -e outputStyle -e disableAllHooks ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Another blocking Stop hook can stack rewrite requests. Synapse's Stop hook also asks once for `/synapse:checkpoint` at 60% and 90% of the window when `## Resume` is stale (`[gate] checkpoint = false` turns that off). `disableAllHooks` stops Synapse from working at all |
 | Other `PreCompact` hooks | `grep -n -e '"PreCompact"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Each hook's stdout is capped on its own, so two sets of compaction-summary instructions can conflict with Synapse's |
-| Other `PostToolUse` hooks | `grep -n -e '"PostToolUse"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | A blocking PostToolUse hook stops the turn; one that adds context on every Bash or Edit call stacks text with Synapse's nudge. Synapse's own hook (`synapse nudge --hook`, on PostToolUse, PostToolUseFailure, UserPromptSubmit and SessionStart) gives the dispatch reminder, the context-size nudge, the resume-time line, and the resume pointer after `compact` or `clear`. 2.6.0 adds no hook entry and no matcher. It always exits 0, never blocks, and is silent on any error. The context window comes from `[nudge] context_window`, else the model name, lowered by the session's smallest auto-compaction; `[nudge] context_window = 0` turns the context lines off; `calls = 0` turns the dispatch reminder off |
+| Other `PreToolUse` hooks | `grep -n -e '"PreToolUse"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Synapse's `synapse gate --hook` (2.7.0, on Edit, Write, MultiEdit, NotebookEdit, Bash and PowerShell) denies a hands-on call once per threshold (5, 10, 20 calls in a step) when the context is at least `[gate] min_context` of the window. A deny wins over another hook's allow and over auto and bypass modes. Another PreToolUse hook only conflicts if it also denies or rewrites input on the same calls. `[gate] enabled = false` turns the gate off |
+| Other `PostToolUse` hooks | `grep -n -e '"PostToolUse"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | A blocking PostToolUse hook stops the turn; one that adds context on every Bash or Edit call stacks text with Synapse's nudge. Synapse's own hook (`synapse nudge --hook`, on PostToolUse, PostToolUseFailure, UserPromptSubmit and SessionStart) gives the dispatch reminder, the context-size nudge, the resume-time line, and the resume pointer after `compact` or `clear`. 2.6.0 adds no hook entry and no matcher. It always exits 0, never blocks, and is silent on any error. The context window comes from `[nudge] context_window`, else the model name, lowered by the session's smallest auto-compaction; `[nudge] context_window = 0` turns the context lines off; `calls = 0` turns the dispatch reminder off. From 2.7.0 the dispatch line runs only below `[gate] min_context` of the window; above it the PreToolUse gate acts instead (previous row) |
 | No auto-compact window on a 1M-context model | `grep -n -e autoCompactWindow -e '\[1m\]' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null; echo "$CLAUDE_CODE_AUTO_COMPACT_WINDOW"` | Auto-compaction then triggers near 967k tokens, so the PreCompact hook rarely runs. Tell the user about the README's "Long sessions" paragraph (`/autocompact 300k`), or offer `synapse setup --autocompact 300k` (next row); never change the setting without the user's yes |
 | `autoCompactWindow` in `~/.claude/settings.json` (top level or under `modelSettings`) | `grep -n autoCompactWindow ~/.claude/settings.json 2>/dev/null` | Synapse writes it only through `synapse setup --autocompact N`, on the user's OK: it copies the file to `settings.json.synapse-backup-<time>` beside itself first and refuses if a window is already set. `synapse doctor` reports the value(s) found |
 | Managed settings that allow only managed hooks | macOS `/Library/Application Support/ClaudeCode/managed-settings.json`, Linux `/etc/claude-code/managed-settings.json`, Windows `C:\Program Files\ClaudeCode\managed-settings.json` | `allowManagedHooksOnly` means Synapse cannot load; stop and tell the user |
@@ -181,6 +182,21 @@ Then run `synapse setup` once to create the new store's archive and
 archive, DB, and vault apply and why. `SYNAPSE_STORE=<name>` overrides both for one
 session.
 
+A project may also override the nudge and the gate for itself. Only the
+`[nudge]` and `[gate]` tables are read from `.synapse.toml`; any other table
+there is ignored:
+
+```toml
+store = "client-x"
+
+[gate]
+min_context = 0.4   # gate earlier in this project
+
+[nudge]
+calls = 8
+context_window = 200000
+```
+
 ## Automatic recall and reminders
 
 Three hooks act on their own, and all stay silent when anything they need is
@@ -208,6 +224,11 @@ facts = true       # false stops listing this project's Facts at session start
 
 [extract]
 remind = true      # false turns the reminder off
+
+[gate]
+enabled = true       # false turns the PreToolUse deny and the Stop checkpoint ask off
+min_context = 0.5    # the PreToolUse deny starts at this share of the context window
+checkpoint = true    # false stops the Stop hook asking for /synapse:checkpoint
 ```
 
 Prompts go only to the local Ollama server.

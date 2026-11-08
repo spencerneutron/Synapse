@@ -15,6 +15,10 @@ the maintainer's decisions of 2026-11-06:
 - Checkpoint and continue: `/synapse:checkpoint` does not end the turn.
 - The context nudge uses the PostToolUse channel (the existing nudge hook),
   at 60% and 90% of `[nudge] context_window`.
+- 2.7.0: gates. The nudge line proved advisory, so a PreToolUse gate now
+  denies a hands-on call once per threshold above `[gate] min_context`, and
+  the Stop hook asks once for a checkpoint at 60% and 90% when `## Resume` is
+  stale. Below `min_context` the nudge line still runs.
 - Pointers only. The resume pointer names the Resume section; nothing is
   inlined.
 - The resume-time line (cache expired on a large context) is on
