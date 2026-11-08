@@ -21,9 +21,10 @@ hooks enforce what instructions can only request.
    agents (implementation, verification, research, adversarial review).
    Frontier models plan; right-sized models execute. `EXECUTION.md` updates
    often; `PLAN.md` only for durable decisions.
-3. **Emit** (every turn end). The `synapse:emission-contract` skill loads just before
-   the user-facing message. A Stop hook checks the message and forces one
-   rewrite on a violation.
+3. **Emit** (every turn end). A Stop hook checks the user-facing message and,
+   on a violation, forces one rewrite; its block reason carries the contract's
+   directive, so no skill load is needed. `synapse:emission-contract` is the
+   reference text (2.6.1: the per-turn load rule held only while fresh).
 4. **Checkpoint** (`/synapse:checkpoint`, any time). Writes `## Resume` in
    `EXECUTION.md` and appends to the working `NOTES.md` (stated facts,
    patterns, decision rationale, open questions, deferred and blocked work)
@@ -70,12 +71,12 @@ it harvests finished agents' results from disk before anything is relaunched.
 | Skills | `/synapse:plan-session`, `/synapse:end-session` | Session start/resume and archiving |
 | Skills | `/synapse:recall`, `/synapse:extract-session` | Memory read and write; extraction holds the promotion gate |
 | Skills | `/synapse:share` | Scrub, show, and share approved notes with a team; ask before each push |
-| Skills | `synapse:emission-contract` | Late-bound output contract: a compact directive plus exemplars |
+| Skills | `synapse:emission-contract` | Reference text of the output contract the Stop hook enforces: directive, checked patterns, exemplars |
 | Skills | `/synapse:workflow-recovery` | Salvage results from an interrupted multi-agent run |
 | Skills | `/synapse:language-sweep` | Prose cleanup in strict ASD-STE100 or lite marketing-copy mode |
 | Skills | `/synapse:setup`, `/synapse:doctor` | Provision the Synapse home; read-only health and conflict report |
 | Agents | `synapse:implementer`, `verifier`, `researcher`, `reviewer`, `scout`, `extractor` | Wave roles with their own models and tool limits (the extractor is dispatched by `/synapse:extract-session`, not by waves); each body carries the rules its job needs, because sub-agents do not receive the `SessionStart` rules |
-| Hooks | `emission_check.py` (Stop) | Blocks a non-compliant final message once and asks for a rewrite; allows the stop on `stop_hook_active` or any internal error |
+| Hooks | `emission_check.py` (Stop) | Blocks a non-compliant final message once; the reason names the violations and carries the contract's directive (from `emission_patterns.json`); allows the stop on `stop_hook_active` or any internal error, which it logs to stderr |
 | Hooks | `synapse recall-hint` (UserPromptSubmit), `synapse pending --hook` and `synapse shared hook` (SessionStart) | Automatic recall hints, the extraction reminder, and the team sync (started in the background); all fail silently |
 | Hooks | `synapse compact-guide --hook` (PreCompact) | Tells the compaction summary what to keep and drop; defers to the user's `/compact` text; never blocks; fails silently |
 | Hooks | `synapse nudge --hook` (PostToolUse, PostToolUseFailure, UserPromptSubmit, SessionStart) | Dispatch reminder after consecutive hands-on calls; context-size nudge at 60% and 90% of the window (`[nudge] context_window`, else the model-name rule: 300000 for 1M-window models (Fable, Opus 4.7 and later, any 5-series model), 150000 for older ones, lowered by the smallest auto-compaction `preTokens` seen in the session, kept in `context-<sid>.json`)), read from the transcript's tail; resume-time line when the cache expired on a large context; resume pointer after `compact` or `clear`. One process, no new matcher in 2.6.0; never blocks; no Ollama or DB; silent on any error |
@@ -138,7 +139,8 @@ list, or every store by default.
 **Output**
 
 - Keep style constraints out of the reasoning context.
-- Bind the output contract late, through a skill loaded just before emission.
+- Keep the output contract out of the context until it is needed: the Stop
+  hook's block reason carries it, only when a message breaks it.
 - Enforce deterministically with a Stop hook rather than trusting the model to self-trigger.
 
 ---
@@ -168,10 +170,10 @@ flowchart TD
     end
 
     subgraph E["Every turn end"]
-        UP --> EC["Load emission-contract skill"]
-        EC --> DR["Draft user-facing message"]
+        UP --> DR["Draft user-facing message"]
         DR --> SH{"Stop hook:<br/>contract violated?"}
-        SH -- yes --> EC
+        SH -- yes --> EC["Rewrite with the rules<br/>from the block reason"]
+        EC --> SH
     end
 
     SH -- no --> DN{"Session<br/>done?"}
