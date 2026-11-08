@@ -157,6 +157,7 @@ class EmbedTests(unittest.TestCase):
         extract.embed_batch = lambda texts, input_type="document": [[0.0] * extract.EMBEDDING_DIM for _ in texts]
         self.addCleanup(lambda: setattr(extract, "embed_batch", self.saved))
         self.conn = extract.db_connect(t / "v.db")
+        self.addCleanup(self.conn.close)   # before the temp folder goes: Windows locks open files
         extract.db_init(self.conn, t / "v.db")
         self.r = extract.paths.resolve()
         self.r.vault_path = self.vault
