@@ -55,8 +55,10 @@ Obsidian vault.
   by your sync service. Your teammates and the host of that repository or
   folder see what you share.
 - **Detached extraction (off by default).** With `[extract] on_exit = true`,
-  a headless Claude Code session runs extraction at session end. It uses your
-  own Claude login and is covered by Anthropic's terms and privacy policy.
+  a headless Claude Code session runs extraction at session end. It may use
+  only Synapse's own commands and the Read, Write, and Agent tools, and it
+  denies anything else whatever your permission mode. It uses your own Claude
+  login and is covered by Anthropic's terms and privacy policy.
 
 - **The model.** Notes Synapse puts into a session (recall hints, Facts, the
   resume pointer) are part of that session's context, so they reach Anthropic

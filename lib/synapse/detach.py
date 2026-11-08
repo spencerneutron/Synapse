@@ -20,7 +20,9 @@ import paths  # noqa: E402
 
 # Auto mode edits nothing (Edit is for review mode only), the spec folder is removed by
 # `synapse extract cleanup`, and the extractor writes its spec files with the Write tool; a live
-# run (2026-11-08, default permission mode) confirmed these tools suffice.
+# run (2026-11-08, default permission mode) confirmed these tools suffice. `--permission-mode
+# dontAsk` makes this list the whole grant: anything outside it is denied, never prompted, whatever
+# permission mode the user's own settings set (an inherited auto mode would approve more).
 ALLOWED_TOOLS = ("Bash(synapse extract *) Bash(synapse vault *) Bash(synapse where *) "
                  "Bash(synapse shared status*) Read Write Agent")
 
@@ -31,7 +33,7 @@ def command(claude: str, session_id: str, project: str) -> list[str]:
               "with --review-batch and never ask.")
     cmd = [claude, "-p", prompt,
            "--model", "sonnet", "--output-format", "json",
-           "--allowedTools", ALLOWED_TOOLS,
+           "--permission-mode", "dontAsk", "--allowedTools", ALLOWED_TOOLS,
            "--settings", '{"disableAllHooks":true}']
     root = os.environ.get("SYNAPSE_PLUGIN_DIR")   # spike/dev override; installed plugin otherwise
     if root:

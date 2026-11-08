@@ -67,6 +67,8 @@ class DetachTests(unittest.TestCase):
             self.assertNotIn(banned, tools)
         self.assertIn("Agent", tools)
         self.assertIn("Write", tools)
+        # The list is the whole grant in every user permission mode (auto would approve more).
+        self.assertEqual(argv[argv.index("--permission-mode") + 1], "dontAsk")
 
     def test_plugin_dir_override(self):
         os.environ["SYNAPSE_PLUGIN_DIR"] = "/x/plugin"
