@@ -78,6 +78,18 @@ The context marks sit on the auto-compaction point. `synapse setup --autocompact
 
 Model turns cost money; hooks and the CLI run locally and cost nothing. Each main-session call re-reads the whole context, so a long hands-on loop in the main session is the expensive pattern, and the gate exists for that: a role runs the loop in a fresh, small context and sends back a report. `tools/context-cost.py` reads Claude Code transcripts and prints token and cost numbers per session; `tools/emission-stats.py` counts Stop-hook verdicts per turn.
 
+## Security and data
+
+Synapse runs locally. This section lists everything it runs, writes and connects to.
+
+- **Hooks.** Every hook in the table above runs `bash` on a file in the plugin folder: `hooks/session_start.sh` prints prebuilt rules, and the rest start Python through `lib/py.sh`. Hooks read the hook event on stdin, the tail of the session transcript for token counts, and the planning files. Timeouts are 2 to 15 seconds; all but the emission check exit silently when no Python is found.
+- **Python.** `synapse setup` creates a venv in the Synapse home and installs one package, `sqlite-vec`, from PyPI. Everything else is the standard library.
+- **Network.** Ollama on `localhost:11434` for embeddings. PyPI once, during `synapse setup`. For a git team you created or joined: `git clone` on join, `git pull --ff-only` in the background at session start when a sync is due (`auto_sync = false` turns that off), and `git pull --rebase` then `git push` on `synapse shared push`, which the rules run only after the user says yes. With `[extract] on_exit = true` (default false), the SessionEnd hook starts a detached `claude -p "/synapse:extract-session …"` on Sonnet with hooks off; it uses your Claude login and costs model tokens. No telemetry, no other host.
+- **Local apps.** The optional Obsidian CLI (`obsidian vault info`, `obsidian search`) finds and searches the vault; when Obsidian is not running, Synapse starts it (`open -a Obsidian` or `obsidian://open`). Notes are written as files, not through the CLI.
+- **Writes.** The Synapse home (`~/.claude/synapse`, or `SYNAPSE_HOME`): config, venv, state and logs, the default store (archives, `vectors.db`), git team clones. A store configured with its own `path`. The project's `.claude-work/` (planning files). The store's Obsidian vault, wherever `vault_path` points. A folder team's shared notes folder.
+- **Claude Code settings.** Only `synapse setup --autocompact N` writes to `~/.claude/settings.json`: it adds `autoCompactWindow`, refuses when one is already set, and copies the file to `settings.json.synapse-backup-<time>` first. Nothing runs it automatically.
+- **Removal.** [INSTALL.md](INSTALL.md#uninstall) covers uninstall. Deleting the Synapse home removes the default store and team clones; stores with their own `path`, vaults and folder teams' folders stay where they are.
+
 ## Documentation
 
 - [INSTALL.md](INSTALL.md): requirements, preflight, install, provision, verify, per-project stores, reminders, teams, update, uninstall.
