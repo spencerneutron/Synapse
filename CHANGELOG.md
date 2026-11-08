@@ -1,5 +1,46 @@
 # Changelog
 
+## 2.7.2 — 2026-11-08 — Artifact links in the Session note
+
+No store schema change; update with `claude plugin marketplace update
+synapse` and `claude plugin update synapse@synapse`, then start new sessions.
+
+### Added
+
+- **Every published Artifact reaches the Session note.** At each stop,
+  `synapse gate --hook` reads the turn's `Artifact` publishes from the same
+  transcript tail it already reads, plus the links in the final message, and
+  records each one in `.claude-work/current/ARTIFACTS.md` as
+  `- [title](url)`. The title is the publish's title, else the file name,
+  else the link's last segment. A republish of the same link updates its
+  title in place. A link the turn only opened or read is not recorded, even
+  when the final message repeats it. The file appears only when a session
+  publishes an Artifact.
+- **The archive carries it.** `synapse archive` and the SessionEnd archive
+  copy the links recorded since the last archive as `ARTIFACTS_<id>.md`, then
+  mark them archived in `ARTIFACTS.md`, so each session lists only its own
+  links. A new link since the last archive is enough for the SessionEnd
+  archive to run; a resumed session that adds links merges them into its
+  unextracted archive.
+- **Python writes the links, not the model.** `synapse extract
+  embed-archive` adds a `## Artifacts` section to the session's Session note
+  with the same lines, mirrors the links into an `artifacts:` property, and
+  embeds the section, so recall finds the Session note by an Artifact's
+  title. Text you add under the heading stays. Re-running it leaves one
+  section and one property, on the newest version of the note. The
+  extractor no longer lists Artifact links itself.
+- **`Artifacts.base` in the vault.** An Obsidian Base at the vault root
+  lists every note with an `artifacts` property: session, date, project and
+  links. Synapse creates it when it is missing and never overwrites it.
+- **`[extract] artifacts = true`.** `false` stops the recording.
+
+### Known limits
+
+- A turn the user interrupts gets no Stop hook, so an Artifact published
+  in it is recorded only if a later final message repeats its link.
+- A session with no `PLAN.md` or `EXECUTION.md` is never archived; its links
+  wait in `ARTIFACTS.md` and go to the next session that is.
+
 ## 2.7.1 — 2026-11-08 — The window from the auto-compaction point
 
 No store schema change; update with `claude plugin marketplace update

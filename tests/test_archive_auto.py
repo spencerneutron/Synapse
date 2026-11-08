@@ -104,6 +104,79 @@ class ArchiveAutoTests(unittest.TestCase):
         self.assertEqual(len(self.files()), 3)
         self.assertEqual(self.state_ids(), [])
 
+    def test_manual_archive_copies_artifacts(self):
+        (self.cur / "ARTIFACTS.md").write_text("- [A](https://claude.ai/artifact/a1)\n")
+        r = run_cli(["archive", "--id", "2020-01-01-0000", "--workdir", str(self.proj)], self.home)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual((self.archive_dir() / "ARTIFACTS_2020-01-01-0000.md").read_text(),
+                         "- [A](https://claude.ai/artifact/a1)\n")
+        self.assertEqual(len(self.files()), 4)
+
+    def test_equal_artifacts_skip_and_artifacts_only_change_archives(self):
+        art = "- [A](https://claude.ai/artifact/a1)\n"
+        (self.cur / "ARTIFACTS.md").write_text(art)
+        r = run_cli(["archive", "--id", "2020-01-01-0000", "--workdir", str(self.proj)], self.home)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.hook()   # same files as the newest archive: skip
+        self.assertEqual(len(self.files()), 4)
+        self.assertEqual(self.state_ids(), [])
+        (self.cur / "ARTIFACTS.md").write_text(art + "- [B](https://claude.ai/artifact/b2)\n")
+        self.hook()   # only the artifacts changed: archive
+        self.assertEqual(len(self.files()), 9)   # the 4 hand-made + all 5 auto
+        self.assertEqual(len(self.state_ids()), 1)
+
+    def manual(self, sid):
+        r = run_cli(["archive", "--id", sid, "--workdir", str(self.proj)], self.home)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def art(self, name):
+        return (self.archive_dir() / name).read_text()
+
+    def publish(self, *links):
+        from artifacts import record
+        record(self.cur, [(f"https://claude.ai/artifact/{u}", t) for u, t in links])
+
+    def test_segments_manual_then_new_publish_archives_only_new_link(self):
+        self.publish(("a1", "A"))
+        self.manual("2020-01-01-0000")
+        self.assertEqual(self.art("ARTIFACTS_2020-01-01-0000.md"), "- [A](https://claude.ai/artifact/a1)\n")
+        self.assertNotIn("<!--", self.art("ARTIFACTS_2020-01-01-0000.md"))
+        self.assertIn("<!-- archived: 2020-01-01-0000 -->", (self.cur / "ARTIFACTS.md").read_text())
+        self.publish(("b2", "B"))
+        self.hook()
+        auto = [n for n in self.files() if n.startswith("ARTIFACTS_") and "2020" not in n]
+        self.assertEqual(len(auto), 1)
+        self.assertEqual(self.art(auto[0]), "- [B](https://claude.ai/artifact/b2)\n")
+
+    def test_segments_manual_then_session_end_with_nothing_new_skips(self):
+        self.publish(("a1", "A"))
+        self.manual("2020-01-01-0000")
+        self.hook()
+        self.assertEqual(len(self.files()), 4)
+        self.assertEqual(self.state_ids(), [])
+
+    def test_segments_republished_url_gets_fresh_line_in_next_archive(self):
+        self.publish(("a1", "A"))
+        self.manual("2020-01-01-0000")
+        self.publish(("a1", "A again"))
+        self.hook()
+        auto = [n for n in self.files() if n.startswith("ARTIFACTS_") and "2020" not in n]
+        self.assertEqual(self.art(auto[0]), "- [A again](https://claude.ai/artifact/a1)\n")
+
+    def test_segments_reused_id_merges(self):
+        self.publish(("a1", "A"), ("b2", "B"))
+        self.hook()
+        sid = self.state_ids()[0]["id"]
+        self.publish(("b2", "B new"), ("c3", "C"))
+        (self.cur / "EXECUTION.md").write_text("exec v2\n")
+        self.hook()
+        self.assertEqual(self.state_ids()[0]["id"], sid)
+        self.assertEqual(self.art(f"ARTIFACTS_{sid}.md"),
+                         "- [A](https://claude.ai/artifact/a1)\n- [B new](https://claude.ai/artifact/b2)\n"
+                         "- [C](https://claude.ai/artifact/c3)\n")
+        self.hook()   # nothing changed: no second archive, no marker-triggered rerun
+        self.assertEqual(len(self.files()), 5)
+
     def test_no_planning_files(self):
         (self.cur / "PLAN.md").unlink()
         (self.cur / "EXECUTION.md").unlink()

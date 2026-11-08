@@ -52,7 +52,7 @@ Rules in a prompt decay as the context fills; hooks hold at any context size, wh
 
 ## Memory
 
-A store is one folder: `archive/<project>/` holds the archived sessions, `vectors.db` the embeddings, and an Obsidian vault the notes. Extraction reads an archived session and writes Session, Decision, Pattern and Fact notes to the vault, embedded with `nomic-embed-text` through Ollama. Recall ranks those notes and archives against a query and returns snippets with source paths; they are navigation hints, so the model reads a source before relying on it. Fact notes (what the user stated about the project: deploy targets, customers, constraints) are listed at every session start.
+A store is one folder: `archive/<project>/` holds the archived sessions, `vectors.db` the embeddings, and an Obsidian vault the notes. Extraction reads an archived session and writes Session, Decision, Pattern and Fact notes to the vault, embedded with `nomic-embed-text` through Ollama. Recall ranks those notes and archives against a query and returns snippets with source paths; they are navigation hints, so the model reads a source before relying on it. Fact notes (what the user stated about the project: deploy targets, customers, constraints) are listed at every session start. Every Artifact a session publishes is recorded by the Stop hook and lands in its Session note as a link, under `## Artifacts` and in the `artifacts` property, which the vault's `Artifacts.base` lists across sessions.
 
 One global store, `main`, serves every project by default; a project opts into its own store with a `.synapse.toml` at its root. The Synapse home is `~/.claude/synapse` (`SYNAPSE_HOME` overrides it), and `synapse where` prints where this folder's data resolves. `/synapse:share` scrubs Decision, Pattern and Fact notes and adds the ones the user approves to a team folder or git repository; teammates' notes appear in recall labelled with team and author.
 
@@ -68,6 +68,7 @@ One global store, `main`, serves every project by default; a project opts into i
 | `[gate] checkpoint`, `wait_for_agents` | true, true | The Stop checkpoint ask and the hold for a running sub-agent |
 | `[extract] accept` | auto | `auto` writes notes and lists them for review; `review` asks before writing |
 | `[extract] on_exit` | false | Detached extraction after the failsafe archive |
+| `[extract] artifacts` | true | Record published Artifact links for the Session note |
 | `[archive] on_exit` | true | The failsafe archive |
 | `[recall] auto`, `min_score`, `max_hits` | true, 0.70, 3 | The prompt hint |
 

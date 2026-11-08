@@ -47,8 +47,8 @@ From the project root, run:
 synapse archive [--project <name>] [--id <session-id>]
 ```
 
-It copies (never moves) `.claude-work/current/PLAN.md`, `EXECUTION.md`, and
-`REPORT.md` when present into the active store as
+It copies (never moves) `.claude-work/current/PLAN.md`, `EXECUTION.md`,
+`REPORT.md`, and `ARTIFACTS.md` (the artifact links the Stop hook recorded) when present into the active store as
 `archive/<project>/<PREFIX>_<session-id>.md`, picks a free session ID, and
 prints JSON with `session_id`, `project`, `copied`, `missing`, and
 `notes_path`. Use those values for the rest of this procedure. If `missing`

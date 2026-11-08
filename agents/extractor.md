@@ -93,6 +93,8 @@ dropping as a duplicate still gets a full spec in the same format, named
 duplicate-1.md and so on; the Session note does not link it. Omit lines that do not
 apply.
 
+Artifact links are added to the Session note by the CLI (`synapse extract embed-archive`) from ARTIFACTS; never list artifact URLs in the spec.
+
 Session note (always exactly one; `related` only if the session continued
 earlier work):
 

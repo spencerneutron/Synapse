@@ -353,20 +353,52 @@ HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
 FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 
 
+def _unquote_scalar(v: str) -> str:
+    v = v.strip()
+    if len(v) >= 2 and v[0] == '"' and v[-1] == '"':
+        return re.sub(r'\\(["\\])', r"\1", v[1:-1])
+    if len(v) >= 2 and v[0] == "'" and v[-1] == "'":
+        return v[1:-1]
+    return v
+
+
 def parse_frontmatter(content: str) -> tuple[dict, str]:
-    """Extract YAML frontmatter (returned as dict) and body. Naive parser —
-    handles flat key:value pairs, which is all our schemas use."""
+    """Extract YAML frontmatter (returned as dict) and body. Naive parser:
+    flat `key: value` pairs stay strings; a `key:` with an empty value followed
+    by `- item` lines is a list of scalars (items may be single or double
+    quoted; \\" and \\\\ are unescaped in double quotes). Anything else
+    indented (nested maps, multi-line strings) is ignored."""
     m = FRONTMATTER_RE.match(content)
     if not m:
         return {}, content
     fm_text = m.group(1)
     body = content[m.end():]
-    fm = {}
+    fm: dict = {}
+    list_key = None   # key that may collect `- item` lines, or None
     for line in fm_text.splitlines():
-        if ":" in line and not line.startswith(" "):
+        stripped = line.strip()
+        if list_key is not None and re.match(r"-(\s|$)", stripped):
+            if fm[list_key] == "":
+                fm[list_key] = []
+            if isinstance(fm[list_key], list):
+                fm[list_key].append(_unquote_scalar(stripped[1:]))
+            continue
+        if not stripped or line[:1] in (" ", "\t"):
+            continue   # nested map or multi-line string: not parsed
+        list_key = None
+        if ":" in line:
             k, _, v = line.partition(":")
-            fm[k.strip()] = v.strip().strip('"').strip("'")
+            k, v = k.strip(), v.strip()
+            fm[k] = _unquote_scalar(v)
+            if v == "":
+                list_key = k
     return fm, body
+
+
+def fm_str(fm: dict, key: str, default: str = "") -> str:
+    """A scalar front-matter value; a list (or a missing key) counts as missing."""
+    v = fm.get(key)
+    return v if isinstance(v, str) else default
 
 
 def split_by_headings(body: str) -> list[tuple[list[str], str]]:
@@ -680,6 +712,203 @@ def cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------- Session note artifacts ----------
+
+ARTIFACT_LINE_RE = re.compile(
+    r"^- \[([^\[\]]+)\]\((https://claude\.ai/(?:code/)?artifact/[A-Za-z0-9_-]+)\)$")
+ARTIFACTS_HEADING_RE = re.compile(r"^## Artifacts[ \t]*$")
+H2_RE = re.compile(r"^## ")
+
+
+def parse_artifact_lines(text: str) -> list[tuple[str, str]]:
+    """The (title, url) pairs of the valid `- [title](url)` lines, in order."""
+    out = []
+    for line in text.splitlines():
+        m = ARTIFACT_LINE_RE.match(line.strip())
+        if m:
+            out.append((m.group(1).strip(), m.group(2)))
+    return out
+
+
+def artifacts_section(links: list[tuple[str, str]]) -> str:
+    return "## Artifacts\n\n" + "".join(f"- [{t}]({u})\n" for t, u in links)
+
+
+FM_CLOSE_RE = re.compile(r"\n---[ \t]*(?=\n|$)")   # as vault_write.set_frontmatter
+FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+TOP_HEADING_RE = re.compile(r"^#{1,2}(?:[ \t]|$)")
+
+
+def _outside_fences(lines: list[str]) -> list[bool]:
+    """Per line: True when it is not inside (or on the edge of) a fenced code block."""
+    flags, fence = [], None   # fence: (char, length) of the open block
+    for line in lines:
+        m = FENCE_RE.match(line)
+        if fence is None:
+            if m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
+                fence = (m.group(1)[0], len(m.group(1)))
+                flags.append(False)
+                continue
+            flags.append(True)
+        else:
+            flags.append(False)
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1] and not m.group(2).strip():
+                fence = None
+    return flags
+
+
+def set_body_artifacts(body: str, links: list[tuple[str, str]]) -> str:
+    """The body with a `## Artifacts` section holding exactly these links. The
+    first such heading outside fenced code blocks marks the section, which runs to
+    the next level 1 or 2 heading outside fences, or the end. Only its artifact
+    link lines are replaced; any other text in it stays after the links. With no
+    such heading the section is appended. Idempotent."""
+    lines = body.split("\n")
+    out = _outside_fences(lines)
+    h = next((i for i, ln in enumerate(lines) if out[i] and ARTIFACTS_HEADING_RE.match(ln)), None)
+    if h is None:
+        head = body.rstrip("\n")
+        return (head + "\n\n" if head else "") + artifacts_section(links)
+    e = next((i for i in range(h + 1, len(lines)) if out[i] and TOP_HEADING_RE.match(lines[i])),
+             len(lines))
+    rest = [ln for i, ln in zip(range(h + 1, e), lines[h + 1:e])
+            if not (out[i] and ARTIFACT_LINE_RE.match(ln.strip()))]
+    while rest and not rest[0].strip():
+        rest.pop(0)
+    if not any(ln.strip() for ln in rest):
+        rest = []
+    new = lines[:h] + ["## Artifacts", ""] + [f"- [{t}]({u})" for t, u in links]
+    if rest:
+        new += [""] + rest
+    tail = lines[e:]
+    if e == len(lines):
+        while new and not new[-1].strip():
+            new.pop()
+        return "\n".join(new) + "\n"
+    if new[-1] != "":
+        new.append("")
+    return "\n".join(new + tail)
+
+
+def set_frontmatter_artifacts(fm_text: str, urls: list[str]) -> str:
+    """Frontmatter text (no fences) with one `artifacts:` block list. An existing
+    key and its indented or `- ` item lines are replaced in place; every other
+    line is kept as is. With no existing key the block goes last."""
+    block = ["artifacts:"] + [f'  - "{u}"' for u in urls]
+    out, placed, skipping = [], False, False
+    for line in fm_text.split("\n") if fm_text else []:
+        if re.match(r"artifacts[ \t]*:", line):
+            if not placed:
+                out.extend(block)
+                placed = True
+            skipping = True
+            continue
+        if skipping and (line[:1] in (" ", "\t") or line.startswith("- ") or line == "-"):
+            continue
+        skipping = False
+        out.append(line)
+    if not placed:
+        out.extend(block)
+    return "\n".join(out)
+
+
+def apply_artifacts(text: str, links: list[tuple[str, str]]) -> str:
+    """A Session note's text with the Artifacts section and `artifacts:` key set.
+    Pure and idempotent. LF line ends; a leading BOM is dropped. A note with no frontmatter gets a block
+    holding only `artifacts`."""
+    text = text.replace("\r\n", "\n").removeprefix("\ufeff")
+    close = FM_CLOSE_RE.search(text, 3) if text.startswith("---\n") else None
+    if close:
+        fm_text, body = text[4:close.start()] if close.start() > 3 else "", text[close.end() + 1:]
+    else:
+        fm_text, body = "", text
+    fm_text = set_frontmatter_artifacts(fm_text, [u for _, u in links])
+    return f"---\n{fm_text}\n---\n" + set_body_artifacts(body, links)
+
+
+def session_note_files(sessions_dir: Path, session_id: str) -> list[Path]:
+    """`<id>.md` and the conflict-suffixed `<id> vN.md` in a Sessions folder."""
+    if not sessions_dir.is_dir():
+        return []
+    pat = re.compile(rf"^{re.escape(session_id)}(?: v\d+)?\.md$")
+    return sorted(f for f in sessions_dir.iterdir() if f.is_file() and pat.match(f.name))
+
+
+def write_atomic(path: Path, text: str) -> None:
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+    os.replace(tmp, path)
+
+
+def add_session_artifacts(conn: sqlite3.Connection, r: "paths.Resolved", archive_dir: Path,
+                          session_id: str, project: str | None) -> int:
+    """Write the session's ARTIFACTS into its newest Session note and embed the
+    Artifacts section. Returns the notes updated (0 or 1). Only the newest version
+    (`<id> vN.md`, highest N, else `<id>.md`) is written and embedded. Never fails
+    the caller for a missing vault or an unwritable note: it warns and goes on."""
+    src = archive_dir / f"ARTIFACTS_{session_id}.md"
+    if not src.is_file():
+        return 0
+    links = parse_artifact_lines(src.read_text(encoding="utf-8", errors="replace"))
+    if not links:
+        return 0
+    try:
+        vault = r.vault_path
+        if not vault:
+            import vault_write
+            vault_write.VAULT_NAME = r.vault
+            vault = vault_write.vault_path()
+    except SystemExit as e:
+        print(f"  warning: artifacts not added to the Session note: no vault found ({e})",
+              file=sys.stderr)
+        return 0
+    notes = session_note_files(Path(vault) / "Sessions", session_id)
+    if not notes:
+        print(f"  warning: no Session note named {session_id} in {Path(vault) / 'Sessions'}; "
+              f"artifacts not added", file=sys.stderr)
+        return 0
+
+    def version(f: Path) -> int:
+        m = re.search(r" v(\d+)\.md$", f.name)
+        return int(m.group(1)) if m else 1
+
+    note = max(notes, key=version)
+    # Session notes are embedded nowhere else, so every chunk stored for an older
+    # version of this session's note is a stale Artifacts hit: drop them.
+    for old_note in notes:
+        if old_note != note:
+            stale = [row["id"] for row in conn.execute(
+                "SELECT id FROM chunks WHERE source_path = ?",
+                (paths.to_stored_path(old_note, r),)).fetchall()]
+            if stale:
+                delete_chunks(conn, stale)
+                conn.commit()
+    try:
+        old = note.read_text(encoding="utf-8")
+        new = apply_artifacts(old, links)
+        if new != old.replace("\r\n", "\n") or "\r\n" in old:
+            write_atomic(note, new)
+    except OSError as e:
+        print(f"  warning: could not update {note.name}: {e}", file=sys.stderr)
+        return 0
+    stored = paths.to_stored_path(note, r)
+    old_ids = [row["id"] for row in conn.execute(
+        "SELECT id FROM chunks WHERE source_path = ?", (stored,)).fetchall()]
+    delete_chunks(conn, old_ids)
+    conn.commit()
+    breadcrumb = f"{note.stem} > Artifacts"
+    store_chunks(conn, [Chunk(
+        text=f"[{breadcrumb}]\n" + "".join(f"- [{t}]({u})\n" for t, u in links).rstrip("\n"),
+        source_path=stored, source_type="session", session_id=session_id,
+        project=project, chunk_index=0,
+        metadata={"breadcrumb": breadcrumb, "heading_path": ["", "Artifacts"],
+                  "frontmatter": {"type": "session", "session_id": session_id}},
+    )])
+    print(f"  {note.name}: {len(links)} artifact link(s)")
+    return 1
+
+
 def cmd_embed_archive(args: argparse.Namespace) -> int:
     r = paths.resolve(project=args.project)
     archive_dir = Path(args.archive_dir) if args.archive_dir else r.archive_dir
@@ -736,6 +965,8 @@ def cmd_embed_archive(args: argparse.Namespace) -> int:
         total_skipped += skipped
         print(f"  {path.name}: {inserted} new, {skipped} unchanged")
 
+    add_session_artifacts(conn, r, archive_dir, session_id, project)
+
     # Write processed marker.
     processed_dir.mkdir(parents=True, exist_ok=True)
     marker = processed_dir / f"{session_id}.json"
@@ -786,13 +1017,13 @@ def cmd_embed_note(args: argparse.Namespace) -> int:
 def embed_note(conn: sqlite3.Connection, path: Path, project_arg: str | None) -> None:
     content = path.read_text(encoding="utf-8")
     frontmatter, _ = parse_frontmatter(content)
-    source_type = frontmatter.get("type", "note")
-    session_id = frontmatter.get("session_id") or None
-    r = paths.resolve(project=frontmatter.get("project") or project_arg)
+    source_type = fm_str(frontmatter, "type") or "note"
+    session_id = fm_str(frontmatter, "session_id") or None
+    r = paths.resolve(project=fm_str(frontmatter, "project") or project_arg)
     project = r.project
     # A superseded note keeps that status when it is re-embedded.
-    status = "superseded" if str(frontmatter.get("status", "")).strip() == "superseded" else "active"
-    superseded_by = frontmatter.get("superseded_by") or None
+    status = "superseded" if fm_str(frontmatter, "status").strip() == "superseded" else "active"
+    superseded_by = fm_str(frontmatter, "superseded_by") or None
     if superseded_by:  # front matter holds a [[wikilink]]; the DB holds the stored path
         superseded_by = note_ref(str(superseded_by), r, path.parent.name)[0]
 

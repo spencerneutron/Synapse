@@ -77,7 +77,7 @@ def shared_copies(team: paths.Team) -> dict[str, Path]:
 
     out = {}
     for f in shared.note_files(team.notes)[0]:
-        sid = extract.parse_frontmatter(f.read_text(encoding="utf-8"))[0].get("source_id")
+        sid = extract.fm_str(extract.parse_frontmatter(f.read_text(encoding="utf-8"))[0], "source_id")
         if sid:
             out[sid] = f
     return out
@@ -97,7 +97,7 @@ def cmd_add(args) -> int:
         for f in problems:
             print(f"line {f.line}: {f.outcome} {f.kind}: {f.message} ({f.excerpt})", file=sys.stderr)
         shared.die(f"{len(problems)} finding(s): fix them (synapse share scrub) before sharing")
-    kind = extract.parse_frontmatter(text)[0].get("type", "")
+    kind = extract.fm_str(extract.parse_frontmatter(text)[0], "type")
     if kind not in FOLDER_FOR:
         shared.die(f"only Decision, Pattern, and Fact notes can be shared (type: {kind or 'none'})")
 

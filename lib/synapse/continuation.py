@@ -66,16 +66,55 @@ def last_usage(transcript_path):
     return scan(transcript_path)[0]
 
 
-def scan(transcript_path, boundary=False):
+def _prompt_line(e) -> bool:
+    """True for the user entry that opened a turn: not meta, not a sub-agent's, and
+    its content is a string or a list without a tool_result block."""
+    if not isinstance(e, dict) or e.get("type") != "user" or e.get("isMeta") \
+            or e.get("isSidechain") is True:
+        return False
+    msg = e.get("message")
+    content = msg.get("content") if isinstance(msg, dict) else None
+    if isinstance(content, str):
+        return True
+    return isinstance(content, list) and not any(
+        isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
+
+
+def _turn_entry(e):
+    """The entry if it matters to artifacts.from_turn (an Artifact tool_use, or a
+    user entry carrying tool_result blocks), else None."""
+    if not isinstance(e, dict) or e.get("isSidechain") is True:
+        return None
+    msg = e.get("message")
+    content = msg.get("content") if isinstance(msg, dict) else None
+    if not isinstance(content, list):
+        return None
+    if e.get("type") == "assistant":
+        ok = any(isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") == "Artifact"
+                 for b in content)
+    elif e.get("type") == "user":
+        ok = any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
+    else:
+        ok = False
+    return e if ok else None
+
+
+def scan(transcript_path, boundary=False, turn=None):
     """(usage, observed): the newest usage as in last_usage, and the preTokens of the
     newest compact_boundary in the tail if it was an auto-compaction (else None).
     The boundary lies behind the newest usage, so it is only looked for (reading on
-    to it, or to the tail cap) when boundary is true (about 3 ms over a full 2 MiB tail)."""
+    to it, or to the tail cap) when boundary is true (about 3 ms over a full 2 MiB tail).
+
+    When turn is a list, the same pass reads on back to the turn's prompt (or the
+    compact_boundary, or the tail cap) and appends the parsed Artifact tool_use and
+    tool_result entries of this turn to it, oldest first, for artifacts.from_turn."""
     observed = None
+    mine = [] if turn is not None else None
     try:
         if not isinstance(transcript_path, str) or not os.path.isfile(transcript_path):
             return None, None
         found = None
+        turn_done = turn is None
         for line in _tail_lines(transcript_path):
             if b"compact_boundary" in line:
                 try:
@@ -89,14 +128,32 @@ def scan(transcript_path, boundary=False):
                         pre = _int(meta.get("preTokens"))
                         observed = pre if pre > 0 else None
                     break  # older usage predates the compaction: stale
+            e = None
+            if not turn_done:
+                if (b'"type":"user"' in line and b'"tool_use_id"' not in line) \
+                        or b'"Artifact"' in line or b"claude.ai/" in line:
+                    try:
+                        e = json.loads(line)
+                    except Exception:
+                        e = None
+                    if _prompt_line(e):
+                        turn_done = True
+                    else:
+                        t = _turn_entry(e)
+                        if t is not None:
+                            mine.append(t)
+            usage_done = found is not None and found["ttl"] is not None
+            if usage_done and not boundary and turn_done:
+                break
             if b'"usage"' not in line or b'"assistant"' not in line:
                 continue
-            if found is not None and found["ttl"] is not None:
-                continue  # usage is complete; reading on only to find the boundary
-            try:
-                e = json.loads(line)
-            except Exception:
-                continue
+            if usage_done:
+                continue  # usage is complete; reading on only to find the boundary or the prompt
+            if e is None:
+                try:
+                    e = json.loads(line)
+                except Exception:
+                    continue
             if not isinstance(e, dict) or e.get("type") != "assistant" or e.get("isSidechain") is True:
                 continue
             msg = e.get("message")
@@ -123,11 +180,14 @@ def scan(transcript_path, boundary=False):
                          "model": model if isinstance(model, str) else ""}
             elif found["ttl"] is None:
                 found["ttl"] = ttl
-            if found["ttl"] is not None and not boundary:
+            if found["ttl"] is not None and not boundary and turn_done:
                 break
         return found, observed
     except Exception:
         return None, observed
+    finally:
+        if mine:
+            turn.extend(reversed(mine))
 
 
 def fmt_age(seconds: float) -> str:
