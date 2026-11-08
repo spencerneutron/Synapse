@@ -5,6 +5,7 @@ continuation.py — context-size facts for the nudge hook (stdlib only, no I/O b
 Called from nudge.handle; it never prints and never raises on its own account.
   last_usage(path)         tail-read a transcript for the newest main-session usage entry
   window_for(...)          the context window for a session and where it came from
+                           (Claude Code's auto-compact point when its settings set one)
   context_nudge(...)       PostToolUse: one line at 60% and 90% of the context window
   resume_time_line(...)    UserPromptSubmit: the prompt cache expired while idle
   resume_pointer(...)      SessionStart (compact or clear): point at EXECUTION.md ## Resume
@@ -215,10 +216,16 @@ def window_for(paths, sid, u, observed):
     """(window, source) for this session; window is 0 when the context lines are off.
 
     1. [nudge] context_window in config.toml (0 = off): "from your config".
-    2. Otherwise the model's window, by name alone (no model table to go stale):
+    2. Otherwise Claude Code's auto-compact window for the session's model, from its
+       settings or CLAUDE_CODE_AUTO_COMPACT_WINDOW (autocompact.effective), as the
+       point where it compacts: the value capped at the model's window, less the
+       33k buffer (300000 -> 267000, so 90% is 240300, before compaction):
+       "from the auto-compact window".
+    3. Otherwise the model's window, by name alone (no model table to go stale):
        300000 for a 1M-window model, 150000 for an older one (marks at 90k and 135k
-       on a 200k window). See _big_model: "from the model".
-    3. An auto compact_boundary in the session can only lower that. Its preTokens is
+       on a 200k window). These are intended marks, not compaction-relative: unset,
+       a 1M model compacts near 967k. See _big_model: "from the model".
+    4. An auto compact_boundary in the session can only lower that. Its preTokens is
        the context size when compaction ran, which overshoots the threshold, so the
        smallest one seen is the closest to it (a mid-session /model switch from 1M to
        200k lowers it too): "from an earlier auto-compaction". A manual /compact
@@ -238,10 +245,20 @@ def window_for(paths, sid, u, observed):
                 _write_state(state, observed=seen)
             except OSError:
                 pass  # another hook holds the file; the value is still used this call
-    window = 300000 if _big_model((u or {}).get("model")) else 150000
+    model = (u or {}).get("model")
+    big = _big_model(model)
+    window, source = (300000 if big else 150000), "from the model"
+    try:
+        import autocompact
+        n, _ = autocompact.effective(model)
+        if n:
+            window = autocompact.compaction_point(n, 1000000 if big else 200000)
+            source = f"from the auto-compact window {_k(n)}"
+    except Exception:
+        pass  # unreadable settings: keep the model's window
     if seen and seen < window:
         return seen, "from an earlier auto-compaction"
-    return window, "from the model"
+    return window, source
 
 
 def _claim(path: Path, level: str, epoch: int) -> bool:

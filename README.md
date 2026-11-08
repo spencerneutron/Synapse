@@ -82,7 +82,8 @@ sub-agents ran). Consider lowering the auto-compact window to about 300k, which 
 `/autocompact 300k`, the `autoCompactWindow` setting, or the
 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` environment variable (the variable wins over
 the other two). The trade-off: each compaction is lossy and costs one large
-request. Synapse never changes this setting; `/synapse:doctor` reports it.
+request. Synapse never changes this setting; `/synapse:doctor` reports it,
+with where Claude Code compacts for it and where Synapse's marks land.
 
 Before a long session gets heavy, run `/synapse:checkpoint`. It saves what
 the work needs to continue (a `## Resume` section and the session's notes)
@@ -95,11 +96,17 @@ summary.
   only points; you or Claude read the file.
 - **Context nudge.** The nudge hook measures the real context size and adds
   one line at 60% and at 90% of the context window. The window is
-  `[nudge] context_window` if you set it; otherwise the model's window, by
+  `[nudge] context_window` if you set it. Otherwise, when Claude Code's
+  settings set an auto-compact window for the session's model
+  (`modelSettings`, `autoCompactWindow`, or `CLAUDE_CODE_AUTO_COMPACT_WINDOW`),
+  the window is the point where Claude Code compacts: that value, capped at
+  the model's window, less the 33k buffer Claude Code keeps. With 300k it is
+  267k, so the marks land at 160k and 240k and the gate at 134k, all before
+  compaction. With no such setting it is the model's window, by
   name: 300000 for 1M-window models (Fable, Opus 4.7 and later, any
-  5-series model), 150000 for older ones (so 90k and 135k on a 200k window),
-  lowered to the smallest auto-compaction size seen in the session if that is
-  smaller (manual `/compact` does not count). A `[1m]` opt-in on an older
+  5-series model), 150000 for older ones (so 90k and 135k on a 200k window).
+  Either is lowered to the smallest auto-compaction size seen in the session
+  if that is smaller (manual `/compact` does not count). A `[1m]` opt-in on an older
   model does not show in the name, so set `context_window` there. The line
   says which source it used. If you were away longer than the prompt cache lasts, it also says
   what the next request will rewrite. It is checked after Bash, PowerShell,

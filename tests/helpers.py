@@ -14,8 +14,11 @@ LIB = ROOT / "lib" / "synapse"
 
 TMP = tempfile.mkdtemp(prefix="synapse-test-")
 os.environ["SYNAPSE_HOME"] = str(Path(TMP) / "home")
-for var in ("SYNAPSE_STORE", "SYNAPSE_VAULT"):
+for var in ("SYNAPSE_STORE", "SYNAPSE_VAULT", "CLAUDE_CODE_AUTO_COMPACT_WINDOW"):
     os.environ.pop(var, None)
+# Claude Code's settings set the window the nudge and the gate derive (autocompact.py):
+# never read the real ones.
+os.environ["CLAUDE_CONFIG_DIR"] = str(Path(TMP) / "claude")
 
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))

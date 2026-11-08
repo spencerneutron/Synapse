@@ -1,5 +1,43 @@
 # Changelog
 
+## 2.7.1 — 2026-11-08 — The window from the auto-compaction point
+
+No store schema change; update with `claude plugin marketplace update
+synapse` and `claude plugin update synapse@synapse`, then start new sessions.
+
+### Fixed
+
+- **The 90% mark never fired before the first compaction.** Claude Code
+  auto-compacts 33k tokens before its auto-compact window (the buffer its
+  context display reports, whatever the model). With the 300k window the
+  README and `synapse setup --autocompact` recommend, compaction runs near
+  267k, but Synapse measured against 300k, so its 90% mark (270k) sat above
+  the compaction point. Only after a first auto-compaction did the window
+  drop to that compaction's size and the mark start working.
+- **The window now comes from the compaction point.** When `[nudge]
+  context_window` is unset and Claude Code's settings set an auto-compact
+  window for the session's model (`modelSettings.<model>.autoCompactWindow`,
+  top-level `autoCompactWindow` in any settings layer, or
+  `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, which wins), the nudge and the gates use
+  that window, clamped to 100k-1M and capped at the model's window, less
+  33k: 300000 gives 267000, so the deny gate opens at 134k and the marks land
+  at 160k and 240k. The `modelSettings` key matches the transcript's model
+  case-insensitively, ignoring a `[1m]` suffix or a date suffix. With no
+  setting the defaults stay (300000 for 1M-window models, 150000 for older
+  ones), and an observed auto-compaction still only lowers the window.
+  `[nudge] context_window` remains the override.
+
+### Changed
+
+- `synapse doctor`'s `autocompact-window` line and `synapse setup
+  --autocompact N` say where Claude Code compacts for each window found and
+  where the deny gate, 60% and 90% land.
+- The settings lookup moved from `doctor.py` into `lib/synapse/autocompact.py`,
+  shared by doctor, setup and the hooks. It reads up to four small JSON files
+  (about 0.05 ms); the hooks' per-call time is unchanged (about 49 ms).
+- Tests point `CLAUDE_CONFIG_DIR` at a temporary folder, so the developer's
+  own Claude Code settings never change a test's window.
+
 ## 2.7.0 — 2026-11-08 — Gates and the tail end
 
 No store schema change; update with `claude plugin marketplace update
