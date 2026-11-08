@@ -1,6 +1,7 @@
 # Session Notes — <session-id>
 
-<!-- Written by /end-session to .claude-work/archive/NOTES_<session-id>.md.
+<!-- Written by /synapse:end-session (and copied by the SessionEnd hook) to the
+store's archive/<project>/NOTES_<session-id>.md.
 Omit any section with no entries. If all are empty, write only:
 _No open items — session closed clean._
 /synapse:checkpoint keeps a working copy in .claude-work/current/NOTES.md during

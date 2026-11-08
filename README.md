@@ -5,7 +5,7 @@ execute in small verified steps, archive the working state, and promote
 durable decisions into a local knowledge base the next session can recall.
 It installs once for the whole machine and works in every project.
 
-**Version:** 2.6.0 (2026-11-06). See [CHANGELOG.md](CHANGELOG.md).
+**Version:** 2.7.1 (2026-11-08). See [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
@@ -51,12 +51,16 @@ setup are reported for the user to decide.
    reason; the `synapse:emission-contract` skill is the reference text.
 4. **Checkpoint (any time):** `/synapse:checkpoint` writes a `## Resume`
    section in `EXECUTION.md` and the working `NOTES.md`, and work goes on.
-   `/synapse:end-session` later archives them.
-5. **Archive:** `/synapse:end-session` copies the planning files into the
-   store and writes session notes.
+   the SessionEnd hook or `/synapse:end-session` later archives them.
+5. **Archive:** a SessionEnd hook copies the planning files into the store
+   at exit, `/clear` and `/resume`, with no model call.
+   `/synapse:end-session` archives on request, writes session notes, and
+   runs extraction last.
 6. **Extract:** `/synapse:extract-session` promotes Decisions, Patterns,
    and Facts (what the user stated about the project) to an Obsidian vault
-   and embeds the session in the vector DB. A new session lists the
+   and embeds the session in the vector DB. By default it writes its notes
+   without asking (`[extract] accept = auto`) and `synapse extract review`
+   lists them; `accept = review` asks first. A new session lists the
    project's Facts, and says so when an archived session was never
    extracted.
 7. **Recall:** later sessions, in any project, get ranked pointers into that
@@ -78,12 +82,16 @@ off), runs only at compaction, so a session that
 stays below the threshold does not use it. A long session also re-reads its
 whole context on every request: across seven measured sessions on two
 machines, the main session was 66 to 100 percent of cost (100 where no
-sub-agents ran). Consider lowering the auto-compact window to about 300k, which makes compaction predictable with
+sub-agents ran). `tools/context-cost.py` measures that share from a
+transcript; `tools/emission-stats.py` counts the Stop hook's verdicts.
+Consider lowering the auto-compact window to about 300k, which makes compaction predictable with
 `/autocompact 300k`, the `autoCompactWindow` setting, or the
 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` environment variable (the variable wins over
 the other two). The trade-off: each compaction is lossy and costs one large
-request. Synapse never changes this setting; `/synapse:doctor` reports it,
-with where Claude Code compacts for it and where Synapse's marks land.
+request. Synapse changes this setting only when you ask:
+`synapse setup --autocompact 300k` writes it after backing up
+`settings.json`. `/synapse:doctor` reports it, with where Claude Code
+compacts for it and where Synapse's marks land.
 
 Before a long session gets heavy, run `/synapse:checkpoint`. It saves what
 the work needs to continue (a `## Resume` section and the session's notes)
@@ -115,9 +123,12 @@ summary.
   Neither line blocks anything; the gates below do.
 - **Gates (2.7.0).** Hooks hold where a line did not. A PreToolUse gate
   denies a hands-on call once at 5, 10 and 20 calls in a step when the
-  context is at least half the window, and names the role to brief. The Stop
-  hook asks once for `/synapse:checkpoint` at 60% and 90% when `## Resume` is
-  stale, and once per prompt to wait for a dispatched agent still running.
+  context is at least half the window, and names the role to brief; the
+  retry goes through, and a dispatch or the next prompt re-arms it. The Stop
+  hook blocks the end of the turn once at 60% and once at 90% to ask for
+  `/synapse:checkpoint` when `## Resume` is stale, and once per prompt while a
+  dispatched agent is still running, so its report is read first. Why hooks
+  and not rules: [Operating principles](docs/architecture.md#operating-principles).
   `[gate] enabled = false`, `checkpoint = false` and `wait_for_agents =
   false` turn them off; a project's `.synapse.toml` may override `[nudge]`
   and `[gate]`.
@@ -145,12 +156,11 @@ summary.
 .claude-plugin/   plugin.json, marketplace.json (this repo is its own marketplace)
 instructions/     core.md, platform-macos.md, platform-windows.md (each < 10,000 chars)
 agents/           implementer, verifier, researcher, reviewer, scout, extractor (synapse:<role> sub-agents)
-hooks/            hooks.json (SessionStart, UserPromptSubmit, PreCompact, PreToolUse, PostToolUse, Stop), session_start.sh,
-                  context/*.json, emission_check.py
-bin/synapse       CLI on the Bash PATH: where, setup, doctor, archive, recall,
-                  recall-check, recall-hint, pending, compact-guide, nudge, checkpoint, share, shared, extract
-                  (incl. check-candidates), vault,
-                  backfill, migrate
+hooks/            hooks.json (SessionStart, UserPromptSubmit, PreCompact, PreToolUse, PostToolUse, Stop, SessionEnd), session_start.sh,
+                  context/*.json, emission_check.py, emission_patterns.json
+bin/synapse       CLI on the Bash PATH: where, setup (incl. --autocompact), doctor, archive (incl. --auto --hook),
+                  recall, recall-check, recall-hint, pending, facts, compact-guide, nudge, gate, checkpoint,
+                  share, shared, extract (incl. check-candidates, review), vault, backfill, migrate
 lib/              py.sh (finds Python 3.11+), synapse/ (resolver + memory pipeline)
 skills/           plan-session, checkpoint, end-session, recall, extract-session, share, emission-contract,
                   workflow-recovery, language-sweep, setup, doctor
@@ -158,7 +168,7 @@ templates/        PLAN.md, EXECUTION.md, NOTES.md
 tools/            build_context.py (rebuilds hooks/context from instructions/),
                   run-evals.sh (guarded eval runner), run-bench.sh (with vs without
                   Synapse), eval-report.py, build_eval_home.py, live-check-share.sh,
-                  live-check-extract.sh, live-check-compact.sh, context-cost.py
+                  live-check-extract.sh, live-check-compact.sh, context-cost.py (cost share per transcript), emission-stats.py (Stop-hook verdicts)
 tests/            unit tests (python -m unittest discover -s tests)
 evals/            claude plugin eval suite with a no-plugin baseline (core loop, role agents,
                   triggers, teams; run locally, results gitignored)

@@ -1,6 +1,6 @@
 ---
 name: extractor
-description: Reads an archived session from disk and proposes vault notes (Session, Decision, Pattern, Fact) as Markdown spec files. Read-only except its own spec folder. Dispatched by the extract-session skill.
+description: Reads an archived session from disk and drafts vault notes (Session, Decision, Pattern, Fact) as Markdown spec files; the extract-session skill writes them, without asking under [extract] accept = auto. Read-only except its own spec folder. Dispatched by the extract-session skill.
 model: sonnet
 effort: medium
 tools: Read, Grep, Glob, Bash

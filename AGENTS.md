@@ -12,7 +12,7 @@ Synapse gives every session are in `instructions/`, not here.
 | `instructions/` | Always-on rules, injected by the SessionStart hook |
 | `hooks/` | `hooks.json`, `session_start.sh`, prebuilt `context/*.json`, the Stop hook and its patterns |
 | `bin/synapse` | CLI entry on the Bash PATH; runs `lib/synapse/cli.py` through `lib/py.sh` |
-| `lib/synapse/` | `paths.py` (all location logic), the memory pipeline, setup, doctor, archive, migrate |
+| `lib/synapse/` | `paths.py` (all location logic), the memory pipeline, setup, doctor, archive, migrate, and the hook commands (`nudge`, `gate`, `continuation`, `autocompact`) |
 | `skills/` | Plugin skills, invoked as `/synapse:<name>` |
 | `agents/` | Role sub-agents, invoked as `subagent_type: synapse:<role>`; each body carries its own rules |
 | `evals/` | `claude plugin eval` cases: fixture script, prompt, graders |

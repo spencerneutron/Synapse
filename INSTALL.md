@@ -37,15 +37,15 @@ Fetch the raw file:
 
 ## 1. Preflight (read-only)
 
-Installing is additive, but Synapse's rules and Stop hook take effect in every
-new session. Look for overlaps first and report them to the user. Run these
+Installing is additive, but Synapse's rules, its Stop hook and its PreToolUse
+gate take effect in every new session. Look for overlaps first and report them to the user. Run these
 from the folder where the user usually starts Claude Code.
 
 | Look for | Command | If found |
 |----------|---------|----------|
-| Skills named `plan-session`, `end-session`, `recall`, `extract-session`, `share`, `emission-contract`, `workflow-recovery`, `language-sweep`, `setup`, `doctor` | `ls ~/.claude/skills .claude/skills 2>/dev/null` | Both copies load beside `/synapse:<name>`. An older Synapse copy should be retired later (the user's call) |
+| Skills named `plan-session`, `checkpoint`, `end-session`, `recall`, `extract-session`, `share`, `emission-contract`, `workflow-recovery`, `language-sweep`, `setup`, `doctor` | `ls ~/.claude/skills .claude/skills 2>/dev/null` | Both copies load beside `/synapse:<name>`. An older Synapse copy should be retired later (the user's call) |
 | Always-on rules about planning files, recall, memory, or output style | `ls ~/.claude/CLAUDE.md ~/.claude/rules CLAUDE.md AGENTS.md CLAUDE.local.md .claude/CLAUDE.md 2>/dev/null`, then read them | Where a project's rules conflict, Synapse defers to them; tell the user which rules overlap |
-| Other `Stop` hooks, an `outputStyle`, or `disableAllHooks` | `grep -n -e '"Stop"' -e outputStyle -e disableAllHooks ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Another blocking Stop hook can stack rewrite requests. Synapse's Stop hook also asks once for `/synapse:checkpoint` at 60% and 90% of the window when `## Resume` is stale (`[gate] checkpoint = false` turns that off). `disableAllHooks` stops Synapse from working at all |
+| Other `Stop` hooks, an `outputStyle`, or `disableAllHooks` | `grep -n -e '"Stop"' -e outputStyle -e disableAllHooks ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Another blocking Stop hook can stack rewrite requests. Synapse's Stop hook also blocks the stop once at 60% and once at 90% of the window to ask for `/synapse:checkpoint` when `## Resume` is stale, and once per prompt while a dispatched sub-agent is still running (`[gate] checkpoint = false` and `wait_for_agents = false` turn those off). `disableAllHooks` stops Synapse from working at all |
 | Other `PreCompact` hooks | `grep -n -e '"PreCompact"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Each hook's stdout is capped on its own, so two sets of compaction-summary instructions can conflict with Synapse's |
 | Other `PreToolUse` hooks | `grep -n -e '"PreToolUse"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Synapse's `synapse gate --hook` (2.7.0, on Edit, Write, MultiEdit, NotebookEdit, Bash and PowerShell) denies a hands-on call once per threshold (5, 10, 20 calls in a step) when the context is at least `[gate] min_context` of the window. A deny wins over another hook's allow and over auto and bypass modes. Another PreToolUse hook only conflicts if it also denies or rewrites input on the same calls. `[gate] enabled = false` turns the gate off |
 | Other `PostToolUse` hooks | `grep -n -e '"PostToolUse"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | A blocking PostToolUse hook stops the turn; one that adds context on every Bash or Edit call stacks text with Synapse's nudge. Synapse's own hook (`synapse nudge --hook`, on PostToolUse, PostToolUseFailure, UserPromptSubmit and SessionStart) gives the dispatch reminder, the context-size nudge, the resume-time line, and the resume pointer after `compact` or `clear`. 2.6.0 adds no hook entry and no matcher. It always exits 0, never blocks, and is silent on any error. The context window comes from `[nudge] context_window`, else Claude Code's auto-compact point (its auto-compact window less 33k, from 2.7.1), else the model name, lowered by the session's smallest auto-compaction; `[nudge] context_window = 0` turns the context lines off; `calls = 0` turns the dispatch reminder off. From 2.7.0 the dispatch line runs only below `[gate] min_context` of the window; above it the PreToolUse gate acts instead (previous row) |
@@ -112,6 +112,12 @@ Run `/synapse:setup`, or `synapse setup` from the Bash tool. It creates, under
 - `venv/` with `sqlite-vec`, downloaded once from PyPI (tell the user)
 - the archive folder and `vectors.db` of every store in `config.toml`
 
+The one write outside that folder is opt-in: when no auto-compact window is
+set, `synapse setup` prints an `auto-compact:` line, and `synapse setup
+--autocompact N` (only on the user's yes) writes `autoCompactWindow` for the
+session's model into `~/.claude/settings.json` after copying it to
+`settings.json.synapse-backup-<time>`.
+
 Then it lists what is still missing. *Ask* before pulling the embedding
 model (`ollama pull nomic-embed-text`, about 270 MB). Never install Ollama or
 Obsidian for the user; point them to it.
@@ -122,7 +128,10 @@ what is missing) and `next: synapse doctor`.
 ## 5. Verify (`/synapse:doctor`, read-only)
 
 Run `/synapse:doctor`, or `synapse doctor`. It ends with a summary such as
-`summary: 8 ok, 1 info, 0 warn, 0 error`.
+`summary: 8 ok, 1 info, 0 warn, 0 error`. Since 2.7 it also reports
+`autocompact-window` (the window, where Claude Code compacts for it, and where
+Synapse's gate and checkpoint marks land), `pretooluse-hooks` and
+`sessionend-hooks`.
 
 - **error:** Synapse cannot work until the user changes this.
 - **warn:** Synapse works, but something will surprise the user (a same-named
@@ -209,7 +218,8 @@ missing:
   Each hint is shown once per session. Slash commands and background-task
   notifications get none.
 - **Extraction reminder.** At session start, if this project has archived
-  sessions that were never extracted, one line says so.
+  sessions that were never extracted, one line says so; another says how many notes automatic extraction wrote
+  since the last `synapse extract review`.
 - **Project facts.** At session start (and after `/clear` or compaction),
   the project's active Fact notes are listed: one line each, at most 20,
   from the DB alone (no Ollama).
@@ -247,7 +257,8 @@ At exit, `/clear` and `/resume`, Synapse copies `.claude-work/current/`
 no embedding, and skips when nothing changed since the last archive. The next
 session start reports the archived session as never extracted, and
 `/synapse:extract-session` projects it. SessionEnd never runs after a crash or
-a killed terminal, so `/synapse:end-session` remains the sure way.
+a killed terminal, so `/synapse:end-session` remains the sure way, and the only one that writes
+session notes and runs extraction.
 
 The budget is 1.5 s, shared by all SessionEnd hooks, and a plugin cannot raise
 it. You can, with `CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS` (milliseconds) in

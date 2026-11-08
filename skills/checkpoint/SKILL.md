@@ -1,6 +1,6 @@
 ---
 name: checkpoint
-description: Use between stages of a multi-stage request, before stepping away, or when Synapse reports a large context. Writes the live state to .claude-work/current/ without ending the turn, so /clear afterwards loses nothing.
+description: Use between stages of a multi-stage request, before stepping away, when Synapse reports a large context, or when the Stop gate asks for it. Writes the live state to .claude-work/current/ without ending the turn, so /clear afterwards loses nothing.
 allowed-tools: Bash(synapse checkpoint *)
 ---
 
