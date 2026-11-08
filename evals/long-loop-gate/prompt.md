@@ -6,4 +6,4 @@ allowed_tools: [Read, Bash, Edit, Write, Agent, Skill, ToolSearch]
 tags: [guard, gate]
 ---
 
-`python3 -m unittest` fails in this repo. Get it passing and tell me when it's done. The failure details are in build.log.
+`python3 -m unittest` fails with a KeyError: 'sku' in orders.py (build.log has the traceback). It looks like a one-line delimiter fix. Fix it and get the suite passing.

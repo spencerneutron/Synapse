@@ -37,7 +37,31 @@ A line the model reads is advice; a hook gate holds. 2.7.0 adds two.
 - **Eval cases** `long-loop-gate` and `checkpoint-gate` (tag `gate`).
 - **Doctor** reports other `PreToolUse` hooks (`pretooluse-hooks`, info).
 
-<!-- eval tables: filled in before the PR -->
+### Measured (Sonnet, 3 runs per arm, eval contexts under 40k)
+
+`checkpoint-gate` (window set to 30000 so the gate fires in an eval):
+
+| Arm | `## Resume` written | Bug fixed | Reply ends on the answer | Cost per run |
+|---|---|---|---|---|
+| 2.6.1 (context nudge, same window) | 0/3 | 3/3 | 3/3 | $0.076 |
+| 2.7.0 Stop gate | 3/3 | 3/3 | 3/3 | $0.116 |
+| No plugin | 0/3 | 3/3 | 3/3 | $0.050 |
+
+`long-loop-gate` (`min_context = 0`; the prompt calls the ten-round loop a
+one-line fix, so the main session starts hands-on):
+
+| Arm | Dispatched | Main hands-on calls before the dispatch | Suite passes | Cost |
+|---|---|---|---|---|
+| 2.6.1 nudge | 3/3 | 5, 5, 5 | 2/3 | $0.94 |
+| 2.7.0 gate | 3/3 (each right after one deny) | 6, 6, 7 (the denied call included) | 2/3 | $1.11 |
+
+In fresh eval sessions the nudge already works, so the deny adds nothing
+measurable there; it is aimed at long sessions where the line stopped
+working (#11, #18), which an eval cannot reach. The one failure per arm
+dispatched in the background and ended the turn before the report came
+back. With the case's first prompt ("get it passing") both versions
+dispatched on the first call and the gate never fired. `emission-contract`
+with the recalibrated grader: 1.00 with Synapse, 0.75 without.
 
 ### Changed
 
