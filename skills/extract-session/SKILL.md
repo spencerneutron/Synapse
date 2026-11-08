@@ -1,6 +1,6 @@
 ---
 name: extract-session
-description: Project an archived session into the Obsidian vault and the local vector database. Runs as the last step of end-session, or on request for any archived session (the SessionEnd hook archives without extracting). Writes notes without asking by default ([extract] accept = auto; `synapse extract review` lists them). Idempotent.
+description: Project an archived session into the Obsidian vault and the local vector database. Runs as the last step of end-session, on its own for a session the SessionEnd hook archived (the failsafe case), or when the user asks. Writes notes without asking under [extract] accept = auto and lists them for `synapse extract review`. Idempotent.
 allowed-tools: Bash(synapse extract *), Bash(synapse vault *), Bash(synapse where *), Bash(synapse shared status*), Bash(rm -rf *.claude-work/.tmp/extract-*)
 ---
 
@@ -8,8 +8,9 @@ allowed-tools: Bash(synapse extract *), Bash(synapse vault *), Bash(synapse wher
 
 Promote a closed session's knowledge into the vault (Session, Decision,
 Pattern, Fact notes) and the vector DB. The `synapse:extractor` agent judges;
-this skill orchestrates. It runs as the last step of `/synapse:end-session`, or when
-asked for a session the SessionEnd hook archived; never before the archive exists. Vault commands start Obsidian themselves;
+this skill orchestrates. It runs as the last step of `/synapse:end-session`; on its
+own for a session the SessionEnd hook archived (the failsafe case) or when the
+user asks; never before the archive exists. Vault commands start Obsidian themselves;
 embedding needs Ollama with `nomic-embed-text`.
 
 Input: a session ID (default: the one just archived, else the newest unprocessed) and a project (default: the one end-session used; ask once if clearly another).

@@ -1,7 +1,7 @@
 # PLAN — <objective>
 
 <!-- Long-lived strategy. Update only for durable decisions, scope changes, and
-reusable insights (AGENTS.md — Planning Files). Archived by the SessionEnd hook or /synapse:end-session. -->
+reusable insights (AGENTS.md — Planning Files). Archived by /synapse:end-session; the SessionEnd hook archives it as it stands if the session ends without it. -->
 
 ## Purpose
 

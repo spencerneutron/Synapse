@@ -1,6 +1,6 @@
 # Session Notes — <session-id>
 
-<!-- Written by /synapse:end-session (and copied by the SessionEnd hook) to the
+<!-- Written by /synapse:end-session (the SessionEnd hook copies it as it stands if the session ends without it) to the
 store's archive/<project>/NOTES_<session-id>.md.
 Omit any section with no entries. If all are empty, write only:
 _No open items — session closed clean._

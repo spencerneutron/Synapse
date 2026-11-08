@@ -49,7 +49,7 @@ from the folder where the user usually starts Claude Code.
 | Other `PreCompact` hooks | `grep -n -e '"PreCompact"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Each hook's stdout is capped on its own, so two sets of compaction-summary instructions can conflict with Synapse's |
 | Other `PreToolUse` hooks | `grep -n -e '"PreToolUse"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Synapse's `synapse gate --hook` (2.7.0, on Edit, Write, MultiEdit, NotebookEdit, Bash and PowerShell) denies a hands-on call once per threshold (5, 10, 20 calls in a step) when the context is at least `[gate] min_context` of the window. A deny wins over another hook's allow and over auto and bypass modes. Another PreToolUse hook only conflicts if it also denies or rewrites input on the same calls. `[gate] enabled = false` turns the gate off |
 | Other `PostToolUse` hooks | `grep -n -e '"PostToolUse"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | A blocking PostToolUse hook stops the turn; one that adds context on every Bash or Edit call stacks text with Synapse's nudge. Synapse's own hook (`synapse nudge --hook`, on PostToolUse, PostToolUseFailure, UserPromptSubmit and SessionStart) gives the dispatch reminder, the context-size nudge, the resume-time line, and the resume pointer after `compact` or `clear`. 2.6.0 adds no hook entry and no matcher. It always exits 0, never blocks, and is silent on any error. The context window comes from `[nudge] context_window`, else Claude Code's auto-compact point (its auto-compact window less 33k, from 2.7.1), else the model name, lowered by the session's smallest auto-compaction; `[nudge] context_window = 0` turns the context lines off; `calls = 0` turns the dispatch reminder off. From 2.7.0 the dispatch line runs only below `[gate] min_context` of the window; above it the PreToolUse gate acts instead (previous row) |
-| Other `SessionEnd` hooks | `grep -n -e '"SessionEnd"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Synapse's `synapse archive --auto --hook` (2.7.0) runs at session end and takes well under a second. All SessionEnd hooks share one 1.5 s budget, so a slow hook from another source can cut it off. See "Archive at session end" below |
+| Other `SessionEnd` hooks | `grep -n -e '"SessionEnd"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Synapse's failsafe archive (`synapse archive --auto --hook`) runs at session end and takes well under a second. All SessionEnd hooks share one 1.5 s budget, so a slow hook from another source can cut it off. See "Archive at session end" below |
 | No auto-compact window on a 1M-context model | `grep -n -e autoCompactWindow -e '\[1m\]' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null; echo "$CLAUDE_CODE_AUTO_COMPACT_WINDOW"` | Auto-compaction then triggers near 967k tokens, so the PreCompact hook rarely runs. Tell the user about the README's "Long sessions" paragraph (`/autocompact 300k`), or offer `synapse setup --autocompact 300k` (next row); never change the setting without the user's yes |
 | `autoCompactWindow` in `~/.claude/settings.json` (top level or under `modelSettings`) | `grep -n autoCompactWindow ~/.claude/settings.json 2>/dev/null` | Synapse writes it only through `synapse setup --autocompact N`, on the user's OK: it copies the file to `settings.json.synapse-backup-<time>` beside itself first and refuses if a window is already set. `synapse doctor` reports the value(s) found |
 | Managed settings that allow only managed hooks | macOS `/Library/Application Support/ClaudeCode/managed-settings.json`, Linux `/etc/claude-code/managed-settings.json`, Windows `C:\Program Files\ClaudeCode\managed-settings.json` | `allowManagedHooksOnly` means Synapse cannot load; stop and tell the user |
@@ -252,13 +252,20 @@ Prompts go only to the local Ollama server.
 
 ## Archive at session end
 
-At exit, `/clear` and `/resume`, Synapse copies `.claude-work/current/`
-(PLAN, EXECUTION, REPORT, NOTES) into the archive. It makes no model call and
-no embedding, and skips when nothing changed since the last archive. The next
-session start reports the archived session as never extracted, and
+End a session with `/synapse:end-session`. It writes the session notes (open
+questions, deferred items, why the pivots happened) from live context,
+archives PLAN and EXECUTION, and runs extraction as its last step in the same
+turn. It is the only path that captures what was in the model's context: the
+extractor reads files on disk, never the conversation.
+
+The SessionEnd hook is the failsafe for a session that ends without it (a
+crash, a forgotten close, `/clear`). At exit, `/clear` and `/resume` it copies
+`.claude-work/current/` (PLAN, EXECUTION, REPORT, NOTES) into the archive as
+the files stand, which may be stale. It makes no model call and no embedding,
+and skips when nothing changed since the last archive. The next session start
+reports the archived session as never extracted, and
 `/synapse:extract-session` projects it. SessionEnd never runs after a crash or
-a killed terminal, so `/synapse:end-session` remains the sure way, and the only one that writes
-session notes and runs extraction.
+a killed terminal.
 
 The budget is 1.5 s, shared by all SessionEnd hooks, and a plugin cannot raise
 it. You can, with `CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS` (milliseconds) in
