@@ -1,193 +1,87 @@
 # Synapse
 
-A Claude Code plugin that gives every session the same operating loop: plan,
-execute in small verified steps, archive the working state, and promote
-durable decisions into a local knowledge base the next session can recall.
-It installs once for the whole machine and works in every project.
+Synapse is a Claude Code plugin that gives every session a working method and a memory. The method is a planning and delegation loop: the main session plans, briefs role sub-agents for anything beyond a handful of calls, and ends each turn with a message that meets a fixed contract. The memory is a local store that archives every session, distils it into Obsidian notes and a vector index, and brings the relevant parts back at the start of the next session, in this project or another. Hooks enforce the method and the `synapse` CLI does the bookkeeping, so the model's attention stays on the work.
 
-**Version:** 2.7.1 (2026-11-08). See [CHANGELOG.md](CHANGELOG.md).
-
-## Install
+Install, then provision and check from a new session:
 
 ```bash
 claude plugin install synapse --marketplace spencerneutron/Synapse
 ```
 
-Then, in a new Claude Code session, run `/synapse:setup` and `/synapse:doctor`.
-
-To update an installed copy:
-
-```bash
-claude plugin marketplace update synapse
+```
+/synapse:setup
+/synapse:doctor
 ```
 
-```bash
-claude plugin update synapse@synapse
-```
+[INSTALL.md](INSTALL.md) lists the requirements (Python 3.11+, Ollama with `nomic-embed-text`, Obsidian), the preflight for an existing Claude Code setup, and the install forms for older Claude Code builds.
 
-Then start a new session and run `synapse setup` once (see
-[INSTALL.md](INSTALL.md#update)).
+## A session
 
-### Install with Claude Code
+1. **Plan.** `/synapse:plan-session` reads or starts `PLAN.md` (strategy, constraints, decision log) and `EXECUTION.md` (the active task and its next steps) under `.claude-work/current/`. When the work resembles past work, `/synapse:recall` returns ranked snippets from the store with source paths; a hook adds the same kind of hint to a prompt on its own.
+2. **Execute.** The main session keeps the work that takes a handful of calls: dialogue, decisions, the planning files, briefs, and reading reports. Anything over about five tool calls or three files is a brief to a role, which runs as a sub-agent carrying its own rules:
 
-Tell Claude: *"Install Synapse from github.com/spencerneutron/Synapse."*
-It follows [INSTALL.md](INSTALL.md): a read-only check of the existing setup
-first, then the install, provisioning, and verification, asking before each
-change. Synapse never edits what it does not own; overlaps with an existing
-setup are reported for the user to decide.
+   | `subagent_type` | Use for | Model | Writes? |
+   |---|---|---|---|
+   | `synapse:implementer` | One planned change, validated | Sonnet | Yes, one writer per set of files |
+   | `synapse:verifier` | Check claims against evidence; run tests | Sonnet | No |
+   | `synapse:researcher` | Answer a question from code, docs, or the web, with sources | Sonnet | No |
+   | `synapse:reviewer` | Adversarial review of a change or plan | Inherits the session's | No |
+   | `synapse:scout` | Mechanical sweeps: inventories, searches | Haiku | No |
 
-## How a session runs
+   Independent briefs run as a wave. Every report is a claim: the main session runs its validation once before reporting the work as done.
+3. **Emit.** Every final message meets the emission contract: no praise or filler openers, no pleasantry, recap or offer closers, no tic words, placeholders or emoji, and a cap on headings in a short message. The Stop hook checks it and asks for one rewrite when it fails; `synapse:emission-contract` holds the reference text.
+4. **Checkpoint.** `/synapse:checkpoint` writes the live state to `EXECUTION.md` and `NOTES.md` without ending the turn: between stages, before stepping away, or when the Stop gate asks. After it, `/clear` loses nothing.
+5. **End.** `/synapse:end-session` writes the session notes (open questions, deferred items, why the pivots happened) from live context, archives the working files under a session ID, and runs extraction last in the same turn. Extraction writes notes without asking by default; `synapse extract review` lists what it wrote.
+6. **Next session.** The start hook lists the project's Fact notes, and recall ranks the archived sessions, decisions and patterns against the new prompt.
 
-1. **Plan:** `/synapse:plan-session` reads or starts `PLAN.md` and
-   `EXECUTION.md`, runs the project's session hooks, and calls
-   `/synapse:recall` when the work resembles past work.
-2. **Execute:** small steps, each with a run path, an expected outcome, and a
-   failure signal. Independent work runs as waves of Synapse's role agents
-   (`synapse:implementer`, `verifier`, `researcher`, `reviewer`, `scout`),
-   each carrying its own rules and model. A sixth role, `synapse:extractor`,
-   is dispatched by `/synapse:extract-session`.
-3. **Emit:** a Stop hook checks each final message against the emission
-   contract and, on a violation, asks for one rewrite with the rules in its
-   reason; the `synapse:emission-contract` skill is the reference text.
-4. **Checkpoint (any time):** `/synapse:checkpoint` writes a `## Resume`
-   section in `EXECUTION.md` and the working `NOTES.md`, and work goes on.
-   the SessionEnd hook or `/synapse:end-session` later archives them.
-5. **Archive:** a SessionEnd hook copies the planning files into the store
-   at exit, `/clear` and `/resume`, with no model call.
-   `/synapse:end-session` archives on request, writes session notes, and
-   runs extraction last.
-6. **Extract:** `/synapse:extract-session` promotes Decisions, Patterns,
-   and Facts (what the user stated about the project) to an Obsidian vault
-   and embeds the session in the vector DB. By default it writes its notes
-   without asking (`[extract] accept = auto`) and `synapse extract review`
-   lists them; `accept = review` asks first. A new session lists the
-   project's Facts, and says so when an archived session was never
-   extracted.
-7. **Recall:** later sessions, in any project, get ranked pointers into that
-   history: automatically, when a prompt closely matches something in the
-   store, and on demand with `/synapse:recall`.
-8. **Share (optional):** `/synapse:share` gives a team chosen Decisions,
-   Patterns, and Facts, scrubbed of paths, secrets, and session-local references,
-   through a git repo or a synced folder. Teammates' notes join recall,
-   labeled; your own note wins a tie, and your own decision wins a conflict.
+If a session ends without `/synapse:end-session` (a crash, a forgotten close, `/clear`), the SessionEnd hook archives the working files as they stand, and the next session start says archives are waiting and offers `/synapse:extract-session`.
 
-## Long sessions
+## What runs without you
 
-On a model with a 1M-token window (the Fable models, Sonnet 5 and later,
-Haiku 5.5, Opus 4.7 and later), Claude Code's default auto-compact threshold
-is about 967k tokens, and in practice compactions on the maintainer's
-machines ran anywhere from 307k to 968k. Synapse's PreCompact hook, which
-shapes the compaction summary (`[continuation] compact_guide = false` turns it
-off), runs only at compaction, so a session that
-stays below the threshold does not use it. A long session also re-reads its
-whole context on every request: across seven measured sessions on two
-machines, the main session was 66 to 100 percent of cost (100 where no
-sub-agents ran). `tools/context-cost.py` measures that share from a
-transcript; `tools/emission-stats.py` counts the Stop hook's verdicts.
-Consider lowering the auto-compact window to about 300k, which makes compaction predictable with
-`/autocompact 300k`, the `autoCompactWindow` setting, or the
-`CLAUDE_CODE_AUTO_COMPACT_WINDOW` environment variable (the variable wins over
-the other two). The trade-off: each compaction is lossy and costs one large
-request. Synapse changes this setting only when you ask:
-`synapse setup --autocompact 300k` writes it after backing up
-`settings.json`. `/synapse:doctor` reports it, with where Claude Code
-compacts for it and where Synapse's marks land.
+| Hook | What it does |
+|---|---|
+| SessionStart | Loads the rules and the platform notes, lists the project's Facts, reports archives never extracted and notes written by automatic extraction, starts a due team sync |
+| UserPromptSubmit | Adds a recall hint (up to three ranked snippets above a score threshold) and a one-line digest of the delegation rule |
+| PreToolUse | Above half the context window, denies the next hands-on call once at the fifth, tenth and twentieth call of a step and names the role to brief; the retry goes through, and a dispatch or a new prompt resets the count |
+| PostToolUse | Below that threshold, a reminder at the same counts; a context-size line at 60% and 90% of the window |
+| Stop | The emission contract, with one rewrite; a checkpoint ask once at 60% and once at 90% of the window; a hold while a dispatched sub-agent is still running |
+| PreCompact | Guidance for the compaction summary: what to keep, which planning files exist, where the resume state is |
+| SessionEnd | The failsafe archive of the working files at exit, `/clear` and `/resume`, with no model call |
 
-Before a long session gets heavy, run `/synapse:checkpoint`. It saves what
-the work needs to continue (a `## Resume` section and the session's notes)
-and does not end the turn. After a checkpoint, `/clear` is free: the next
-session starts from the files. `/compact` is lossy, because it keeps only a
-summary.
+Rules in a prompt decay as the context fills; hooks hold at any context size, which is why the contract, the gate and the archive are enforced rather than requested. [docs/architecture.md](docs/architecture.md#operating-principles) states the principles.
 
-- **Resume pointer.** After `/clear` or a compaction, the session start adds
-  one line that names the `## Resume` section and when it was written. It
-  only points; you or Claude read the file.
-- **Context nudge.** The nudge hook measures the real context size and adds
-  one line at 60% and at 90% of the context window. The window is
-  `[nudge] context_window` if you set it. Otherwise, when Claude Code's
-  settings set an auto-compact window for the session's model
-  (`modelSettings`, `autoCompactWindow`, or `CLAUDE_CODE_AUTO_COMPACT_WINDOW`),
-  the window is the point where Claude Code compacts: that value, capped at
-  the model's window, less the 33k buffer Claude Code keeps. With 300k it is
-  267k, so the marks land at 160k and 240k and the gate at 134k, all before
-  compaction. With no such setting it is the model's window, by
-  name: 300000 for 1M-window models (Fable, Opus 4.7 and later, any
-  5-series model), 150000 for older ones (so 90k and 135k on a 200k window).
-  Either is lowered to the smallest auto-compaction size seen in the session
-  if that is smaller (manual `/compact` does not count). A `[1m]` opt-in on an older
-  model does not show in the name, so set `context_window` there. The line
-  says which source it used. If you were away longer than the prompt cache lasts, it also says
-  what the next request will rewrite. It is checked after Bash, PowerShell,
-  Edit, Write and Agent calls, not after reads. Set `context_window = 0` to
-  turn both off.
-  Neither line blocks anything; the gates below do.
-- **Gates (2.7.0).** Hooks hold where a line did not. A PreToolUse gate
-  denies a hands-on call once at 5, 10 and 20 calls in a step when the
-  context is at least half the window, and names the role to brief; the
-  retry goes through, and a dispatch or the next prompt re-arms it. The Stop
-  hook blocks the end of the turn once at 60% and once at 90% to ask for
-  `/synapse:checkpoint` when `## Resume` is stale, and once per prompt while a
-  dispatched agent is still running, so its report is read first. Why hooks
-  and not rules: [Operating principles](docs/architecture.md#operating-principles).
-  `[gate] enabled = false`, `checkpoint = false` and `wait_for_agents =
-  false` turn them off; a project's `.synapse.toml` may override `[nudge]`
-  and `[gate]`.
-- **The tail end (2.7.0).** At exit, `/clear` and `/resume`, a SessionEnd
-  hook archives `.claude-work/current/` without a model call (about 60 ms).
-  Extraction writes its notes without asking (`[extract] accept = auto`);
-  `synapse extract review` lists what it wrote, and the next session start
-  says how many notes wait for review.
+## Memory
 
-## Where things live
+A store is one folder: `archive/<project>/` holds the archived sessions, `vectors.db` the embeddings, and an Obsidian vault the notes. Extraction reads an archived session and writes Session, Decision, Pattern and Fact notes to the vault, embedded with `nomic-embed-text` through Ollama. Recall ranks those notes and archives against a query and returns snippets with source paths; they are navigation hints, so the model reads a source before relying on it. Fact notes (what the user stated about the project: deploy targets, customers, constraints) are listed at every session start.
 
-- **Rules** load at every session start from the plugin's `SessionStart`
-  hook: the core rules, plus a macOS or Windows profile picked automatically.
-- **Data** lives in `~/.claude/synapse/`: one global store by default (archive,
-  `vectors.db`, and an Obsidian vault). A project can opt into its own store
-  with a one-line `.synapse.toml`; see [INSTALL.md](INSTALL.md).
-- **Teams** (optional): a shared notes folder per team, plus a local index
-  rebuilt from it; see [INSTALL.md](INSTALL.md#share-with-a-team-optional).
-- **Everything stays local:** sqlite-vec, Ollama embeddings, and Obsidian.
-  Only notes you approve for a team leave the machine.
+One global store, `main`, serves every project by default; a project opts into its own store with a `.synapse.toml` at its root. The Synapse home is `~/.claude/synapse` (`SYNAPSE_HOME` overrides it), and `synapse where` prints where this folder's data resolves. `/synapse:share` scrubs Decision, Pattern and Fact notes and adds the ones the user approves to a team folder or git repository; teammates' notes appear in recall labelled with team and author.
 
-## Layout
+## Configuration
 
-```
-.claude-plugin/   plugin.json, marketplace.json (this repo is its own marketplace)
-instructions/     core.md, platform-macos.md, platform-windows.md (each < 10,000 chars)
-agents/           implementer, verifier, researcher, reviewer, scout, extractor (synapse:<role> sub-agents)
-hooks/            hooks.json (SessionStart, UserPromptSubmit, PreCompact, PreToolUse, PostToolUse, Stop, SessionEnd), session_start.sh,
-                  context/*.json, emission_check.py, emission_patterns.json
-bin/synapse       CLI on the Bash PATH: where, setup (incl. --autocompact), doctor, archive (incl. --auto --hook),
-                  recall, recall-check, recall-hint, pending, facts, compact-guide, nudge, gate, checkpoint,
-                  share, shared, extract (incl. check-candidates, review), vault, backfill, migrate
-lib/              py.sh (finds Python 3.11+), synapse/ (resolver + memory pipeline)
-skills/           plan-session, checkpoint, end-session, recall, extract-session, share, emission-contract,
-                  workflow-recovery, language-sweep, setup, doctor
-templates/        PLAN.md, EXECUTION.md, NOTES.md
-tools/            build_context.py (rebuilds hooks/context from instructions/),
-                  run-evals.sh (guarded eval runner), run-bench.sh (with vs without
-                  Synapse), eval-report.py, build_eval_home.py, live-check-share.sh,
-                  live-check-extract.sh, live-check-compact.sh, context-cost.py (cost share per transcript), emission-stats.py (Stop-hook verdicts)
-tests/            unit tests (python -m unittest discover -s tests)
-evals/            claude plugin eval suite with a no-plugin baseline (core loop, role agents,
-                  triggers, teams; run locally, results gitignored)
-docs/             architecture.md, design/packaging.md, design/v2.md
-examples/         real PLAN/EXECUTION files from a mature project
-```
+`config.toml` in the Synapse home holds the defaults below; a project's `.synapse.toml` overrides `[nudge]` and `[gate]`.
 
-## Learn more
+| Setting | Default | Effect |
+|---|---|---|
+| `[nudge] calls` | 5 | Hands-on calls per step before the reminder and the gate; 0 turns the reminder off |
+| `[nudge] context_window` | unset | Window the context marks are measured against; unset reads Claude Code's auto-compact setting, else the model's default |
+| `[gate] enabled`, `min_context` | true, 0.5 | The deny, and the context fraction above which it applies |
+| `[gate] checkpoint`, `wait_for_agents` | true, true | The Stop checkpoint ask and the hold for a running sub-agent |
+| `[extract] accept` | auto | `auto` writes notes and lists them for review; `review` asks before writing |
+| `[extract] on_exit` | false | Detached extraction after the failsafe archive |
+| `[archive] on_exit` | true | The failsafe archive |
+| `[recall] auto`, `min_score`, `max_hits` | true, 0.70, 3 | The prompt hint |
 
-- [INSTALL.md](INSTALL.md): install, provision, migrate, split stores, share
-  with a team, update, uninstall
-- [docs/architecture.md](docs/architecture.md): lifecycle, components,
-  principles, and the V2 roadmap
-- [docs/design/packaging.md](docs/design/packaging.md): why a plugin, and how
-  install stays non-destructive
-- [docs/design/v2.md](docs/design/v2.md): the V2 plan, slice by slice, with
-  measurements
-- [AGENTS.md](AGENTS.md): working on this repo
+The context marks sit on the auto-compaction point. `synapse setup --autocompact 300k` sets Claude Code's window after backing up `settings.json`; a 300k window compacts near 267k, with the gate from 134k and the checkpoint asks at 160k and 240k. [INSTALL.md](INSTALL.md) covers the rest.
 
-## License
+## Cost
 
-MIT. See [LICENSE](LICENSE).
+Model turns cost money; hooks and the CLI run locally and cost nothing. Each main-session call re-reads the whole context, so a long hands-on loop in the main session is the expensive pattern, and the gate exists for that: a role runs the loop in a fresh, small context and sends back a report. `tools/context-cost.py` reads Claude Code transcripts and prints token and cost numbers per session; `tools/emission-stats.py` counts Stop-hook verdicts per turn.
+
+## Documentation
+
+- [INSTALL.md](INSTALL.md): requirements, preflight, install, provision, verify, per-project stores, reminders, teams, update, uninstall.
+- [docs/architecture.md](docs/architecture.md): session lifecycle, components including the hooks, operating principles, [repository layout](docs/architecture.md#repository-layout).
+- [docs/design/](docs/design/): design records.
+- [CHANGELOG.md](CHANGELOG.md): what changed in each version.
+- [AGENTS.md](AGENTS.md): working on this repository.
+- [evals/](evals/): how the plugin is measured.

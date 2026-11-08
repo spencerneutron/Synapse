@@ -1,6 +1,6 @@
 ---
 name: end-session
-description: Use when the session itself is closing (not merely when a task finishes). Archives PLAN.md and EXECUTION.md under a session tag and ensures any open questions or deferred actions are captured in a session notes file. The SessionEnd hook already archives the working files at exit; this skill also writes session notes and runs extraction last.
+description: Use when the session itself is closing (not merely when a task finishes). Writes the session notes (open questions, deferred items, why the pivots happened) from live context, archives PLAN.md and EXECUTION.md under a session tag, and runs extraction last in the same turn. The SessionEnd hook is only the failsafe for sessions that end without it.
 allowed-tools: Bash(synapse archive *), Bash(synapse where *), Bash(synapse extract *)
 ---
 

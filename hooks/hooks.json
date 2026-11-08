@@ -1,5 +1,5 @@
 {
-  "description": "Synapse: always-on rules, an extraction reminder, the count of notes automatic extraction wrote, the project's Facts, and team sync at session start; recall hints and a one-line digest on prompts; a dispatch reminder after a run of hands-on tool calls, and above half the context window a deny of the next one at 5, 10 and 20 calls; at stop, the emission-contract check, a checkpoint ask at 60% and 90% of the window, and a wait while a dispatched sub-agent still runs; summary guidance at compaction; the session's working files archived at exit, /clear and /resume",
+  "description": "Synapse: always-on rules, an extraction reminder, the count of notes automatic extraction wrote, the project's Facts, and team sync at session start; recall hints and a one-line digest on prompts; a dispatch reminder after a run of hands-on tool calls, and above half the context window a deny of the next one at 5, 10 and 20 calls; at stop, the emission-contract check, a checkpoint ask at 60% and 90% of the window, and a wait while a dispatched sub-agent still runs; summary guidance at compaction; a failsafe archive of the working files at exit, /clear and /resume when a session ends without /synapse:end-session",
   "hooks": {
     "SessionStart": [
       {

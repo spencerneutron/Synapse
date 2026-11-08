@@ -19,8 +19,8 @@ rules decide *when*.
 | Execute | (these rules) | Briefs to roles; the main session runs what takes a handful of calls |
 | Emit | `synapse:emission-contract` | Reference only; the Stop hook checks every final message |
 | Checkpoint | `/synapse:checkpoint` | Between stages of a long request, before a pause, when Synapse reports a large context, or when the Stop gate asks; then continue |
-| Archive | `/synapse:end-session` | The session itself is closing, not just a task (a SessionEnd hook archives the files on exit anyway; this adds notes and extraction) |
-| Extract | `/synapse:extract-session` | Runs last inside `/synapse:end-session`; on its own when the user asks |
+| Archive | `/synapse:end-session` | The session itself is closing, not just a task: it writes notes from live context, archives, and extracts last. If the session ends without it, the SessionEnd hook archives the files as they stand |
+| Extract | `/synapse:extract-session` | Runs last inside `/synapse:end-session`; on its own when the user asks (for example for a session the hook archived) |
 | Recover | `/synapse:workflow-recovery` | A background workflow or agent fleet died or was stopped |
 
 ---
