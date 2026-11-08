@@ -61,7 +61,7 @@ class SettingsTests(unittest.TestCase):
     def test_defaults_and_overrides(self):
         self.assertEqual(paths.settings(), {"recall_auto": True, "min_score": paths.DEFAULT_MIN_SCORE,
                                             "max_hits": 3, "nudge_calls": 5, "context_window": None,
-                                            "compact_guide": True,
+                                            "nudge_digest": True, "compact_guide": True,
                                             "extract_remind": True, "facts_at_start": True})
         (self.tmp / "config.toml").write_text(
             "[recall]\nauto = false\nmin_score = 0.8\nfacts = false\n[extract]\nremind = false\n")

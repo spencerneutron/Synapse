@@ -92,8 +92,33 @@ class NudgeTests(unittest.TestCase):
     def test_user_prompt_resets(self):
         self.run_calls(4)
         r = self.send({"session_id": "s1", "hook_event_name": "UserPromptSubmit", "prompt": "x"})
-        self.assertIsNone(r)
+        self.assertIn("brief for a role", r["additionalContext"])
         self.assertEqual(self.run_calls(5), [5])
+
+    def prompt(self):
+        return self.send({"session_id": "s1", "hook_event_name": "UserPromptSubmit", "prompt": "x"})
+
+    def test_digest_on_by_default(self):
+        out = self.prompt()
+        self.assertEqual(out["hookEventName"], "UserPromptSubmit")
+        self.assertIn("Stop hook checks your final message", out["additionalContext"])
+
+    def test_digest_off_by_config(self):
+        (self.home / "config.toml").write_text("[nudge]\ndigest = false\n")
+        self.assertIsNone(self.prompt())
+        (self.home / "config.toml").write_text("[nudge]\ndigest = true\n")
+        self.assertIsNotNone(self.prompt())
+
+    def test_digest_is_one_short_line(self):
+        text = self.prompt()["additionalContext"]
+        self.assertNotIn("\n", text)
+        self.assertLess(len(text), 200)
+
+    def test_digest_not_on_post_tool_use(self):
+        for _ in range(5):
+            out = self.call()
+        self.assertNotIn("brief for a role, not work", out["additionalContext"])
+        self.assertIsNone(self.call(tool="Read"))
 
     def test_sub_agent_calls_are_ignored(self):
         for _ in range(7):

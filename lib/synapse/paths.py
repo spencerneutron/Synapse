@@ -63,6 +63,7 @@ vault = "Synapse"
 # calls = 5            # hands-on calls in a row before the dispatch reminder; 0 turns it off
 # context_window = 300000   # tokens; context nudge at 60% and 90% of it, and the resume-time line; 0 turns both off
 #                           # unset: the session's last auto-compaction, else the model (see README)
+# digest = true        # one line on every prompt: when to brief a role, and that the Stop hook checks the final message; false turns it off
 
 [continuation]
 # compact_guide = true     # PreCompact: guidance for the compaction summary; false prints nothing
@@ -145,6 +146,7 @@ def settings() -> dict:
         "context_window": value("nudge", "context_window", None,
                                 lambda v: v is None or (isinstance(v, int) and v >= 0),
                                 "a whole number, 0 or more"),
+        "nudge_digest": value("nudge", "digest", True, lambda v: True, "true or false"),
         "compact_guide": value("continuation", "compact_guide", True, lambda v: True, "true or false"),
         "extract_remind": value("extract", "remind", True, lambda v: True, "true or false"),
         "facts_at_start": value("recall", "facts", True, lambda v: True, "true or false"),

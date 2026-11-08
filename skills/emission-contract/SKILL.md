@@ -1,13 +1,16 @@
 ---
 name: emission-contract
-description: Load immediately before writing the final user-facing message of a turn. Holds the output contract for that one message (shape, length, banned patterns) with before/after exemplars. Not for code, files, commit messages, or sub-agent briefs.
+description: Reference text of the emission contract that Synapse's Stop hook enforces on the final user-facing message of a turn (shape, length, banned patterns) with before/after exemplars. The hook's block reason already carries the rules, so no per-turn load is needed; read this for the full text or the exemplars. Not for code, files, commit messages, or sub-agent briefs.
 ---
 
 # Emission Contract
 
-This contract applies to the one message you are about to write. It is loaded
-late on purpose: its rules stay out of the context while the work happens
-(Synapse rules — Emission).
+This contract applies to the final user-facing message of a turn. The
+plugin's Stop hook enforces it: when the message breaks a mechanical rule, the
+hook blocks the stop once and its reason carries the directive below in
+compact form, plus what it found (Synapse rules — Emission). This file is the
+reference text; keep its Directive in step with `directive` in the plugin's
+`hooks/emission_patterns.json`.
 
 ---
 
@@ -23,7 +26,8 @@ late on purpose: its rules stay out of the context while the work happens
    commands in fenced blocks.
 5. **End on substance.** At most one concrete next step or one question. No
    recap, no offers, no pleasantries.
-6. **Plain words.** None of the tics below. No emoji.
+6. **Plain words.** None of the tics below (delve, tapestry, "testament to",
+   "it's worth noting"). No emoji.
 
 ---
 
@@ -36,6 +40,13 @@ for a rewrite when the message contains any of these:
   "I'd be happy to"
 - Pleasantry closers in the last paragraph: "Let me know if", "Feel free to",
   "Hope this helps"
+- A summary paragraph at the end, opening with "In summary", "To recap",
+  "To summarize", or "Overall,"
+- Offers in the last paragraph: "I can also", "Would you like me to",
+  "Want me to", "Shall I", "I can … if you'd like". State the next step, or
+  ask the one decision directly ("Merge it now?")
+- "It's not just X, it's Y" in its plain forms ("This is not only X; it is Y")
+- More than 3 headings in a message under 500 words
 - Tics: delve, tapestry, "testament to", "it's worth noting",
   "in today's … world"
 - Emoji: pictographs, ✅, ❌, ✨
@@ -52,11 +63,12 @@ the plugin's `hooks/emission_patterns.json`.
 
 The hook cannot see these; avoid them anyway:
 
-- "It's not just X, it's Y" and its variants
+- "Not X but Y" contrasts in other wordings
 - Rhetorical questions the next sentence answers
 - Three-item lists where the third item is padding
 - Em dashes used for emphasis where a period works
-- A closing paragraph that summarizes the message
+- A closing paragraph that summarizes the message without a marker phrase
+- Bold labels standing in for headings in a short message
 
 ---
 

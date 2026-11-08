@@ -3,6 +3,8 @@
 setup_cmd.py — provision the Synapse home. Idempotent; never overwrites.
 
   synapse setup
+  synapse setup --autocompact N     (N or Nk; writes autoCompactWindow to the user's
+                                     Claude Code settings.json after a backup; refuses if set)
 
 Creates <home>/config.toml (only when missing), and <home>/venv with
 sqlite-vec (downloaded once from PyPI); gives every configured store its
@@ -12,8 +14,13 @@ missing. It never downloads a model and never edits files Synapse does not own.
 """
 
 import argparse
+import json
+import os
+import re
 import subprocess
 import sys
+import tempfile
+from datetime import datetime
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -32,8 +39,76 @@ def step(status: str, what: str) -> None:
     print(f"  {status:<8} {what}")
 
 
+def parse_window(text: str) -> int:
+    m = re.fullmatch(r"\s*(\d+)\s*([kK]?)\s*", text)
+    n = int(m.group(1)) * (1000 if m.group(2) else 1) if m else 0
+    if n <= 0:
+        raise ValueError(f"invalid auto-compact window {text!r}: use a positive integer, or one with a k suffix (300k)")
+    return n
+
+
+def set_autocompact(text: str) -> int:
+    """Add autoCompactWindow to the user's settings.json. Refuses if already set; backs up first."""
+    try:
+        n = parse_window(text)
+    except ValueError as e:
+        print(f"synapse setup: {e}", file=sys.stderr)
+        return 2
+    target = doctor.claude_dir() / "settings.json"
+    data: dict = {}
+    if target.exists():
+        try:
+            data = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            print(f"synapse setup: cannot read {doctor.tilde(target)}: {e}; file left untouched", file=sys.stderr)
+            return 1
+        if not isinstance(data, dict):
+            print(f"synapse setup: {doctor.tilde(target)} is not a JSON object; file left untouched", file=sys.stderr)
+            return 1
+    found = doctor.autocompact_values(data)
+    if found:
+        print(f"synapse setup: autoCompactWindow is already set in {doctor.tilde(target)}; file left untouched",
+              file=sys.stderr)
+        for scope, value in found:
+            print(f"  {scope}: {value}", file=sys.stderr)
+        print("  change it yourself (or with /autocompact); Synapse never overwrites it", file=sys.stderr)
+        return 1
+    backup = target.with_name(f"{target.name}.synapse-backup-{datetime.now():%Y%m%d-%H%M%S}")
+    print(f"will change: {doctor.tilde(target)}")
+    print(f"  add: autoCompactWindow: {n} (top level)")
+    print(f"  backup: {doctor.tilde(backup) if target.exists() else '(none; file does not exist yet)'}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        backup.write_bytes(target.read_bytes())
+    data["autoCompactWindow"] = n
+    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=target.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            f.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+        os.replace(tmp, target)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    print(f"done: autoCompactWindow set to {n} in {doctor.tilde(target)}")
+    return 0
+
+
+def autocompact_advice() -> None:
+    """Print the doctor's warning for an unset window, plus the command, when none is set."""
+    rep = doctor.Report()
+    doctor.check_settings(rep, Path.cwd())
+    for i in rep.items:
+        if i["check"] == "autocompact-window" and i["detail"].startswith(doctor.AUTOCOMPACT_UNSET[:30]):
+            print(f"auto-compact: {i['detail']}")
+            print("  to set it (backs up your settings.json first): synapse setup --autocompact 300k")
+
+
 def main(argv: list[str] | None = None) -> int:
-    argparse.ArgumentParser(prog="synapse setup", description=__doc__.split("\n\n")[0]).parse_args(argv)
+    ap = argparse.ArgumentParser(prog="synapse setup", description=__doc__.split("\n\n")[0])
+    ap.add_argument("--autocompact", metavar="N", help="set Claude Code's autoCompactWindow (300000 or 300k) and stop")
+    args = ap.parse_args(argv)
+    if args.autocompact is not None:
+        return set_autocompact(args.autocompact)
     print(f"Synapse setup -> {doctor.tilde(paths.home())}")
 
     paths.home().mkdir(parents=True, exist_ok=True)
@@ -93,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {t}")
     else:
         print("memory features ready")
+    autocompact_advice()
     print("next: synapse doctor")
     return 0
 

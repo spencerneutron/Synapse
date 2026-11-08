@@ -19,10 +19,14 @@ nudge.py — hook-time reminders for the main session, in one process.
    auto-compaction seen in the session; 0 turns 2 and 3 off),
    suggests /synapse:checkpoint. At most 3 times per session; re-armed when the
    context drops below 60% (after a compaction).
-3. Resume-time line. On a new prompt, if the last request was longer ago than
+3. Prompt digest. On every new prompt, one line (under 200 characters) saying
+   a step over about five tool calls or three files is a brief for a role, and
+   that the Stop hook checks the final message. [nudge] digest = false turns it
+   off. It comes before the resume-time line.
+4. Resume-time line. On a new prompt, if the last request was longer ago than
    the prompt cache lives and the context is at least 60% of the window, says
    what the request will rewrite.
-4. Resume pointer. At SessionStart after /compact or /clear, points at the
+5. Resume pointer. At SessionStart after /compact or /clear, points at the
    ## Resume section of .claude-work/current/EXECUTION.md (pointers only).
 
 Stdlib only: no Ollama, no database, no venv. It must never block: it always
@@ -40,6 +44,8 @@ DISPATCH = {"Agent", "Task"}
 STALE_S = 24 * 3600
 CONTEXT_STALE_S = 7 * 24 * 3600  # the state file is only written on a change
 SHELLS = {"Bash", "PowerShell"}
+DIGEST = ("Synapse: a step over about five tool calls or three files is a brief for a role, "
+          "not work for this session. The Stop hook checks your final message.")
 PLANNING_DIRS = ("/.claude-work/", "\\.claude-work\\")
 
 
@@ -124,6 +130,13 @@ def dispatch_line(paths, sid: str, data: dict) -> str:
     return ""
 
 
+def digest_line(paths) -> str:
+    try:
+        return DIGEST if paths.settings()["nudge_digest"] else ""
+    except BaseException:
+        return ""
+
+
 def emit(event: str, *lines: str) -> str:
     text = "\n".join(x for x in lines if x)
     if not text:
@@ -149,7 +162,8 @@ def handle(data: dict) -> str:
         return emit(event, first, second)
     elif event == "UserPromptSubmit":
         reset(paths, sid)
-        return emit(event, continuation.resume_time_line(paths, data, sid))
+        return emit(event, digest_line(paths),
+                    continuation.resume_time_line(paths, data, sid))
     elif event == "SessionStart":
         prune(paths, sid)
         return emit(event, continuation.resume_pointer(paths, data))

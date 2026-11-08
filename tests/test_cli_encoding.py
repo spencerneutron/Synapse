@@ -7,6 +7,7 @@ This test forces cp1252 with PYTHONIOENCODING and requires that stdout and
 stderr decode as strict UTF-8 for every help and usage form.
 """
 
+import json
 import os
 import re
 import subprocess
@@ -140,6 +141,20 @@ class ScriptEncodingTest(unittest.TestCase):
                             self.fail(f"{script.name}: {name} is not UTF-8: {exc}")
                     self.assertIn(proc.returncode, (0, 1, 2),
                                   f"{script.name}: exit {proc.returncode}")
+
+    def test_emission_stats_output_is_utf8(self):
+        """A transcript whose file name has a non-ASCII char prints cleanly under cp1252."""
+        with tempfile.TemporaryDirectory() as tmp:
+            name = Path(tmp) / "session \u2013 test.jsonl"
+            name.write_text(json.dumps({"type": "system", "subtype": "stop_hook_summary",
+                                        "hasOutput": False}) + "\n", encoding="utf-8")
+            env = dict(os.environ)
+            env.pop("PYTHONUTF8", None)
+            env["PYTHONIOENCODING"] = "cp1252"
+            proc = subprocess.run([sys.executable, str(ROOT / "tools" / "emission-stats.py"), str(name)],
+                                  env=env, capture_output=True, timeout=60)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("session \u2013 test.jsonl", proc.stdout.decode("utf-8"))
 
 
 if __name__ == "__main__":
