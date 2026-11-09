@@ -1,5 +1,57 @@
 # Changelog
 
+## 2.7.3 — 2026-11-08 — On-exit extraction works in every permission mode
+
+No store schema change; update with `claude plugin marketplace update
+synapse` and `claude plugin update synapse@synapse`, then start new sessions.
+
+### Fixed
+
+- **On-exit extraction extracted nothing in default permission mode.**
+  Through 2.7.2, with `[extract] on_exit = true`, the extractor wrote its
+  spec files by shell (`mkdir -p`, `cat >` heredocs) and the skill ran
+  `ls`, `cd` and variable chains. The headless run's allow list covers none
+  of these, so in default mode they were denied and the session stopped
+  without writing. It worked only when the user's own auto mode approved
+  them. The extractor now writes spec files and `candidates.json` with the
+  Write tool and clears its folder with `synapse extract cleanup`. The skill
+  reads `PLAN_<id>.md`, `EXECUTION_<id>.md` and `NOTES_<id>.md` by name and
+  runs each `synapse` command as its own call. It no longer cites a
+  `check-candidates --json` flag, which does not exist.
+- **The detached run is held to its allow list.** It runs with
+  `--permission-mode dontAsk`, so it denies anything outside
+  `Bash(synapse extract|vault|where|shared status …)`, Read, Write and Agent
+  in every permission mode, including the user's auto mode. Sub-agents
+  inherit the mode. The list no longer has `Edit` or a raw `rm -rf`. Live
+  runs in default mode and under a user-level auto mode completed with no
+  command approved outside the list.
+
+### Added
+
+- **`synapse extract cleanup <folder>`** deletes an extraction spec folder.
+  It refuses symlinks and any path not shaped `.claude-work/.tmp/extract-*`.
+- **`synapse doctor` warns about another plugin named `synapse`** in
+  `enabledPlugins` (any settings layer) or `installed_plugins.json`, and
+  INSTALL.md's preflight table has a row for it.
+- **README "Security and data"**, rewritten as a full disclosure: what
+  Synapse keeps from sessions, what hooks read, the network, the detached
+  extraction, every write location, and removal. It links the new
+  `docs/PRIVACY.md` and `docs/TERMS.md` (drafts).
+- **Plugin directory fields** in `plugin.json`: `displayName`,
+  `documentationUrl`, `supportUrl`, `privacyPolicyUrl`, `termsOfServiceUrl`
+  and `icon` (a placeholder `.claude-plugin/icon.png`). The description
+  says "Claude Code only".
+- **`NOTICE`**: `lib/py.sh` is a modified version of `sg-python.sh` from the
+  security-guidance plugin in anthropics/claude-plugins-official, under the
+  Apache License 2.0.
+
+### Changed
+
+- **Hook commands carry no environment prefixes.** `hooks.json` runs each
+  hook as a plain `bash "${CLAUDE_PLUGIN_ROOT}/…"` path; `lib/py.sh` takes
+  `--optional` and `--min-py X.Y` as arguments (it still honours the old
+  variables). Timeouts, matchers and order are unchanged.
+
 ## 2.7.2 — 2026-11-08 — Artifact links in the Session note
 
 No store schema change; update with `claude plugin marketplace update
