@@ -1,6 +1,6 @@
 ---
 name: extract-session
-description: Project an archived session into the Obsidian vault and the local vector database. Runs as the last step of end-session, on its own for a session the SessionEnd hook archived (the failsafe case), or when the user asks. Writes notes without asking under [extract] accept = auto and lists them for `synapse extract review`. Idempotent.
+description: Project an archived session into the notes vault and the local vector database. Runs as the last step of end-session, on its own for a session the SessionEnd hook archived (the failsafe case), or when the user asks. Writes notes without asking under [extract] accept = auto and lists them for `synapse extract review`. Idempotent.
 allowed-tools: Bash(synapse extract *), Bash(synapse vault *), Bash(synapse where *), Bash(synapse shared status*)
 ---
 
@@ -10,7 +10,7 @@ Promote a closed session's knowledge into the vault (Session, Decision,
 Pattern, Fact notes) and the vector DB. The `synapse:extractor` agent judges;
 this skill orchestrates. It runs as the last step of `/synapse:end-session`; on its
 own for a session the SessionEnd hook archived or when the
-user asks; never before the archive exists. Vault commands start Obsidian themselves;
+user asks; never before the archive exists. In Obsidian mode, vault commands start Obsidian themselves;
 embedding needs Ollama with `nomic-embed-text`.
 
 Input: a session ID (default: the one just archived, else the newest unprocessed) and a project (default: the one end-session used; ask once if clearly another).
@@ -25,7 +25,7 @@ approves only those calls and Read, Write, and Agent; anything else is denied.
    `synapse vault verify`, then `synapse extract status ID --project NAME`.
    Read `PLAN_ID.md`, `EXECUTION_ID.md`, `NOTES_ID.md` (ID = the session ID) in `archive_dir` by full path;
    none: stop, report. If status says it was processed, ask to re-run
-   (`--force`); "extract this" means yes. If verify fails twice (or Obsidian is out of date, or Linux): stop,
+   (`--force`); "extract this" means yes. If verify fails twice (or, in Obsidian mode, Obsidian is out of date or on Linux): stop,
    quote the error, write nothing.
 2. **Dispatch** `subagent_type: synapse:extractor` with the archive folder,
    the session ID, the project, whether this is a `--force` re-run, and the

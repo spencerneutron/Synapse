@@ -29,6 +29,6 @@ stable cwd; say briefly why.
 - **`log` is a zsh builtin.** Call `/usr/bin/log` for the unified log.
 - **`=` at the start of a word expands in zsh.** `echo ==` fails with
   `= not found`; quote separators: `echo "--"`.
-- **Obsidian started by its CLI dies with the shell.** `synapse vault` launches
+- **In Obsidian mode, Obsidian started by its CLI dies with the shell.** `synapse vault` launches
   it detached with `open -a Obsidian` when needed. If you call the `obsidian`
   CLI directly, run `open -a Obsidian` first and wait about 10 s.

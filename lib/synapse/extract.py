@@ -859,8 +859,10 @@ def add_session_artifacts(conn: sqlite3.Connection, r: "paths.Resolved", archive
     try:
         vault = r.vault_path
         if not vault:
+            if r.notes == "folder":
+                sys.exit("this store keeps notes in a plain folder but has no vault_path")
             import vault_write
-            vault_write.VAULT_NAME = r.vault
+            vault_write.VAULT_NAME, vault_write.NOTES_MODE = r.vault, r.notes
             vault = vault_write.vault_path()
     except SystemExit as e:
         print(f"  warning: artifacts not added to the Session note: no vault found ({e})",
@@ -991,15 +993,18 @@ def cmd_embed_archive(args: argparse.Namespace) -> int:
 def note_file(arg: str, r: "paths.Resolved") -> Path:
     """A note given as a path, or relative to the vault (`Patterns/X.md`,
     `vault/Patterns/X.md`). A vault-relative path is looked up in the store's
-    vault_path, then in the vault Obsidian reports (where create-note wrote it)."""
+    vault_path; in Obsidian mode, then in the vault Obsidian reports (where
+    create-note wrote it). In folder mode it is always under vault_path, found or not."""
     p = Path(arg).expanduser()
     rel = Path(arg.replace("\\", "/").removeprefix("vault/"))
     if p.is_absolute() or not rel.parts or rel.parts[0] not in paths.VAULT_FOLDERS:
         return p
+    if r.notes == "folder" and r.vault_path:
+        return r.vault_path / rel
     if r.vault_path and (r.vault_path / rel).exists():
         return r.vault_path / rel
     import vault_write
-    vault_write.VAULT_NAME = r.vault
+    vault_write.VAULT_NAME, vault_write.NOTES_MODE = r.vault, r.notes
     return vault_write.vault_path() / rel
 
 

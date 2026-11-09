@@ -3,20 +3,24 @@
 setup_cmd.py — provision the Synapse home. Idempotent; never overwrites.
 
   synapse setup
+  synapse setup --notes {obsidian,folder}
+                                    (where a new config keeps notes; asked once on a terminal,
+                                     else Obsidian when it is installed, else a plain folder)
   synapse setup --autocompact N     (N or Nk; writes autoCompactWindow to the user's
                                      Claude Code settings.json after a backup; refuses if set)
 
 Creates <home>/config.toml (only when missing), and <home>/venv with
 sqlite-vec (downloaded once from PyPI); gives every configured store its
-archive folder and vectors.db;
-then checks Ollama, the embedding model, and the obsidian CLI and says what is
-missing. It never downloads a model and never edits files Synapse does not own.
+archive folder and vectors.db (the resolved store, in folder mode, also gets its notes folder);
+then checks Ollama, the embedding model, and (in Obsidian mode) the obsidian CLI
+and says what is missing. It never downloads a model and never edits files Synapse does not own.
 """
 
 import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -106,9 +110,30 @@ def autocompact_advice() -> None:
             print("  to set it (backs up your settings.json first): synapse setup --autocompact 300k")
 
 
+def detect_notes_mode() -> str:
+    """Obsidian when it looks installed (its CLI on PATH, or its vault list), else a plain folder."""
+    if shutil.which("obsidian") or doctor.obsidian_config_file().exists():
+        return "obsidian"
+    return "folder"
+
+
+def choose_notes_mode(given: str | None) -> str:
+    if given:
+        return given
+    detected = detect_notes_mode()
+    if sys.stdin.isatty():
+        answer = input("Keep notes in Obsidian or in a plain folder? "
+                       f"[obsidian/folder] (default: {detected}): ").strip().lower()
+        if answer in paths.NOTES_MODES:
+            return answer
+    return detected
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="synapse setup", description=__doc__.split("\n\n")[0])
     ap.add_argument("--autocompact", metavar="N", help="set Claude Code's autoCompactWindow (300000 or 300k) and stop")
+    ap.add_argument("--notes", choices=paths.NOTES_MODES,
+                    help="where a new config.toml keeps notes: an Obsidian vault or a plain folder")
     args = ap.parse_args(argv)
     if args.autocompact is not None:
         return set_autocompact(args.autocompact)
@@ -119,10 +144,15 @@ def main(argv: list[str] | None = None) -> int:
     if cfg.exists():
         step("kept", f"{doctor.tilde(cfg)} (existing, not changed)")
     else:
-        cfg.write_text(paths.CONFIG_TEMPLATE, encoding="utf-8")
+        mode = choose_notes_mode(args.notes)
+        cfg.write_text(paths.CONFIG_TEMPLATE.replace('notes = "obsidian" ', f'notes = "{mode}" ', 1),
+                       encoding="utf-8")
         step("created", doctor.tilde(cfg))
 
     r = paths.resolve()
+    todo = []
+    if args.notes and args.notes != r.notes:
+        todo.append(f'set notes = "{args.notes}" under [stores.{r.store}] in {doctor.tilde(cfg)}')
 
     vp = paths.venv_python()
     if not vp.exists():
@@ -154,16 +184,26 @@ def main(argv: list[str] | None = None) -> int:
         note = " (upgraded to schema v2; backup kept)" if "upgraded" in init.stdout else ""
         step("ready", f"store {name!r} at {doctor.tilde(store_path)}{note}")
 
-    todo = []
+    if r.notes == "folder" and r.vault_path:
+        default = r.store_path / "vault"
+        if not r.vault_path.is_absolute():
+            todo.append(f"make vault_path absolute under [stores.{r.store}] in {doctor.tilde(cfg)}")
+        elif r.vault_path.is_dir() or paths.same_path(r.vault_path, default):
+            for name in paths.VAULT_FOLDERS:
+                (r.vault_path / name).mkdir(parents=True, exist_ok=True)
+            step("ready", f"notes folder {doctor.tilde(r.vault_path)}")
+        else:
+            todo.append(f"create the notes folder {doctor.tilde(r.vault_path)} (vault_path in {doctor.tilde(cfg)})")
     reachable, has_model = doctor.check_ollama()
     if not reachable:
         todo.append("install and start Ollama (https://ollama.com), then: ollama pull nomic-embed-text")
     elif not has_model:
         todo.append("ollama pull nomic-embed-text   (about 270 MB; ask the user first)")
-    if not doctor.shutil.which("obsidian"):
-        todo.append("enable Obsidian's command-line interface so `obsidian` is on PATH")
-    if r.vault not in doctor.obsidian_vaults():
-        todo.append(f"create or open an Obsidian vault named {r.vault!r}")
+    if r.notes == "obsidian":
+        if not shutil.which("obsidian"):
+            todo.append("enable Obsidian's command-line interface so `obsidian` is on PATH")
+        if r.vault not in doctor.obsidian_vaults():
+            todo.append(f"create or open an Obsidian vault named {r.vault!r}")
 
     if todo:
         print("still needed for memory features:")

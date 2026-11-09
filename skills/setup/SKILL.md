@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Provision Synapse after the plugin is installed, or repair a broken install — creates the Synapse home (config, global store, Python venv, vector DB), checks Ollama, the embedding model, and Obsidian, on the user's yes sets Claude Code's auto-compact window (`synapse setup --autocompact N`), and offers to import an old V1/v1.5 workspace. Use when the user asks to set up Synapse, when recall reports the DB is missing, or after a fresh install.
+description: Provision Synapse after the plugin is installed, or repair a broken install — creates the Synapse home (config, global store, Python venv, vector DB), checks Ollama, the embedding model, and notes, on the user's yes sets Claude Code's auto-compact window (`synapse setup --autocompact N`), and offers to import an old V1/v1.5 workspace. Use when the user asks to set up Synapse, when recall reports the DB is missing, or after a fresh install.
 allowed-tools: Bash(synapse setup), Bash(synapse doctor *), Bash(synapse where *), Bash(synapse migrate * --dry-run)
 ---
 
@@ -33,7 +33,7 @@ config and venv.
      https://ollama.com and start it. Do not install system software yourself.
    - *`nomic-embed-text` not pulled* — ask first (about 270 MB), then run
      `ollama pull nomic-embed-text`.
-   - *`obsidian` CLI not on PATH* — tell the user to enable Obsidian's
+   - *`obsidian` CLI not on PATH (Obsidian mode)* — tell the user to enable Obsidian's
      command-line interface.
    - *No vault named as configured* — ask whether to create a vault with that
      name in Obsidian, or to point the store at an existing vault by editing

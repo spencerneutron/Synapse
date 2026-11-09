@@ -19,7 +19,7 @@ install.
 | bash | `bash --version` | macOS and Linux have it; on Windows, Claude Code uses Git Bash |
 | Python 3.11+ | `python3 --version` (Windows: `python --version`) | Synapse picks the first 3.11+ it finds |
 | Ollama + `nomic-embed-text` | `ollama list` | Needed for recall and extraction |
-| Obsidian with its CLI on `PATH` | `obsidian --help` | Needed for vault notes |
+| Obsidian with its CLI on `PATH` (Obsidian mode only) | `obsidian --help` | Folder mode (`notes = "folder"`) needs nothing |
 | Network access to GitHub | `git ls-remote https://github.com/spencerneutron/Synapse` | The repo is public; installs and updates fetch it from GitHub |
 | git (only for a team shared through git) | `git --version` | Not needed for a single user or a synced-folder team |
 
@@ -122,6 +122,11 @@ session's model into `~/.claude/settings.json` after copying it to
 Then it lists what is still missing. *Ask* before pulling the embedding
 model (`ollama pull nomic-embed-text`, about 270 MB). Never install Ollama or
 Obsidian for the user; point them to it.
+
+When it creates `config.toml`, it picks where notes live: `--notes obsidian|folder`,
+else one question in a terminal, else Obsidian if its CLI or config file is
+found, otherwise a plain folder. An existing config is left alone; if `--notes`
+differs, setup prints a to-do line to set `notes` in `[stores.<name>]`.
 
 **Expected:** the last lines read `memory features ready` (or a short list of
 what is missing) and `next: synapse doctor`.
@@ -281,7 +286,7 @@ successful archive, the hook starts a detached headless `claude -p` that runs
 $0.20 per session with a small archive, more with a large one. It uses your
 normal Claude login, runs with hooks off, and never blocks the exit. Its log,
 with the JSON result and `total_cost_usd`, is `<home>/state/extract-<id>.log`.
-Needs `claude` on PATH and, as for any extraction, Ollama and Obsidian running with the store's vault open (the extraction stops if `synapse vault verify` fails). SessionEnd
+Needs `claude` on PATH and, as for any extraction, Ollama running and, in Obsidian mode, Obsidian running with the store's vault open (the extraction stops if `synapse vault verify` fails). SessionEnd
 never runs after a crash or a killed terminal, so nothing starts then.
 
 ## Share with a team (optional)
@@ -348,7 +353,7 @@ background sync off.
 | `~/.claude/synapse/` | Config, stores (archives + `vectors.db`), venv, `state/` (which hints a session has seen, pruned after 7 days; the nudge hook's call counters, one small file per session, pruned after a day; each team's last sync), `shared/<team>/` (a git team's clone and every team's index) | `synapse setup`, `archive`, `extract`, `migrate`, `shared`, the hooks |
 | A folder team's synced folder | `Decisions/`, `Patterns/`, `Facts/`, `Retracted/`, `.synapse-team.toml` | `synapse shared init`, `/synapse:share`, `synapse shared retract` |
 | `<project>/.claude-work/current/` | `PLAN.md`, `EXECUTION.md` | The agent, during structured work |
-| The store's Obsidian vault | `Sessions/`, `Decisions/`, `Patterns/`, `Facts/`, `Projects/` notes | `/synapse:extract-session` |
+| The store's notes vault | `Sessions/`, `Decisions/`, `Patterns/`, `Facts/`, `Projects/` notes | `/synapse:extract-session` |
 
 `~/.claude/synapse/` moves with `CLAUDE_CONFIG_DIR`, or anywhere with
 `SYNAPSE_HOME`.
@@ -402,4 +407,4 @@ too.
 | `cannot reach Ollama` | Ollama is not running | `ollama serve` |
 | A team's notes never arrive | The background sync fails (credentials, network) | `synapse shared sync <team>` shows the git error; `/synapse:doctor` lists each team |
 | `conflict copy, not indexed` | The sync service saved two versions of a note | Merge the copy into the original, then delete the copy |
-| `is Obsidian running with the 'Synapse' vault open?` | Obsidian closed or another vault open | Open the store's vault in Obsidian |
+| `is Obsidian running with the 'Synapse' vault open?` (Obsidian mode) | Obsidian closed or another vault open | Open the store's vault in Obsidian |

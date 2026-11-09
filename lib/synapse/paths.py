@@ -8,7 +8,7 @@ location; everything asks resolve().
   Config   <home>/config.toml
   Store    $SYNAPSE_STORE, else the nearest .synapse.toml's `store`, else the
            config's `default_store`, else "main". A store is an archive folder,
-           a vectors.db, and an Obsidian vault, kept together so a project can
+           a vectors.db, and a notes vault (an Obsidian vault or a plain folder), kept together so a project can
            split all three at once.
   Project  an explicit --project, else the nearest .synapse.toml's `project`,
            else the git root's folder name, else the working directory's name.
@@ -36,10 +36,11 @@ DEFAULT_MIN_SCORE = 0.70   # recall-hint threshold; calibrated in docs/design/v2
 DEFAULT_MAX_HITS = 3
 MARKER = ".synapse.toml"
 VAULT_FOLDERS = ("Sessions", "Decisions", "Patterns", "Facts", "Projects")
+NOTES_MODES = ("obsidian", "folder")
 
 CONFIG_TEMPLATE = """\
 # Synapse configuration. Written once by `synapse setup`; edit freely.
-# A store keeps one archive, one vectors.db, and one Obsidian vault together.
+# A store keeps one archive, one vectors.db, and one notes vault (Obsidian or a plain folder).
 # Projects use `default_store` unless a .synapse.toml at their root names
 # another store (store = "<name>"), or SYNAPSE_STORE is set.
 
@@ -47,9 +48,10 @@ default_store = "main"
 
 [stores.main]
 # path = "~/.claude/synapse/stores/main"   # default
-vault = "Synapse"
-# vault_path = "/path/to/the/vault/folder" # optional; where notes are written (Obsidian's
-#                                          # path for the vault), and recall prints paths
+notes = "obsidian"                        # where notes live: "obsidian" (an Obsidian vault) or "folder" (a plain folder)
+vault = "Synapse"                         # the Obsidian vault's name (obsidian mode)
+# vault_path = "/path/to/the/notes/folder" # where notes are written; obsidian: optional (Obsidian's
+#                                          # path for the vault); folder: default <store>/vault
 
 # [stores.client-x]
 # path = "~/clients/x/synapse-store"
@@ -240,6 +242,7 @@ class Resolved:
     store_path: Path
     vault: str
     vault_path: Path | None
+    notes: str
     project: str
     project_source: str
     archive_root: Path
@@ -276,8 +279,14 @@ def resolve(project: str | None = None, cwd: Path | None = None) -> Resolved:
 
     store_path = Path(sc["path"]).expanduser() if sc.get("path") else home() / "stores" / store
     vault = os.environ.get("SYNAPSE_VAULT") or sc.get("vault") or DEFAULT_VAULT
+    notes = sc.get("notes", "obsidian")
+    if notes not in NOTES_MODES:
+        sys.exit(f"error: store {store!r} in {config_path()}: notes must be "
+                 f"{' or '.join(repr(m) for m in NOTES_MODES)}, got {notes!r}")
     vault_path = Path(sc["vault_path"]).expanduser() if sc.get("vault_path") else None
-    if vault != (sc.get("vault") or DEFAULT_VAULT):
+    if notes == "folder":
+        vault_path = vault_path or store_path / "vault"   # SYNAPSE_VAULT only names an Obsidian vault
+    elif vault != (sc.get("vault") or DEFAULT_VAULT):
         vault_path = None   # SYNAPSE_VAULT names another vault: the configured folder is not its
 
     if project:
@@ -302,6 +311,7 @@ def resolve(project: str | None = None, cwd: Path | None = None) -> Resolved:
         store_path=store_path,
         vault=vault,
         vault_path=vault_path,
+        notes=notes,
         project=project,
         project_source=project_source,
         archive_root=archive_root,
@@ -451,10 +461,20 @@ def configured_stores() -> dict[str, Path]:
 def to_stored_path(path: Path, r: Resolved) -> str:
     """The portable form of a source path, as written to the DB."""
     path = Path(path)
+    best = None   # (relative path, stored prefix): the deeper root wins
+    if r.notes == "folder" and r.vault_path:
+        try:
+            best = (path.resolve().relative_to(r.vault_path.resolve()), "vault/")
+        except ValueError:
+            pass
     try:
-        return path.resolve().relative_to(r.store_path.resolve()).as_posix()
+        rel = path.resolve().relative_to(r.store_path.resolve())
+        if best is None or len(rel.parts) <= len(best[0].parts):
+            best = (rel, "")
     except ValueError:
         pass
+    if best:
+        return best[1] + best[0].as_posix()
     if len(path.parts) >= 2 and path.parts[-2] in VAULT_FOLDERS:
         return f"vault/{path.parts[-2]}/{path.parts[-1]}"
     return str(path)

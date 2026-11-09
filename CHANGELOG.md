@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.8.0 — 2026-11-09 — Notes without Obsidian
+
+No store schema change; existing configs keep Obsidian mode. Update with
+`claude plugin update synapse@synapse` and start new sessions.
+
+### Added
+
+- **Folder mode.** A store with `notes = "folder"` in `[stores.<name>]` keeps
+  its notes in a plain folder: `vault_path`, default `<store>/vault` (inside the
+  store). The subfolders and Markdown notes are the same, extraction,
+  recall, facts, review, share and supersede work unchanged, and the
+  `obsidian` CLI is never run.
+- **`synapse setup --notes obsidian|folder`.** When setup creates
+  `config.toml`, it uses the flag; otherwise it asks once in a terminal;
+  otherwise it picks Obsidian if the CLI or Obsidian's config file is present,
+  else a folder. An existing config is not changed; a differing `--notes`
+  prints a to-do line.
+
+### Changed
+
+- **`synapse doctor` checks only the mode in use.** Folder mode gets a `notes`
+  check (folder exists, is absolute, is writable, has the subfolders).
+- **`synapse vault verify` in folder mode** creates missing subfolders;
+  `synapse vault search` there points to `synapse recall`. No Obsidian Base
+  file for Artifacts is written.
+
 ## 2.7.4 — 2026-11-08 — The wait message says what to do
 
 No store schema change; update with `claude plugin update synapse@synapse`

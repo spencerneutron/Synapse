@@ -20,7 +20,7 @@ derived from your sessions:
   close paraphrase) directly into the store's archive.
 - **Archives and notes.** The archive copies the working files into a store.
   Extraction turns the archive into Session, Decision, Pattern and Fact notes
-  in an Obsidian vault and into a local SQLite database (`vectors.db`) that
+  in a notes vault (an Obsidian vault or a plain folder) and into a local SQLite database (`vectors.db`) that
   holds the text of each chunk, its embedding and a full-text index.
 - **Recall.** Later sessions get ranked snippets of those notes as hints, and
   the project's Fact notes at session start. To rank them, the first 1,000
@@ -38,7 +38,7 @@ Everything stays on your computer, in folders you can list with
 `synapse where`: the Synapse home (`synapse` under `$CLAUDE_CONFIG_DIR` or
 `~/.claude`, or `SYNAPSE_HOME`), any store or team folder you configured
 elsewhere, your project's `.claude-work/`, and your
-Obsidian vault.
+notes vault.
 
 ## What leaves your computer
 

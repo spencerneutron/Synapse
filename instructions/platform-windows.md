@@ -31,7 +31,7 @@ needs a stable cwd; say briefly why.
 
 ## Gotchas
 
-- **`synapse vault` starts Obsidian itself.** If Obsidian is closed, it
+- **In Obsidian mode, `synapse vault` starts Obsidian itself.** If Obsidian is closed, it
   launches it detached with the store's vault and waits. Do not ask the user
   to start it first; ask only if `synapse vault verify` still fails.
 - **Use forward slashes in paths you pass to bash** (`C:/Obsidian/...`). In
