@@ -2,8 +2,8 @@
 
 ## 2.7.3 — 2026-11-08 — On-exit extraction works in every permission mode
 
-No store schema change; update with `claude plugin marketplace update
-synapse` and `claude plugin update synapse@synapse`, then start new sessions.
+No store schema change; update with `claude plugin update synapse@synapse`
+(it refreshes the marketplace itself), then start new sessions.
 
 ### Fixed
 
