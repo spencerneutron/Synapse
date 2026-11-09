@@ -4,6 +4,8 @@
 
 Synapse is a Claude Code plugin that gives every session a working method and a memory. The method is a planning and delegation loop: the main session plans, briefs role sub-agents for anything beyond a handful of calls, and ends each turn with a message that meets a fixed contract. The memory is a local store that archives every session, distils it into Markdown notes (in an Obsidian vault or a plain folder) and a vector index, and brings the relevant parts back at the start of the next session, in this project or another. Hooks enforce the method and the `synapse` CLI does the bookkeeping, so the model's attention stays on the work.
 
+The project's timeline since early 2026, and why its versions move fast, is in [docs/HISTORY.md](docs/HISTORY.md).
+
 Install, then provision and check from a new session:
 
 ```bash
@@ -114,5 +116,6 @@ Synapse runs on your machine and keeps what it stores there: SQLite, a notes vau
 - [docs/architecture.md](docs/architecture.md): session lifecycle, components including the hooks, operating principles, [repository layout](docs/architecture.md#repository-layout).
 - [docs/design/](docs/design/): design records.
 - [CHANGELOG.md](CHANGELOG.md): what changed in each version.
+- [docs/HISTORY.md](docs/HISTORY.md): development timeline since early 2026, and why versions move fast.
 - [AGENTS.md](AGENTS.md): working on this repository.
 - [evals/](evals/): how the plugin is measured.
