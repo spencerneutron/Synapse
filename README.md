@@ -87,7 +87,7 @@ Every push and pull request runs the same checks a maintainer runs locally, on t
 
 | Area | What runs | Where | Status |
 |------|-----------|-------|--------|
-| Tests | `python3 -m unittest discover -s tests` and the instruction-size check `python3 tools/build_context.py --check` | Ubuntu, macOS and Windows, each on Python 3.11 and 3.13 | [![tests](https://img.shields.io/github/check-runs/spencerneutron/Synapse/main?nameFilter=test&label=tests&style=flat-square)](https://github.com/spencerneutron/Synapse/actions/workflows/ci.yml) |
+| Tests | `python3 -m unittest discover -s tests` and the instruction-size check `python3 tools/build_context.py --check` | Ubuntu, macOS and Windows, each on Python 3.11 and 3.13 | [![tests](https://img.shields.io/github/check-runs/spencerneutron/Synapse/main?nameFilter=tests&label=tests&style=flat-square)](https://github.com/spencerneutron/Synapse/actions/workflows/ci.yml) |
 | Hygiene | No personal paths or usernames outside `examples/` and `tests/`; no file names Windows cannot check out | Ubuntu | [![hygiene](https://img.shields.io/github/check-runs/spencerneutron/Synapse/main?nameFilter=hygiene&label=hygiene&style=flat-square)](https://github.com/spencerneutron/Synapse/actions/workflows/ci.yml) |
 | Plugin manifest | `claude plugin validate . --strict` with the released Claude Code CLI | Ubuntu, Node 22 | [![manifest](https://img.shields.io/github/check-runs/spencerneutron/Synapse/main?nameFilter=validate&label=manifest&style=flat-square)](https://github.com/spencerneutron/Synapse/actions/workflows/ci.yml) |
 
