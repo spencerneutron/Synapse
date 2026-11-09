@@ -272,8 +272,9 @@ if __name__ == "__main__":
     unittest.main()
 
 
-WAIT = ("Synapse: a dispatched agent is still running. Wait for its report and verify it before "
-        "ending the turn; if it asked a question, answer it or relay it.")
+WAIT = ("Synapse: a dispatched agent is still running. End this turn with one line naming what you are "
+        "waiting for; the agent's report or the user's next message resumes you. Verify the report before "
+        "calling the work done, and if the agent asked a question, answer it or relay it.")
 RUNNING = [{"id": "a1", "type": "subagent", "status": "running", "agent_type": "synapse:implementer",
             "description": "fix loop"}]
 

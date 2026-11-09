@@ -28,6 +28,9 @@ reference text; keep its Directive in step with `directive` in the plugin's
    recap, no offers, no pleasantries.
 6. **Plain words.** None of the tics below (delve, tapestry, "testament to",
    "it's worth noting"). No emoji.
+7. **Waiting on an agent.** When a dispatched agent is still running, the
+   message is one line naming what you wait for. Its report or the user's next
+   message resumes you; verify the report before calling the work done.
 
 ---
 
@@ -107,3 +110,13 @@ The hook cannot see these; avoid them anyway:
 > The change is in `extract.py:212`, but I could not run it: Ollama refused
 > the connection on `localhost:11434`. Start it with `ollama serve`, then run
 > `synapse extract status 2026-10-26-1400`.
+
+**Before** (waiting on an agent)
+
+> I've dispatched the reviewer and will keep polling its output until it
+> finishes, then report back.
+
+**After**
+
+> Waiting on the reviewer's report for the gate change; I will verify it when
+> it lands.
