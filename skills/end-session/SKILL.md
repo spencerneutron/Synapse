@@ -143,7 +143,7 @@ After verification succeeds, learn the mode with `synapse extract review
 > "Archive complete. Recommend running `/synapse:extract-session 2026-04-23-1645`
 > to promote this session's decisions and patterns into the vault and
 > embed it for recall. Skip if this was a throwaway session or if
-> Obsidian isn't running."
+> `synapse vault verify` fails."
 
 If the `accept` check fails, fall back to the recommendation. Extraction can
 also be run later; there is no expiration.

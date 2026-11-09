@@ -56,7 +56,7 @@ Working files live in the project, under `.claude-work/current/`:
 
 Archives, the vector DB, and the vault belong to the active Synapse store.
 Run `synapse where` to see them; never hard-code those paths.
-The store's Obsidian vault holds durable knowledge; `/synapse:extract-session`
+The store's notes vault holds durable knowledge; `/synapse:extract-session`
 writes it as summaries, never raw logs or transient output.
 
 - Read `PLAN.md` once at session start, or when direction is unclear.

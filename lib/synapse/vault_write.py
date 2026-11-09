@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-vault_write.py — write structured notes into an Obsidian vault via the CLI.
+vault_write.py — write structured notes into the store's vault (an Obsidian vault, or a plain folder).
 
 Subcommands:
-  verify                    Check Obsidian CLI is reachable and folders exist.
+  verify                    Check the vault is reachable (Obsidian CLI, or the notes folder) and folders exist.
   create-note               Create a vault note from a Markdown file with front
                             matter (--from-md <path>, preferred), a JSON spec
                             (--from-file <path>), or JSON on stdin.
   note-exists <folder> <name>
                             Check if a note exists in a folder (exit 0 yes, 1 no).
-  search <query>            Wrap `obsidian search`, return matching notes as JSON.
+  search <query>            Wrap `obsidian search`, return matching notes as JSON (Obsidian only).
 
 JSON spec for create-note:
 {
@@ -42,6 +42,7 @@ applies_to: [windows, shell]
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -67,6 +68,8 @@ import paths  # noqa: E402
 VAULT_NAME = paths.DEFAULT_VAULT
 # The store's configured vault_path, if any; it wins over the Obsidian CLI.
 VAULT_DIR: Path | None = None
+# The store's `notes` mode: "obsidian", or "folder" (a plain folder; the obsidian CLI is never used).
+NOTES_MODE = "obsidian"
 
 FOLDERS = {
     "session": "Sessions",
@@ -114,6 +117,10 @@ def launch_command() -> list[str]:
     return ["open", "-a", "Obsidian"]
 
 
+def folder_mode() -> bool:
+    return NOTES_MODE == "folder"
+
+
 def ensure_obsidian_running() -> None:
     """Launch Obsidian detached if it isn't running (macOS and Windows).
 
@@ -125,7 +132,7 @@ def ensure_obsidian_running() -> None:
     session instead, so it outlives this script. Checked once per process.
     """
     global _obsidian_checked
-    if _obsidian_checked or sys.platform not in ("darwin", "win32"):
+    if folder_mode() or _obsidian_checked or sys.platform not in ("darwin", "win32"):
         return
     _obsidian_checked = True
     if obsidian_running() is not False:   # running, or the check can't tell: let the CLI try
@@ -151,6 +158,9 @@ def ensure_obsidian_running() -> None:
 
 def run_obsidian(*args: str, capture: bool = True) -> subprocess.CompletedProcess:
     """Invoke the obsidian CLI. Always pins the vault name."""
+    if folder_mode():
+        sys.exit('error: this store keeps notes in a plain folder (notes = "folder"), '
+                 "so the obsidian CLI is not used.")
     if not shutil.which("obsidian"):
         sys.exit(
             "error: 'obsidian' command not found on PATH.\n"
@@ -193,10 +203,16 @@ def vault_path() -> Path:
     if _vault_path_cache is not None:
         return _vault_path_cache
     if VAULT_DIR is not None:
+        if folder_mode() and VAULT_DIR.is_absolute() and not VAULT_DIR.exists():
+            sys.exit(f"error: the notes folder {VAULT_DIR} does not exist. run `synapse vault verify` "
+                     f"to create the default folder, or fix vault_path in {paths.config_path()}")
         if not VAULT_DIR.is_absolute() or not VAULT_DIR.is_dir():
             sys.exit(f"error: the configured vault_path {VAULT_DIR} is not an existing absolute "
                      f"folder. fix vault_path in {paths.config_path()}")
         path = VAULT_DIR
+    elif folder_mode():
+        sys.exit(f"error: this store keeps notes in a plain folder but has no folder: set vault_path "
+                 f"or notes under [stores.<store>] in {paths.config_path()}")
     else:
         result = run_obsidian("vault", "info=path")
         out = (result.stdout or "").strip() if result.returncode == 0 else ""
@@ -538,7 +554,10 @@ views:
 def ensure_artifacts_base(root: Path) -> bool:
     """Create the Obsidian Base listing Session notes that carry artifacts, at
     the vault root. Only when absent: an existing file (maybe edited) is never
-    touched. Returns True when it was created."""
+    touched. Returns True when it was created. Obsidian only: a plain
+    folder gets no Base file."""
+    if folder_mode():
+        return False
     target = Path(root) / ARTIFACTS_BASE_NAME
     try:
         with open(target, "x", encoding="utf-8", newline="\n") as fh:
@@ -553,13 +572,42 @@ def ensure_artifacts_base(root: Path) -> bool:
 
 # ---------- Subcommands ----------
 
+def verify_folder() -> int:
+    """Folder mode: check the notes folder, creating it only when it is the
+    default one inside the store, and add any missing typed subfolder."""
+    root = VAULT_DIR
+    if root is None or not root.is_absolute():
+        sys.exit(f"error: the notes folder {root} is not an absolute path. "
+                 f"fix vault_path under [stores.<store>] in {paths.config_path()}")
+    if not root.exists():
+        default = paths.resolve().store_path / "vault"
+        if not paths.same_path(root, default):
+            sys.exit(f"error: the notes folder {root} does not exist. create it, or fix "
+                     f"vault_path under [stores.<store>] in {paths.config_path()}")
+        root.mkdir(parents=True, exist_ok=True)
+    if not root.is_dir():
+        sys.exit(f"error: the notes folder {root} is not a folder. "
+                 f"fix vault_path under [stores.<store>] in {paths.config_path()}")
+    for name in FOLDERS.values():
+        (root / name).mkdir(exist_ok=True)
+    if not os.access(root, os.W_OK):
+        sys.exit(f"error: the notes folder {root} is not writable.")
+    print(f"notes folder: {root}")
+    print(f"folders: {', '.join(FOLDERS.values())}")
+    print("verify OK")
+    return 0
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
-    """Confirm Obsidian CLI is reachable and we're connected to the right vault.
+    """Confirm Obsidian CLI is reachable and we're connected to the right vault
+    (folder mode: check the notes folder instead; no CLI).
 
     Folders are not created here. Obsidian creates folders implicitly when a
     note is written into a path that doesn't yet exist, so the four typed
     folders (Sessions, Decisions, Patterns, Projects) will materialize as
     notes get created in them. There's no folder:create command in the CLI."""
+    if folder_mode():
+        return verify_folder()
     result = run_obsidian("vault", "info=name")
     if result.returncode != 0:
         sys.exit(
@@ -683,7 +731,11 @@ def cmd_note_exists(args: argparse.Namespace) -> int:
 
 
 def cmd_search(args: argparse.Namespace) -> int:
-    """Wrap obsidian search, emit results as JSON."""
+    """Wrap obsidian search, emit results as JSON. Obsidian only."""
+    if folder_mode():
+        print(f'error: search is Obsidian-only; this store keeps notes in a plain folder. '
+              f'use `synapse recall "{args.query}"`', file=sys.stderr)
+        return 1
     result = run_obsidian("search", f"query={args.query}", "format=json")
     if result.returncode != 0:
         sys.exit(f"error: obsidian search failed: {result.stderr.strip()}")
@@ -695,14 +747,14 @@ def cmd_search(args: argparse.Namespace) -> int:
 # ---------- Entry point ----------
 
 def main(argv: list[str] | None = None) -> int:
-    global VAULT_NAME, VAULT_DIR
+    global VAULT_NAME, VAULT_DIR, NOTES_MODE
     r = paths.resolve()
-    VAULT_NAME, VAULT_DIR = r.vault, r.vault_path
+    VAULT_NAME, VAULT_DIR, NOTES_MODE = r.vault, r.vault_path, r.notes
     parser = argparse.ArgumentParser(prog="synapse vault", description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_verify = sub.add_parser("verify",
-                              help="check Obsidian CLI works and folders exist")
+                              help="check the vault (Obsidian CLI, or the notes folder) works and folders exist")
     p_verify.set_defaults(func=cmd_verify)
 
     p_create = sub.add_parser("create-note",
@@ -728,7 +780,7 @@ def main(argv: list[str] | None = None) -> int:
     p_exists.set_defaults(func=cmd_note_exists)
 
     p_search = sub.add_parser("search",
-                              help="wrap obsidian search; emit results as JSON")
+                              help="wrap obsidian search; emit results as JSON (Obsidian only)")
     p_search.add_argument("query")
     p_search.set_defaults(func=cmd_search)
 

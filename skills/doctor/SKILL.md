@@ -1,6 +1,6 @@
 ---
 name: doctor
-description: Read-only health and conflict check for Synapse — runtime (Python, venv, vector DB, Ollama, Obsidian), where data resolves, and conflicts with the user's existing setup (same-named skills, competing rules, other Stop, PreCompact, PreToolUse, PostToolUse, and SessionEnd hooks, the auto-compact window, output styles, disabled hooks, old installs, unignored working files). Use after install, when Synapse misbehaves, or before changing the user's Claude Code setup.
+description: Read-only health and conflict check for Synapse — runtime (Python, venv, vector DB, Ollama, notes), where data resolves, and conflicts with the user's existing setup (same-named skills, competing rules, other Stop, PreCompact, PreToolUse, PostToolUse, and SessionEnd hooks, the auto-compact window, output styles, disabled hooks, old installs, unignored working files). Use after install, when Synapse misbehaves, or before changing the user's Claude Code setup.
 allowed-tools: Bash(synapse doctor *), Bash(synapse where *)
 ---
 
@@ -46,7 +46,7 @@ each conflict into a finding and a recommendation the user decides on.
 | agent-models | `CLAUDE_CODE_SUBAGENT_MODEL` / `_FORCE` in the environment or any settings `env` | A forced sub-agent model silently overrides every role agent's model |
 | old-install | `kb/scripts`, `.claude-work/archive`, `.claude-work/kb` in the project and parents | A V1/v1.5 memory system running beside the plugin |
 | gitignore | the project's git repo | `.claude-work/` working files would be committed |
-| python, venv, vectors, ollama, obsidian, vault, vault_path | Python, venv, `vectors.db` and its schema version, Ollama, `obsidian` CLI, the vault | Memory features degrade without them; an old schema needs `synapse setup` |
+| python, venv, vectors, ollama, obsidian, vault, vault_path, notes | Python, venv, `vectors.db` and its schema version, Ollama, `obsidian` CLI, the vault (only the active mode's checks) | Memory features degrade without them; an old schema needs `synapse setup` |
 | triggers | `[recall]` and `[extract]` in `config.toml` | Whether automatic recall hints and the pending-extraction reminder are on, and the hint threshold |
 | pending | `<store>/archive/<project>/` without a `.processed` marker | Archived sessions recall cannot find until they are extracted |
 | teams | each `[shared.<team>]`: its notes folder, last sync, unpushed commits, sync-conflict copies | A team that stopped syncing or has unpushed notes leaves teammates without them |

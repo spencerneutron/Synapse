@@ -19,7 +19,7 @@ install.
 | bash | `bash --version` | macOS and Linux have it; on Windows, Claude Code uses Git Bash |
 | Python 3.11+ | `python3 --version` (Windows: `python --version`) | Synapse picks the first 3.11+ it finds |
 | Ollama + `nomic-embed-text` | `ollama list` | Needed for recall and extraction |
-| Obsidian with its CLI on `PATH` | `obsidian --help` | Needed for vault notes |
+| Obsidian with its CLI on `PATH` (Obsidian mode only) | `obsidian --help` | Folder mode (`notes = "folder"`) needs nothing |
 | Network access to GitHub | `git ls-remote https://github.com/spencerneutron/Synapse` | The repo is public; installs and updates fetch it from GitHub |
 | git (only for a team shared through git) | `git --version` | Not needed for a single user or a synced-folder team |
 
@@ -104,6 +104,17 @@ as the answer. A generic answer means the rules did not load: check step 1's
 hook settings.
 
 ## 4. Provision (`/synapse:setup`)
+
+Before running setup, ask the user where notes should live: in **Obsidian**
+(wikilinks, graph view, the app's search) or in a **plain folder** (the same
+Markdown notes, no extra app; recall, extraction, facts and team sharing work
+the same). Pass the answer as `synapse setup --notes obsidian` or `--notes
+folder`. With no preference, omit the flag: setup then asks in a terminal, or
+from the Bash tool picks Obsidian if its CLI or config file is found, else a
+folder. The choice is one line in `config.toml` (`notes` under
+`[stores.<name>]`), applied only when setup creates the file; an existing
+config is left alone, and a differing `--notes` prints a to-do line. It can be
+changed later; the notes are plain files either way.
 
 Run `/synapse:setup`, or `synapse setup` from the Bash tool. It creates, under
 `~/.claude/synapse/` only:
@@ -281,7 +292,7 @@ successful archive, the hook starts a detached headless `claude -p` that runs
 $0.20 per session with a small archive, more with a large one. It uses your
 normal Claude login, runs with hooks off, and never blocks the exit. Its log,
 with the JSON result and `total_cost_usd`, is `<home>/state/extract-<id>.log`.
-Needs `claude` on PATH and, as for any extraction, Ollama and Obsidian running with the store's vault open (the extraction stops if `synapse vault verify` fails). SessionEnd
+Needs `claude` on PATH and, as for any extraction, Ollama running and, in Obsidian mode, Obsidian running with the store's vault open (the extraction stops if `synapse vault verify` fails). SessionEnd
 never runs after a crash or a killed terminal, so nothing starts then.
 
 ## Share with a team (optional)
@@ -348,7 +359,7 @@ background sync off.
 | `~/.claude/synapse/` | Config, stores (archives + `vectors.db`), venv, `state/` (which hints a session has seen, pruned after 7 days; the nudge hook's call counters, one small file per session, pruned after a day; each team's last sync), `shared/<team>/` (a git team's clone and every team's index) | `synapse setup`, `archive`, `extract`, `migrate`, `shared`, the hooks |
 | A folder team's synced folder | `Decisions/`, `Patterns/`, `Facts/`, `Retracted/`, `.synapse-team.toml` | `synapse shared init`, `/synapse:share`, `synapse shared retract` |
 | `<project>/.claude-work/current/` | `PLAN.md`, `EXECUTION.md` | The agent, during structured work |
-| The store's Obsidian vault | `Sessions/`, `Decisions/`, `Patterns/`, `Facts/`, `Projects/` notes | `/synapse:extract-session` |
+| The store's notes vault | `Sessions/`, `Decisions/`, `Patterns/`, `Facts/`, `Projects/` notes | `/synapse:extract-session` |
 
 `~/.claude/synapse/` moves with `CLAUDE_CONFIG_DIR`, or anywhere with
 `SYNAPSE_HOME`.
@@ -402,4 +413,4 @@ too.
 | `cannot reach Ollama` | Ollama is not running | `ollama serve` |
 | A team's notes never arrive | The background sync fails (credentials, network) | `synapse shared sync <team>` shows the git error; `/synapse:doctor` lists each team |
 | `conflict copy, not indexed` | The sync service saved two versions of a note | Merge the copy into the original, then delete the copy |
-| `is Obsidian running with the 'Synapse' vault open?` | Obsidian closed or another vault open | Open the store's vault in Obsidian |
+| `is Obsidian running with the 'Synapse' vault open?` (Obsidian mode) | Obsidian closed or another vault open | Open the store's vault in Obsidian |

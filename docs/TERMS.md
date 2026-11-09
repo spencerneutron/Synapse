@@ -11,7 +11,7 @@ without warranty of any kind, and limits the authors' liability.
   share notes with, and whether to push notes to a git remote. You are
   responsible for the content you share with a team.
 - **Third-party software.** Synapse uses Claude Code, Python, `sqlite-vec`,
-  Ollama, Obsidian and git. Each has its own terms. Your use of Claude Code and
+  Ollama, git and, optionally, Obsidian. Each has its own terms. Your use of Claude Code and
   Anthropic's models is covered by Anthropic's terms, not these.
 - **Bundled code.** `lib/py.sh` is adapted from Apache-2.0 code; see
   [NOTICE](../NOTICE).

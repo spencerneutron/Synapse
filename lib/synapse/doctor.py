@@ -4,7 +4,7 @@ doctor.py — read-only health and conflict report for a Synapse install.
 
   synapse doctor [--json] [--project-dir DIR]
 
-Checks the runtime (Python, venv, DB, Ollama, the obsidian CLI), where data
+Checks the runtime (Python, venv, DB, Ollama, the obsidian CLI or the notes folder), where data
 resolves, and the conflicts INSTALL.md lists: same-named skills, competing
 always-on rules, other Stop, PreCompact, PreToolUse, PostToolUse and SessionEnd hooks, the
 auto-compact window (and where Synapse's marks land for it), an output style,
@@ -83,19 +83,42 @@ def check_ollama() -> tuple[bool, bool]:
     return True, any(m.split(":")[0] == EMBEDDING_MODEL for m in models)
 
 
+def obsidian_config_file() -> Path:
+    """Obsidian's own config file, which lists its vaults."""
+    if sys.platform == "darwin":
+        return Path("~/Library/Application Support/obsidian/obsidian.json").expanduser()
+    if sys.platform == "win32":
+        return Path(os.environ.get("APPDATA", "")) / "obsidian" / "obsidian.json"
+    return Path("~/.config/obsidian/obsidian.json").expanduser()
+
+
 def obsidian_vaults() -> dict[str, str]:
     """Vault folder name -> path, from Obsidian's own vault list."""
-    if sys.platform == "darwin":
-        cfg = Path("~/Library/Application Support/obsidian/obsidian.json").expanduser()
-    elif sys.platform == "win32":
-        cfg = Path(os.environ.get("APPDATA", "")) / "obsidian" / "obsidian.json"
-    else:
-        cfg = Path("~/.config/obsidian/obsidian.json").expanduser()
+    cfg = obsidian_config_file()
     try:
         vaults = json.loads(cfg.read_text(encoding="utf-8")).get("vaults", {})
     except (OSError, ValueError):
         return {}
     return {Path(v["path"]).name: v["path"] for v in vaults.values() if v.get("path")}
+
+
+def check_notes_folder(rep: Report, r: paths.Resolved) -> None:
+    """Folder mode: the notes folder replaces the obsidian and vault checks."""
+    vp = r.vault_path
+    if vp is None or not (vp.is_absolute() and vp.is_dir()):
+        rep.add("error", "notes", f"notes folder {tilde(vp)} is not an existing absolute folder",
+                f"run `synapse vault verify` for the default folder, or fix vault_path under "
+                f"[stores.{r.store}] in {tilde(paths.config_path())}")
+    elif not os.access(vp, os.W_OK):
+        rep.add("error", "notes", f"notes folder {tilde(vp)} is not writable",
+                f"fix its permissions, or vault_path under [stores.{r.store}] in {tilde(paths.config_path())}")
+    else:
+        missing = [f for f in paths.VAULT_FOLDERS if not (vp / f).is_dir()]
+        if missing:
+            rep.add("warn", "notes", f"notes folder {tilde(vp)} lacks {', '.join(missing)}",
+                    "run: synapse vault verify")
+        else:
+            rep.add("ok", "notes", f"notes folder {tilde(vp)}")
 
 
 def check_runtime(rep: Report, r: paths.Resolved) -> None:
@@ -169,6 +192,9 @@ def check_runtime(rep: Report, r: paths.Resolved) -> None:
     else:
         rep.add("ok", "ollama", f"{EMBEDDING_MODEL} available")
 
+    if r.notes == "folder":
+        check_notes_folder(rep, r)
+        return
     if shutil.which("obsidian"):
         rep.add("ok", "obsidian", "obsidian CLI on PATH")
     else:

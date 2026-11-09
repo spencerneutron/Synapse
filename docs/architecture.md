@@ -95,7 +95,7 @@ it harvests finished agents' results from disk before anything is relaunched.
 | Resolver | `lib/synapse/paths.py` | The only code that decides locations: home, store, project, archive, DB, vault |
 | Store | `~/.claude/synapse/stores/<store>/archive/<project>/` | Canonical session history |
 | Store | `~/.claude/synapse/stores/<store>/vectors.db` | Schema v2: sqlite-vec vectors with project/type/status metadata filtered inside the search, an FTS5 keyword index, `nomic-embed-text` via Ollama, cosine distance, store-relative source paths, supersession status |
-| Store | The store's Obsidian vault (default `Synapse`) | Flat folders: Sessions, Decisions, Patterns, Facts, Projects |
+| Store | The store's notes vault (an Obsidian vault, default `Synapse`, or a plain folder) | Flat folders: Sessions, Decisions, Patterns, Facts, Projects |
 | Team | A team's notes folder (a clone under `~/.claude/synapse/shared/<team>/`, or a synced folder) | `Decisions/`, `Patterns/`, `Facts/`, `Retracted/`: the scrubbed notes members share |
 | Team | `~/.claude/synapse/shared/<team>/vectors.db` | Each member's local index of the team folder, rebuilt by content hash; never shared |
 | Evals | `evals/`, `tools/run-bench.sh`, `tools/eval-report.py` | A `claude plugin eval` suite run with and without Synapse; run on demand, never in CI |
@@ -276,7 +276,7 @@ flowchart TD
 
     subgraph M["Store · synapse where"]
         ARC[("archive/PROJECT/<br/>PLAN_, EXECUTION_, NOTES_, ARTIFACTS_")]:::store
-        VT[("Obsidian vault<br/>Sessions · Decisions · Patterns · Facts<br/>the Session note carries the Artifact links")]:::store
+        VT[("Notes vault<br/>Sessions · Decisions · Patterns · Facts<br/>the Session note carries the Artifact links")]:::store
         DB[("vectors.db<br/>sqlite-vec + nomic-embed-text<br/>chunk text, embedding, full-text index")]:::store
         BF["synapse backfill · migrate<br/>older stores and vaults"]:::cli
     end
