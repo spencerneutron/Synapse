@@ -85,6 +85,7 @@
     "Size to the ask: one to three sentences for a quick question; headings only for three or more distinct parts",
     "Specifics over adjectives: path:line, numbers with units, exact commands",
     "End on substance: at most one concrete next step or one question; no recap, no offers, no pleasantries",
-    "Plain words: no tics (delve, tapestry, testament to, it's worth noting), no emoji"
+    "Plain words: no tics (delve, tapestry, testament to, it's worth noting), no emoji",
+    "Waiting on an agent: with a dispatched agent running, one line naming what you wait for; its report or the user's next message resumes you."
   ]
 }

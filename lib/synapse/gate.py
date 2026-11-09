@@ -20,7 +20,8 @@ gate.py — hook gates for the main session, where a reminder line was not enoug
    is true; below 90% only when .claude-work/current/ exists.
 3. Wait for agents (Stop, after 2). When the Stop input's background_tasks
    lists a sub-agent still running, block once per prompt asking the session
-   to wait for its report and verify it. [gate] wait_for_agents switches it.
+   to end the turn with one line naming what it waits for, then verify the
+   report when it resumes. [gate] wait_for_agents switches it.
 
 [gate] enabled, min_context, checkpoint and wait_for_agents switch them; a project's
 .synapse.toml may override them. State sits next to context-<sid>.json:
@@ -46,8 +47,9 @@ DENY = ("Synapse gate: {n} hands-on calls in this step at about {ctx} context (e
         "(goal, files, failing command, done condition, attempt limit) or synapse:scout / "
         "synapse:researcher for searches, then read the report. This gate lifts after a dispatch "
         "or on the next prompt.")
-WAIT = ("Synapse: a dispatched agent is still running. Wait for its report and verify it before "
-        "ending the turn; if it asked a question, answer it or relay it.")
+WAIT = ("Synapse: a dispatched agent is still running. End this turn with one line naming what you are "
+        "waiting for; the agent's report or the user's next message resumes you. Verify the report before "
+        "calling the work done, and if the agent asked a question, answer it or relay it.")
 CHECKPOINT = ("Synapse: the context is about {ctx} tokens. Run /synapse:checkpoint now (rewrite "
               "## Resume in EXECUTION.md, append to NOTES.md, `synapse checkpoint --stamp`), then "
               "finish your message.")

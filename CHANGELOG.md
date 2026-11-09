@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.7.4 — 2026-11-08 — The wait message says what to do
+
+No store schema change; update with `claude plugin update synapse@synapse`
+and start new sessions.
+
+### Changed
+
+- **The Stop hook's hold while a sub-agent runs says what to do.** It now
+  asks for a one-line message naming what the session waits for, and says the
+  agent's report or the user's next message resumes it, instead of "wait for
+  its report". Sessions had read "wait" literally and started background
+  polling shells (an `until grep` loop on the agent's output) that the
+  harness never needed, since it resumes the model itself when the agent
+  reports. The emission contract gains the same rule (Directive item 7 and a
+  line in the hook's compact directive).
+
 ## 2.7.3 — 2026-11-08 — On-exit extraction works in every permission mode
 
 No store schema change; update with `claude plugin update synapse@synapse`
