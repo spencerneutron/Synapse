@@ -16,7 +16,8 @@ No store schema change; existing configs keep Obsidian mode. Update with
   `config.toml`, it uses the flag; otherwise it asks once in a terminal;
   otherwise it picks Obsidian if the CLI or Obsidian's config file is present,
   else a folder. An existing config is not changed; a differing `--notes`
-  prints a to-do line.
+  prints a to-do line. Install (INSTALL.md step 4 and `/synapse:setup`)
+  asks the user which and passes the answer as `--notes`.
 
 ### Changed
 

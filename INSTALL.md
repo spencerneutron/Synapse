@@ -105,6 +105,17 @@ hook settings.
 
 ## 4. Provision (`/synapse:setup`)
 
+Before running setup, ask the user where notes should live: in **Obsidian**
+(wikilinks, graph view, the app's search) or in a **plain folder** (the same
+Markdown notes, no extra app; recall, extraction, facts and team sharing work
+the same). Pass the answer as `synapse setup --notes obsidian` or `--notes
+folder`. With no preference, omit the flag: setup then asks in a terminal, or
+from the Bash tool picks Obsidian if its CLI or config file is found, else a
+folder. The choice is one line in `config.toml` (`notes` under
+`[stores.<name>]`), applied only when setup creates the file; an existing
+config is left alone, and a differing `--notes` prints a to-do line. It can be
+changed later; the notes are plain files either way.
+
 Run `/synapse:setup`, or `synapse setup` from the Bash tool. It creates, under
 `~/.claude/synapse/` only:
 
@@ -122,11 +133,6 @@ session's model into `~/.claude/settings.json` after copying it to
 Then it lists what is still missing. *Ask* before pulling the embedding
 model (`ollama pull nomic-embed-text`, about 270 MB). Never install Ollama or
 Obsidian for the user; point them to it.
-
-When it creates `config.toml`, it picks where notes live: `--notes obsidian|folder`,
-else one question in a terminal, else Obsidian if its CLI or config file is
-found, otherwise a plain folder. An existing config is left alone; if `--notes`
-differs, setup prints a to-do line to set `notes` in `[stores.<name>]`.
 
 **Expected:** the last lines read `memory features ready` (or a short list of
 what is missing) and `next: synapse doctor`.
