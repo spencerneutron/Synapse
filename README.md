@@ -1,5 +1,7 @@
 # Synapse
 
+[![ci](https://img.shields.io/github/actions/workflow/status/spencerneutron/Synapse/ci.yml?branch=main&label=ci&style=flat-square)](https://github.com/spencerneutron/Synapse/actions/workflows/ci.yml) [![plugin](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fspencerneutron%2FSynapse%2Fmain%2F.claude-plugin%2Fplugin.json&query=%24.version&label=plugin&style=flat-square)](CHANGELOG.md) [![license](https://img.shields.io/github/license/spencerneutron/Synapse?style=flat-square)](LICENSE)
+
 Synapse is a Claude Code plugin that gives every session a working method and a memory. The method is a planning and delegation loop: the main session plans, briefs role sub-agents for anything beyond a handful of calls, and ends each turn with a message that meets a fixed contract. The memory is a local store that archives every session, distils it into Markdown notes (in an Obsidian vault or a plain folder) and a vector index, and brings the relevant parts back at the start of the next session, in this project or another. Hooks enforce the method and the `synapse` CLI does the bookkeeping, so the model's attention stays on the work.
 
 Install, then provision and check from a new session:
@@ -78,6 +80,18 @@ The context marks sit on the auto-compaction point. `synapse setup --autocompact
 ## Cost
 
 Model turns cost money; hooks and the CLI run locally and cost nothing. Each main-session call re-reads the whole context, so a long hands-on loop in the main session is the expensive pattern, and the gate exists for that: a role runs the loop in a fresh, small context and sends back a report. `tools/context-cost.py` reads Claude Code transcripts and prints token and cost numbers per session; `tools/emission-stats.py` counts Stop-hook verdicts per turn.
+
+## Checks
+
+Every push and pull request runs the same checks a maintainer runs locally, on the three platforms Claude Code supports. The evals under `evals/` run real Claude sessions and cost money, so they run on request, not in CI.
+
+| Area | What runs | Where | Status |
+|------|-----------|-------|--------|
+| Tests | `python3 -m unittest discover -s tests` and the instruction-size check `python3 tools/build_context.py --check` | Ubuntu, macOS and Windows, each on Python 3.11 and 3.13 | [![tests](https://img.shields.io/github/check-runs/spencerneutron/Synapse/main?nameFilter=test&label=tests&style=flat-square)](https://github.com/spencerneutron/Synapse/actions/workflows/ci.yml) |
+| Hygiene | No personal paths or usernames outside `examples/` and `tests/`; no file names Windows cannot check out | Ubuntu | [![hygiene](https://img.shields.io/github/check-runs/spencerneutron/Synapse/main?nameFilter=hygiene&label=hygiene&style=flat-square)](https://github.com/spencerneutron/Synapse/actions/workflows/ci.yml) |
+| Plugin manifest | `claude plugin validate . --strict` with the released Claude Code CLI | Ubuntu, Node 22 | [![manifest](https://img.shields.io/github/check-runs/spencerneutron/Synapse/main?nameFilter=validate&label=manifest&style=flat-square)](https://github.com/spencerneutron/Synapse/actions/workflows/ci.yml) |
+
+The local equivalents are listed in [AGENTS.md](AGENTS.md) under "Test".
 
 ## Security and data
 

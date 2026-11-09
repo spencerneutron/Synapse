@@ -36,6 +36,14 @@ jobs:
       - name: Unit tests
         run: python -m unittest discover -s tests -v
 
+  tests:
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: All test matrix jobs passed
+        run: test "${{ needs.test.result }}" = "success"
+
   hygiene:
     runs-on: ubuntu-latest
     steps:
