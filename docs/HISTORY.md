@@ -1,0 +1,34 @@
+# Synapse development history
+
+This page is a timeline of how Synapse came to be, for readers who judge a project by its commit log. The git history starts on 2026-10-26, but the work is older: the planning framework and the memory mechanics were built and used in earlier sessions before they were consolidated into this repository. Version numbers track slices of a written plan ([docs/design/v2.md](design/v2.md)), not calendar time, so a high number early in the repository's life reflects how the plan was cut, not how long the code has existed.
+
+Dates before 2026-10-26 are the maintainer's account; no commit backs them. Dates from 2026-10-26 on come from the git log, the tags, and the CHANGELOG, in the maintainer's local time zone.
+
+## Timeline
+
+| Date | What | Where to look |
+|------|------|---------------|
+| Early 2026 | The session framework begins: `PLAN.md` and `EXECUTION.md` files that structure a multi-step task and survive between turns. This precedes the memory work by a few months (the maintainer's account). | `skills/plan-session/`, `templates/` |
+| 2026-04-23 | The earliest surviving planning files: the `PLAN.md` and `EXECUTION.md` the memory work started from (the maintainer's account). | `templates/` |
+| 2026-05-01 | The memory project starts in earnest in the maintainer's chat session "Building a Claude Code knowledge base with vector DB and Obsidian". In one day it settled the shape that still holds: the archive as the source both pipelines read; SQLite with sqlite-vec as the store; `nomic-embed-text` through Ollama so nothing leaves the machine; the Obsidian CLI for vault writes and plain disk reads for embedding; four note types (Session, Decision, Pattern, project hub) with frontmatter; chunking at heading boundaries with a breadcrumb; three skills (`/extract-session`, `/recall`, and a step added to `/end-session`); and the "Local Knowledge Recall" rule that recall results are navigation hints, not context. The first script, `extract.py`, was drafted and its chunking tested that day. | [docs/architecture.md](architecture.md), `lib/synapse/extract.py` |
+| 2026, before 2026-10-26 | The V1 harness (CHANGELOG "1.0, unreleased"): `CLAUDE.md` and `AGENTS.md` instructions, the `/plan-session` and `/end-session` skills, the `/recall` and `/extract-session` memory skills with their scripts, `workflow-recovery` and `language-sweep`, and an emission contract with a Stop hook plus multi-agent wave rules. It ran day to day and was never released. | [CHANGELOG.md](../CHANGELOG.md#10--2026-unreleased) |
+| 2026-10-26 | The repository begins. The same day: v1.5 consolidates V1 into one portable repo; v1.6.0 packages it as a user-scope Claude Code plugin ([design](design/packaging.md)); v1.6.1 follows; the MIT license is added; then V2 slice 1 (2.0.0, retrieval quality), slice C (2.1.0, role agents), slice D (2.2.0 and 2.2.1, deterministic triggers), slice E (2.3.0, shared memory for a small team), and slice A (the eval bench, unversioned). | `git log`, [CHANGELOG.md](../CHANGELOG.md), [docs/design/v2.md](design/v2.md) |
+| 2026-10-30 | 2.3.1: the implementer runs the project's documented checks; hard eval cases added. Docs brought up to date. | CHANGELOG 2.3.1 |
+| 2026-11-02 | 2.3.2: extraction on Windows without extra turns, fixing issues #1 to #5 (opened from 2026-10-29). Merged as PR #6. The first git tag (`synapse--v2.3.2`). | Issues #1 to #5, PR #6 |
+| 2026-11-06 | 2.4.0: Fact notes (#7) and `create-note` stays inside the vault (#8). PR #12 (candidate check against prior notes, #10), folded into 2.5.0. Design records for continuation assist (#11, PR #13) and the 2.5.0 cost sweep. 2.5.0: the main session conducts, roles work (PR #14). 2.5.1: dispatch nudge hook (PR #15). 2.6.0: continuation assist, with `/synapse:checkpoint`, a resume pointer, and a context-size nudge (PRs #16 and #17). Tags `synapse--v2.4.0` and `synapse--v2.5.1`. | [cost-sweep.md](design/cost-sweep.md), [continuation-assist.md](design/continuation-assist.md), issue #11 |
+| 2026-11-08 | 2.6.1: the Stop hook carries the emission contract (#19; measured in #18). 2.7.0: the PreToolUse cost-aware gate, the Stop checkpoint ask, and the session-end tail (PRs #20 and #21). 2.7.1: context window measured from the auto-compaction point. 2.7.2: artifact links in the Session note. 2.7.3: on-exit extraction in every permission mode. 2.7.4: the wait message says what to do. Docs sweeps and a README rewrite the same day. | CHANGELOG 2.6.1 to 2.7.4 |
+| 2026-11-09 | 2.8.0: folder mode, notes without Obsidian (PR #30). README gains CI badges and a Checks table. Issue #31, "Anonymous Suggestions", opens, which prompted this page. | CHANGELOG 2.8.0, issue #31 |
+
+## Why so many versions in two weeks
+
+The V2 plan was cut into slices, one per seam (retrieval, role agents, triggers, shared memory, evaluation), and each slice shipped as its own version so its results could be recorded against its design. Versions 2.5 to 2.7 came from the cost and gate work, which was done as measured iterations: the 2.6.1 entry records that the emission contract was loaded in 5 of 91 turns, which led to hook-enforced rules in 2.6.1 and 2.7.0. The CHANGELOG records the measurements under "Measured" headings in the entries for 2.1.0, 2.2.0, 2.3.0, 2.3.1, 2.6.0, and 2.7.0, and as bold "Measured" results in 2.5.1 and the slice A entry. Users receive plugin updates only when `version` in `.claude-plugin/plugin.json` changes ([release practice](design/packaging.md)), so each shipped change carries a version. Every entry from 2.3.0 onward states at its top whether the store schema changed; the only schema change so far is 2.0.0 (store schema v2, with `synapse setup` upgrading an older store in place).
+
+## Reading the record
+
+- [CHANGELOG.md](../CHANGELOG.md): one entry per version, newest first, with dates, measured results, and the store-schema statement. The V1 harness is described in the 1.5 and 1.0 entries at the bottom.
+- [docs/design/packaging.md](design/packaging.md): the v1.6 plugin packaging design, implemented 2026-10-26.
+- [docs/design/v2.md](design/v2.md): the V2 plan, with the maintainer's decisions of 2026-10-26, the roadmap, and results for slices 1, C, D, E, and A. Slice F (reach) is not started.
+- [docs/design/cost-sweep.md](design/cost-sweep.md): the 2.5.0 cost and memory hygiene design, approved and implemented 2026-11-06.
+- [docs/design/continuation-assist.md](design/continuation-assist.md): the design for issue #11, written 2026-11-06 and implemented in 2.6.0.
+- [docs/architecture.md](architecture.md): how the parts fit, including the V2 status table of each seam and what could come next.
+- [GitHub issues](https://github.com/spencerneutron/Synapse/issues): the user-reported and measurement issues (#1 to #31) that drove 2.3.2 onward.
