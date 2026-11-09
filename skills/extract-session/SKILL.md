@@ -1,7 +1,7 @@
 ---
 name: extract-session
 description: Project an archived session into the Obsidian vault and the local vector database. Runs as the last step of end-session, on its own for a session the SessionEnd hook archived (the failsafe case), or when the user asks. Writes notes without asking under [extract] accept = auto and lists them for `synapse extract review`. Idempotent.
-allowed-tools: Bash(synapse extract *), Bash(synapse vault *), Bash(synapse where *), Bash(synapse shared status*), Bash(rm -rf *.claude-work/.tmp/extract-*)
+allowed-tools: Bash(synapse extract *), Bash(synapse vault *), Bash(synapse where *), Bash(synapse shared status*)
 ---
 
 # Extract Session
@@ -15,19 +15,25 @@ embedding needs Ollama with `nomic-embed-text`.
 
 Input: a session ID (default: the one just archived, else the newest unprocessed) and a project (default: the one end-session used; ask once if clearly another).
 
+Run every command as its own Bash call that starts with `synapse`: no `cd`,
+variables, `ls`, loops, or `&&` chains. The on-exit run is headless and
+approves only those calls and Read, Write, and Agent; anything else is denied.
+
 ## Steps
 
 1. **Locate.** In one batch run `synapse where --project NAME` and
-   `synapse vault verify`. Look in `archive_dir` for the ID's PLAN, EXECUTION,
-   NOTES files; none: stop, report. If `.processed/ID.json` exists, ask to re-run
+   `synapse vault verify`, then `synapse extract status ID --project NAME`.
+   Read `PLAN_ID.md`, `EXECUTION_ID.md`, `NOTES_ID.md` (ID = the session ID) in `archive_dir` by full path;
+   none: stop, report. If status says it was processed, ask to re-run
    (`--force`); "extract this" means yes. If verify fails twice (or Obsidian is out of date, or Linux): stop,
    quote the error, write nothing.
 2. **Dispatch** `subagent_type: synapse:extractor` with the archive folder,
    the session ID, the project, whether this is a `--force` re-run, and the
    spec folder: absolute path, forward slashes, of `.claude-work/.tmp/extract-ID`
    under the project root (the folder holding `.claude-work`, else the git top level).
-3. **Accept mode.** Read `accept` from the output of `synapse extract
-   check-candidates --json`; missing or unreadable means `auto`. If the user
+3. **Accept mode.** Run `synapse extract check-candidates
+   SPEC/candidates.json --session ID` and read `accept` from its JSON; missing
+   or unreadable means `auto`. If the user
    said in this conversation to review first, treat it as `review`.
    - `auto`: ask nothing. Write every proposal as the extractor gave it
      (duplicates skipped, supersedes honoured), passing `--review-batch
@@ -38,7 +44,7 @@ Input: a session ID (default: the one just archived, else the newest unprocessed
 
    **Ask once.** Show the extractor's summary as given, with its
    "Proceed?" line. If its prior-note check was skipped,
-   add that embedding needs Ollama too. Replies: yes (all), no (write nothing; `rm -rf` the spec folder),
+   add that embedding needs Ollama too. Replies: yes (all), no (write nothing; `synapse extract cleanup SPEC`),
    skip with item numbers, or overrides ("keep decision 2 without supersedes",
    "keep the duplicate", renames). After a rename, show it again.
    Edit specs in the spec folder. Skip `duplicate-*.md` unless kept. Keep the session spec's link lists (Decisions made,
@@ -59,8 +65,8 @@ Input: a session ID (default: the one just archived, else the newest unprocessed
    `--project NAME`. Then `synapse extract embed-archive SESSION_ID --project
    NAME`, plus `--force` on a re-run and `--include-report` if the user wants
    REPORT. It adds the Artifact links to the Session note (the extractor
-   lists none) and writes the `.processed` marker. Then remove only
-   the spec folder.
+   lists none) and writes the `.processed` marker. Then run
+   `synapse extract cleanup SPEC_FOLDER`.
 6. **Report** briefly (`auto`: the one summary line plus embed counts): notes created (store-relative paths, forward slashes),
    chunks embedded. If `synapse shared status` lists a team and notes were
    promoted, offer `/synapse:share` in one line; never share here.

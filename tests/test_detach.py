@@ -59,6 +59,17 @@ class DetachTests(unittest.TestCase):
             self.assertTrue(kw["start_new_session"])
         self.assertTrue((self.home / "state").is_dir())
 
+    def test_allowed_tools_are_narrow(self):
+        argv = detach.command("claude", "id1", "p")
+        allowed = argv[argv.index("--allowedTools") + 1].split(" Bash(")
+        tools = " ".join(allowed)
+        for banned in ("rm ", "Edit"):
+            self.assertNotIn(banned, tools)
+        self.assertIn("Agent", tools)
+        self.assertIn("Write", tools)
+        # The list is the whole grant in every user permission mode (auto would approve more).
+        self.assertEqual(argv[argv.index("--permission-mode") + 1], "dontAsk")
+
     def test_plugin_dir_override(self):
         os.environ["SYNAPSE_PLUGIN_DIR"] = "/x/plugin"
         argv = detach.command("claude", "id1", "p")
@@ -99,6 +110,45 @@ class DetachTests(unittest.TestCase):
         with mock.patch("detach.shutil.which", return_value="/bin/claude"), \
                 mock.patch("detach.subprocess.Popen", side_effect=OSError("no")):
             self.end()   # does not raise
+
+
+class CleanupTests(unittest.TestCase):
+    def run_cleanup(self, folder):
+        import extract
+        with self.assertRaises(SystemExit) as cm:
+            extract.main(["cleanup", str(folder)])
+        return cm.exception.code
+
+    def test_removes_only_spec_folders(self):
+        import extract
+        with tempfile.TemporaryDirectory() as t:
+            spec = Path(t) / ".claude-work" / ".tmp" / "extract-s1"
+            spec.mkdir(parents=True)
+            (spec / "session.md").write_text("x")
+            self.assertEqual(extract.main(["cleanup", str(spec)]), 0)
+            self.assertFalse(spec.exists())
+            self.assertEqual(extract.main(["cleanup", str(spec)]), 0)   # already gone
+            for bad in (Path(t), Path(t) / ".claude-work", Path(t) / ".claude-work" / ".tmp",
+                        Path(t) / "extract-s1", Path(t) / ".claude-work" / "extract-s1"):
+                bad.mkdir(parents=True, exist_ok=True)
+                self.assertIn("refusing", str(self.run_cleanup(bad)))
+                self.assertTrue(bad.exists())
+
+
+class ExtractorPromptTests(unittest.TestCase):
+    def test_extractor_writes_with_write_tool(self):
+        text = (ROOT / "agents" / "extractor.md").read_text(encoding="utf-8")
+        front = text.split("---")[1]
+        tools = [l for l in front.splitlines() if l.startswith("tools:")][0]
+        self.assertIn("Write", tools)
+        body = text.split("---", 2)[2]
+        self.assertNotIn("SYNAPSE_EOF", body)  # no heredoc delimiter; the prose names heredocs to forbid them
+        self.assertNotIn("<<'", body)
+        self.assertNotIn("mkdir -p", body)
+
+    def test_skill_uses_real_check_candidates_call(self):
+        text = (ROOT / "skills" / "extract-session" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertNotIn("check-candidates --json", text)
 
 
 if __name__ == "__main__":

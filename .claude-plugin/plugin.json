@@ -1,13 +1,19 @@
 {
   "name": "synapse",
-  "version": "2.7.2",
-  "description": "Operating layer for Claude Code: plan/execute/archive session loop, agent waves with right-sized models, a late-bound output contract with a Stop hook, and a local knowledge base (sqlite-vec + Ollama + Obsidian) recalled across sessions.",
+  "version": "2.7.3",
+  "description": "Operating layer for Claude Code (Claude Code only: hooks and a Bash CLI): plan/execute/archive session loop, agent waves with right-sized models, a late-bound output contract with a Stop hook, and a local knowledge base (sqlite-vec + Ollama + Obsidian) recalled across sessions.",
   "author": {
     "name": "spencerneutron",
     "url": "https://github.com/spencerneutron"
   },
   "homepage": "https://github.com/spencerneutron/Synapse",
   "repository": "https://github.com/spencerneutron/Synapse",
+  "documentationUrl": "https://github.com/spencerneutron/Synapse#readme",
+  "supportUrl": "https://github.com/spencerneutron/Synapse/issues",
+  "privacyPolicyUrl": "https://github.com/spencerneutron/Synapse/blob/main/docs/PRIVACY.md",
+  "termsOfServiceUrl": "https://github.com/spencerneutron/Synapse/blob/main/docs/TERMS.md",
   "license": "MIT",
-  "keywords": ["harness", "planning", "memory", "recall", "obsidian", "sqlite-vec", "hooks"]
+  "displayName": "Synapse",
+  "keywords": ["harness", "planning", "memory", "recall", "obsidian", "sqlite-vec", "hooks"],
+  "icon": "./.claude-plugin/icon.png"
 }

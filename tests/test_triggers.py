@@ -173,6 +173,9 @@ class FailOpenTests(unittest.TestCase):
         cmd = [shutil.which("bash"), str(ROOT / "lib" / "py.sh"), str(CLI), "recall-hint"]
         quiet = subprocess.run(cmd, capture_output=True, env={"PATH": empty, "SYNAPSE_OPTIONAL": "1"})
         self.assertEqual((quiet.returncode, quiet.stdout, quiet.stderr), (0, b"", b""))
+        flag = [cmd[0], cmd[1], "--optional", *cmd[2:]]
+        flagged = subprocess.run(flag, capture_output=True, env={"PATH": empty})
+        self.assertEqual((flagged.returncode, flagged.stdout, flagged.stderr), (0, b"", b""))
         loud = subprocess.run(cmd, capture_output=True, env={"PATH": empty})
         self.assertEqual(loud.returncode, 1)
         self.assertIn(b"no Python", loud.stderr)

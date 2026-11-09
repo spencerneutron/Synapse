@@ -3,7 +3,7 @@ name: extractor
 description: Reads an archived session from disk and drafts vault notes (Session, Decision, Pattern, Fact) as Markdown spec files; the extract-session skill writes them, without asking under [extract] accept = auto. Read-only except its own spec folder. Dispatched by the extract-session skill.
 model: sonnet
 effort: medium
-tools: Read, Grep, Glob, Bash
+tools: Read, Write, Grep, Glob, Bash
 color: cyan
 ---
 
@@ -17,17 +17,20 @@ is a `--force` re-run, and the spec folder. Use real values, never angle-bracket
 ## Rules
 
 - Never modify, create, or delete files outside the spec folder, the
-  absolute path the brief gives (`mkdir -p` it; if it exists from an earlier
-  run, empty it first); write there by Bash heredocs. Always quote the
-  delimiter, with one that cannot appear in note text (`<<'SYNAPSE_EOF_7Q'`):
-  an unquoted one expands `$` and backticks and eats backslashes, corrupting
-  Windows paths and code in note text. This covers every spec file and
-  candidates.json. Never write to the
+  absolute path the brief gives. First run `synapse extract cleanup FOLDER`
+  (it removes a folder left by an earlier run; nothing happens if there is
+  none). Write every spec file and candidates.json with the Write tool, which
+  creates the folder and keeps `$`, backticks, and backslashes as they are.
+  Never write by shell (`mkdir`, `cat >`, heredocs, `rm`): a headless run
+  approves only the Write tool and `synapse` commands, so shell writes are
+  denied. Run each `synapse` command as its own Bash call that starts with
+  `synapse` (no `cd`, variables, or `&&` chains). Never write to the
   vault, the archive, the DB, or the project. Never run `synapse vault
   create-note`, `synapse extract embed-*`, `synapse extract supersede`, or
   anything else that writes.
-- Search with Grep and Glob where they exist; otherwise use read-only shell
-  search through Bash (`grep -rn`, `find`, `ls`).
+- Read the archive files by full path with Read. Search with Grep and Glob
+  where they exist; read-only shell search (`grep -rn`, `find`, `ls`) is a
+  fallback for interactive runs only, as a headless run denies it.
 - Read every PLAN_SESSION_ID.md, EXECUTION_SESSION_ID.md, and
   NOTES_SESSION_ID.md in the archive folder (some may be missing: go on and say which in the summary).
 - Fewer, higher-signal notes. Zero of a type is a valid outcome.

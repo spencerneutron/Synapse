@@ -2,8 +2,11 @@
 # Find a working Python (3.11+ unless SYNAPSE_MIN_PY says otherwise) and exec
 # the given script with it.
 #
-# Adapted from the launcher in Anthropic's security-guidance plugin. It handles
-# the cases that break a bare `python3` in a hook command:
+# Adapted from the launcher in Anthropic's security-guidance plugin
+# (https://github.com/anthropics/claude-plugins-official/tree/main/plugins/security-guidance,
+# hooks/sg-python.sh), which is licensed under the Apache License 2.0. This
+# file is a modified version of that launcher; see NOTICE at the repo root.
+# It handles the cases that break a bare `python3` in a hook command:
 #   - Windows: `python3` is often the Microsoft Store stub, which exits silently
 #     in a non-TTY subprocess. Each candidate is probed before use, so the stub
 #     falls through to `python` or the `py -3` launcher.
@@ -13,12 +16,23 @@
 #     Homebrew or python.org are tried when the bare name is too old.
 # PYTHONUTF8=1 keeps file and pipe I/O in UTF-8 on Windows (no-op elsewhere).
 #
-# Usage: bash lib/py.sh <script.py> [args...]
-#        SYNAPSE_MIN_PY=3.9 bash lib/py.sh <script.py>   (lower the floor)
-#        SYNAPSE_OPTIONAL=1 bash lib/py.sh <script.py>   (no Python: exit 0 silently)
+# Usage: bash lib/py.sh [--optional] [--min-py X.Y] <script.py> [args...]
+#        --min-py 3.9   lower the floor (env: SYNAPSE_MIN_PY=3.9)
+#        --optional     no Python: exit 0 silently (env: SYNAPSE_OPTIONAL=1)
+# The flags are plain arguments so a hook command needs no VAR=value prefix.
 set -e
 export PYTHONUTF8=1
 MIN="${SYNAPSE_MIN_PY:-3.11}"
+OPTIONAL="${SYNAPSE_OPTIONAL:-}"
+
+# Leading launcher flags; the first other argument is the script.
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --optional) OPTIONAL=1; shift ;;
+        --min-py) MIN="${2:-$MIN}"; shift; [ $# -gt 0 ] && shift ;;
+        *) break ;;
+    esac
+done
 
 if command -v cygpath >/dev/null 2>&1; then
     converted=()
@@ -51,7 +65,7 @@ for cmd in "python3" "python" "py -3" \
 done
 
 # Optional hooks (recall hints, reminders) must never surface an error.
-[ -n "${SYNAPSE_OPTIONAL:-}" ] && exit 0
+[ -n "$OPTIONAL" ] && exit 0
 echo "synapse: no Python $MIN+ found (tried python3, python, py -3, python3.11-3.19)." >&2
 echo "  macOS: brew install python   Windows: install from https://python.org (not the Microsoft Store)" >&2
 exit 1

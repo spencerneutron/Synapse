@@ -462,6 +462,44 @@ def check_gitignore(rep: Report, project_dir: Path) -> None:
 
 # ---------- Entry point ----------
 
+def check_namesake(rep: Report, project_dir: Path) -> None:
+    """Warn when another plugin named `synapse` (not synapse@synapse) is enabled or installed.
+
+    The life-sciences marketplace once shipped a Synapse.org connector under
+    the same name, so its skills would share the /synapse: namespace.
+    Read-only; a missing or unreadable file is skipped silently.
+    """
+    def load(path: Path):
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    found: dict[str, Path] = {}
+    for path in (claude_dir() / "settings.json",
+                 project_dir / ".claude" / "settings.json",
+                 project_dir / ".claude" / "settings.local.json"):
+        data = load(path)
+        enabled = data.get("enabledPlugins") if isinstance(data, dict) else None
+        if isinstance(enabled, dict):
+            for pid, on in enabled.items():
+                if on and isinstance(pid, str):
+                    found.setdefault(pid, path)
+    path = claude_dir() / "plugins" / "installed_plugins.json"
+    data = load(path)
+    installed = data.get("plugins") if isinstance(data, dict) else None
+    if isinstance(installed, dict):
+        for pid in installed:
+            if isinstance(pid, str):
+                found.setdefault(pid, path)
+    for pid, where in found.items():
+        if pid.startswith("synapse@") and pid != "synapse@synapse":
+            rep.add("warn", "namesake",
+                    f"another plugin named synapse ({pid}, in {tilde(where)}) shares the /synapse: namespace",
+                    f"run: claude plugin uninstall {pid} (it was removed upstream; "
+                    "the Synapse.org connector is available directly)")
+
+
 def run(project_dir: Path) -> Report:
     rep = Report()
     try:
@@ -474,6 +512,7 @@ def run(project_dir: Path) -> Report:
     check_skills(rep, project_dir)
     check_rules(rep, project_dir)
     check_settings(rep, project_dir)
+    check_namesake(rep, project_dir)
     check_subagent_models(rep, project_dir)
     check_old_installs(rep, project_dir, r)
     check_gitignore(rep, project_dir)

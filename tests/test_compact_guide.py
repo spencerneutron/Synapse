@@ -181,7 +181,7 @@ class CompactGuideTests(unittest.TestCase):
         self.assertEqual(len(hooks), 1)
         self.assertNotIn("matcher", hooks[0])
         cmd = hooks[0]["hooks"][0]["command"]
-        self.assertTrue(cmd.startswith("SYNAPSE_OPTIONAL=1 "))
+        self.assertTrue("py.sh\" --optional " in cmd)
         self.assertTrue(cmd.endswith("compact-guide --hook"))
 
 

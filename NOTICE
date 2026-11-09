@@ -1,0 +1,13 @@
+Synapse
+Copyright (c) 2026 spencerneutron
+Licensed under the MIT License (see LICENSE).
+
+This product includes software adapted from Anthropic's security-guidance
+Claude Code plugin:
+
+  lib/py.sh is a modified version of hooks/sg-python.sh from
+  https://github.com/anthropics/claude-plugins-official/tree/main/plugins/security-guidance
+  Licensed under the Apache License, Version 2.0:
+  https://www.apache.org/licenses/LICENSE-2.0
+
+  Modified for Synapse; the file's header comment describes what it does.

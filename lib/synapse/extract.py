@@ -17,6 +17,8 @@ Subcommands:
                              local notes on its concept (score >= 0.70, top 3).
   review [--json] [--done]  List notes written by automatic extraction since the
                              last review; --done marks them reviewed.
+  cleanup <spec-folder>      Delete an extraction spec folder; refuses any path
+                             that is not <...>/.claude-work/.tmp/extract-*.
   reembed-all                Detect embedding-model mismatches and re-embed.
 
 The script is deterministic and idempotent. Atomic-note extraction (deciding
@@ -28,6 +30,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sqlite3
 import sys
 import urllib.error
@@ -1273,6 +1276,23 @@ def cmd_review(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_cleanup(args: argparse.Namespace) -> int:
+    """Remove one spec folder. Replaces a model-run `rm -rf`, so the guard lives here."""
+    raw = Path(args.folder)
+    if raw.is_symlink():
+        sys.exit(f"error: {raw} is a symlink; refusing")
+    folder = raw.resolve()
+    if not (folder.name.startswith("extract-") and folder.parent.name == ".tmp"
+            and folder.parent.parent.name == ".claude-work"):
+        sys.exit(f"error: {folder} is not a .claude-work/.tmp/extract-* folder; refusing")
+    if not folder.is_dir():
+        print(f"{folder}: already gone")
+        return 0
+    shutil.rmtree(folder)
+    print(f"removed {folder}")
+    return 0
+
+
 # ---------- Entry point ----------
 
 def main(argv: list[str] | None = None) -> int:
@@ -1334,6 +1354,10 @@ def main(argv: list[str] | None = None) -> int:
     p_rv.add_argument("--json", action="store_true", help="machine output")
     p_rv.add_argument("--done", action="store_true", help="mark everything listed as reviewed")
     p_rv.set_defaults(func=cmd_review)
+
+    p_cl = sub.add_parser("cleanup", help="delete an extraction spec folder (.claude-work/.tmp/extract-* only)")
+    p_cl.add_argument("folder", help="the spec folder")
+    p_cl.set_defaults(func=cmd_cleanup)
 
     p_re = sub.add_parser("reembed-all", help="detect model mismatches")
     p_re.set_defaults(func=cmd_reembed_all)
