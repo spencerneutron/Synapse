@@ -173,55 +173,129 @@ across sessions when `vectors.db` feeds the next `/recall`.
 
 ```mermaid
 flowchart TD
-    T([Task arrives]) --> PS
+    classDef hook fill:#fdebd0,stroke:#b7791f,color:#1a1a1a
+    classDef model fill:#dbe9ff,stroke:#2b6cb0,color:#1a1a1a
+    classDef agent fill:#e9ddff,stroke:#6b46c1,color:#1a1a1a
+    classDef cli fill:#d9f2e6,stroke:#2f855a,color:#1a1a1a
+    classDef store fill:#efefef,stroke:#555555,color:#1a1a1a
 
-    subgraph P["Plan"]
-        PS["/synapse:plan-session<br/>parallel repo exploration<br/>+ session hooks"] --> RQ{"Resembles<br/>prior work?"}
-        RQ -- yes --> RC["/synapse:recall<br/>ranked snippets + paths"]
-        RQ -- no --> PF
-        RC --> PF["Write PLAN.md<br/>+ EXECUTION.md"]
+    subgraph L["Who acts"]
+        direction LR
+        LH["hook (no model call)"]:::hook ~~~ LM["main session (the model)"]:::model ~~~ LA["sub-agent"]:::agent ~~~ LC["synapse CLI"]:::cli ~~~ LS[("store")]:::store
     end
 
-    subgraph X["Execute"]
-        PF --> WV["Wave: implement / verify /<br/>research / adversarial review"]
-        WV --> VL{"Run path, expected outcome,<br/>failure signal satisfied?"}
-        VL -- no --> FB["Re-evaluate, simplify,<br/>log blocker in PLAN.md"]
-        FB --> WV
-        VL -- yes --> UP["Update EXECUTION.md;<br/>durable decisions to PLAN.md"]
+    subgraph S["Session start · SessionStart hooks"]
+        SS["session_start.sh<br/>injects instructions/core.md + platform notes"]:::hook
+        SP["synapse pending · facts · shared · nudge<br/>unextracted archives? user-stated facts,<br/>team sync due? resume pointer (## Resume)"]:::cli
     end
+    L ~~~ S
+    SS --> SP
 
-    subgraph E["Every turn end"]
-        UP --> DR["Draft user-facing message"]
-        DR --> SH{"Stop hook:<br/>contract violated?"}
-        SH -- yes --> EC["Rewrite with the rules<br/>from the block reason"]
-        EC --> SH
+    subgraph U["Every prompt · UserPromptSubmit hooks"]
+        HT["synapse recall-hint<br/>embeds the prompt (first 1,000 chars) with Ollama,<br/>queries vectors.db, adds 'Synapse recall (automatic)'<br/>when a note scores above the threshold"]:::cli
+        NU["synapse nudge<br/>context size, checkpoint reminder"]:::cli
     end
+    SP -- "turn 1" --> HT
+    HT --> NU
 
-    SH -- no --> DN{"Session<br/>done?"}
-    DN -- no --> WV
+    subgraph P["Plan · main session"]
+        PS["/synapse:plan-session<br/>read PLAN.md + EXECUTION.md (## Resume),<br/>run ## Session hooks, explore in parallel"]:::model
+        RQ{"Resembles prior work?<br/>the model decides from the rules' triggers<br/>('last time', same area, a prior decision)<br/>or from a hint it just received"}:::model
+        RC["/synapse:recall → synapse recall<br/>ranked snippets + source paths"]:::cli
+        PF["Write PLAN.md + EXECUTION.md<br/>steps with roles: main or a sub-agent"]:::model
+    end
+    NU -- "structured task" --> PS
+    PS --> RQ
+    RQ -- yes --> RC
+    RQ -- no --> PF
+    RC -- "read only the sources worth it;<br/>paraphrase, cite the path" --> PF
+
+    subgraph X["Execute · per step"]
+        BR["Pick the next step; a brief if it is not main:<br/>goal, files, done condition, ruled out,<br/>run path, attempt limit"]:::model
+        HO["Hands-on calls<br/>(a handful, main session)"]:::model
+        GT{"PreToolUse gate · synapse gate --hook<br/>6th hands-on edit above the<br/>context threshold?"}:::hook
+        PT["PostToolUse nudge · synapse nudge --hook<br/>context marks 60% / 90% of the compaction point"]:::hook
+        WV["Wave of role agents<br/>synapse:implementer · verifier · researcher ·<br/>reviewer · scout — one writer per file set"]:::agent
+        VL{"Claim verified?<br/>run its validation once; read the diff<br/>only when report and run disagree"}:::model
+        FB["Re-evaluate, simplify,<br/>log the blocker in PLAN.md"]:::model
+        UP["Log the result in EXECUTION.md;<br/>durable decisions to PLAN.md"]:::model
+        CK["/synapse:checkpoint<br/>## Resume in EXECUTION.md, NOTES.md,<br/>synapse checkpoint --stamp; then continue"]:::model
+        PC["PreCompact · synapse compact-guide --hook<br/>when Claude Code compacts:<br/>tells the summary what to keep"]:::hook
+    end
+    PF --> BR
+    BR -- "more than ~5 calls or 3 files" --> WV
+    BR -- "a handful of calls" --> HO
+    HO -- "each Edit / Write" --> GT
+    GT -- "deny: names the role to brief" --> WV
+    GT -- allow --> PT
+    PT --> VL
+    WV -- "report = a claim" --> VL
+    VL -- no --> FB
+    FB --> BR
+    VL -- yes --> UP
+    PT -. "60% / 90%" .-> CK
+    CK --> BR
+    PC -. "after compaction: ## Resume + planning files" .-> BR
+
+    subgraph E["Every turn end · Stop hooks"]
+        DR["Final message"]:::model
+        SH{"emission_check.py<br/>contract violated?"}:::hook
+        EC["Rewrite with the rules<br/>in the block reason (once)"]:::model
+        SG{"synapse gate --hook<br/>agents still running? checkpoint overdue?<br/>Artifact links → ARTIFACTS.md"}:::hook
+        DN{"Session done?"}:::model
+    end
+    UP --> DR
+    DR --> SH
+    SH -- yes --> EC
+    EC --> SH
+    SH -- no --> SG
+    SG -- "wait, or checkpoint first" --> CK
+    SG -- clear --> DN
+    DN -- "no: next prompt" --> HT
+
+    subgraph C["Close · one turn"]
+        ND["/synapse:end-session"]:::model
+        NO["Write NOTES_ID.md from live context:<br/>user-stated facts, rationale, open questions, pivots<br/>(the extractor cannot see the conversation)"]:::model
+        AR["synapse archive<br/>PLAN, EXECUTION, NOTES, ARTIFACTS → archive/"]:::cli
+        XS["/synapse:extract-session · same turn"]:::model
+        XA["synapse:extractor reads the archive on disk,<br/>proposes Session, Decision, Pattern, Fact specs"]:::agent
+        AC{"[extract] accept"}:::model
+        WR["synapse vault create-note per spec<br/>synapse extract embed-note · embed-archive"]:::cli
+        FS["SessionEnd hook · synapse archive --auto<br/>failsafe: 2 s, no model call"]:::hook
+    end
     DN -- yes --> ND
+    ND --> NO
+    NO --> AR
+    AR --> XS
+    XS --> XA
+    XA --> AC
+    AC -- "auto: write, list for synapse extract review" --> WR
+    AC -- "review: ask once" --> WR
+    DN -- "exit without end-session" --> FS
+    FS -. "next SessionStart: pending note" .-> SP
 
-    subgraph M["Memory"]
-        ND["/synapse:end-session<br/>(SessionEnd hook: failsafe)"] --> AR[("Store archive<br/>canonical")]
-        AR --> XS["/synapse:extract-session<br/>writes (accept = auto) or asks once"]
-        XS --> GT{"Choice, rationale,<br/>durable, non-obvious?"}
-        GT -- yes --> VT[("Obsidian vault<br/>Decisions, Patterns, Facts, Sessions")]
-        GT -- no --> AO["Stays in archive only"]
-        AR --> EM["synapse extract"]
-        VT --> EM
-        BF["synapse backfill / migrate"] --> EM
-        EM --> DB[("vectors.db<br/>sqlite-vec + nomic-embed-text")]
+    subgraph M["Store · synapse where"]
+        ARC[("archive/PROJECT/<br/>PLAN_, EXECUTION_, NOTES_, ARTIFACTS_")]:::store
+        VT[("Obsidian vault<br/>Sessions · Decisions · Patterns · Facts<br/>the Session note carries the Artifact links")]:::store
+        DB[("vectors.db<br/>sqlite-vec + nomic-embed-text<br/>chunk text, embedding, full-text index")]:::store
+        BF["synapse backfill · migrate<br/>older stores and vaults"]:::cli
     end
-
-    DB -. semantic query .-> RC
+    AR --> ARC
+    FS --> ARC
+    ARC -- "read" --> XA
+    WR -- notes --> VT
+    WR -- chunks --> DB
+    BF --> DB
+    DB -. "semantic query" .-> RC
+    DB -. "nearest notes" .-> HT
+    DB -. "synapse facts --hook" .-> SP
 ```
 
-The Session note is written to the vault on every extraction and is left out
-of the gate above for readability. The emission check fires at every turn end,
-not only at session close. Not drawn: the automatic hint (the
-`UserPromptSubmit` hook queries the same `vectors.db` on each prompt) and
-team sharing (approved notes go to a team folder that every member indexes
-next to their own store).
+The colours mark who acts: a hook (no model call), the main session, a
+sub-agent, the `synapse` CLI, or a store. The emission check fires at every
+turn end, not only at session close, and the Session note is written on every
+extraction. Team sharing is not drawn: approved notes go to a team folder that
+every member indexes next to their own store.
 
 ---
 
