@@ -356,11 +356,8 @@ background sync off.
 ## Update
 
 Third-party marketplaces do not auto-update unless the user enables it in
-`/plugin`. To update by hand, refresh the marketplace, then the plugin:
-
-```bash
-claude plugin marketplace update synapse
-```
+`/plugin` under Marketplaces. To update by hand, one command refreshes the
+marketplace and the plugin:
 
 ```bash
 claude plugin update synapse@synapse
