@@ -237,7 +237,9 @@ what `core.md:62` does today.
 
 1. Claim the close: create `efforts/<slug>/.closing` exclusively. A second
    closer stops here; a claim older than a minute (a crashed close) is
-   taken over.
+   taken over. The status is read again under the claim. Once the archive
+   is copied, the claim holds its ID, so a rerun after a crash reuses that
+   archive instead of writing a second one.
 2. Copy PLAN, EXECUTION, NOTES, REPORT and ARTIFACTS to the store's archive
    under `YYYY-MM-DD-HHMM-<slug>`. The archived PLAN gets one more line
    under `## Outcome`: the date, `Done` or `Cancelled`, and the reason. The
@@ -249,7 +251,8 @@ what `core.md:62` does today.
 3. Write the status, reason and archive ID to `effort.json`. The effort is
    now out of the index.
 4. Add the same Outcome line to the working `PLAN.md` and release the
-   claim.
+   claim. The command then drops the closing session's own binding; other
+   sessions bound to the effort get the stale notice once.
 
 What remains in view is the archive ID (`effort list --all`) and the
 store's archive: "compression strategies are always designed to be
@@ -261,7 +264,8 @@ available"
 at least an hour, so the session that closed it (end-session, below) can
 still read and finish its files. After that, the next `start` or close in
 the project moves it to `efforts/_closed/<archive-id>/` with a plain
-rename, never a copy-and-delete. The move is housekeeping: status is what
+rename, never a copy-and-delete. The folder is named by the archive ID
+when that is a safe ID, else by date and slug. The move is housekeeping: status is what
 takes an effort out of the index. On Windows a folder with an open file
 cannot be renamed; then it stays and the next sweep tries again. `start`
 on the slug of a closed effort moves that folder first and fails with a
@@ -329,12 +333,15 @@ up existing work.
 A project with no `.claude-work/efforts/` behaves as before: no index is
 printed, `find_work_dir` returns `current/`, archive IDs are unchanged, and
 plan-session, checkpoint and end-session read `current/`. A session with no
-binding in a project that has efforts also uses `current/`. Two existing
-inconsistencies are fixed on the way: `synapse archive` now finds the
-folder as the hook does (`lib/synapse/archive.py:212` used `work_dir`, the
-hook `find_work_dir`, `:133`), and the compaction guide lists `NOTES.md` in
-place of `CHECKPOINTS.md`, which nothing writes
-(`lib/synapse/compact_guide.py:65`; `skills/checkpoint/SKILL.md:63`).
+binding in a project that has efforts also uses `current/`. One existing
+inconsistency is fixed on the way: `synapse archive` now finds the folder
+as the hook does (`lib/synapse/archive.py:212` used `work_dir`, the hook
+`find_work_dir`, `:133`), and files the session under the project of the
+folder it found. The compaction guide keeps its text for `current/` (PLAN,
+EXECUTION and `CHECKPOINTS.md`, a name that nothing writes:
+`lib/synapse/compact_guide.py:65`; `skills/checkpoint/SKILL.md:63`; left
+for a separate change) and lists PLAN, EXECUTION and NOTES for an effort's
+folder.
 
 **Default left to the owner.** As built, effort folders start only on
 request: the user names an effort, asks for effort folders, or runs the
@@ -363,11 +370,17 @@ For an existing large `PLAN.md`, `synapse effort migrate`:
    line ranges, verbatim. Lines of either file assigned to no effort go to
    the history effort, with a working `NOTES.md`, so every line lands
    somewhere. The history effort is created closed, pointing at the
-   snapshot.
+   snapshot. A failed apply removes the folders it created (and `efforts/`
+   if it created that). A successful one writes `efforts/.split.json` (the
+   snapshot ID and the hash of each file split); while `current/` still
+   matches it, propose and apply refuse, unless given `--again`, so a second
+   run cannot duplicate every effort. Apply leaves `current/` untouched, so
+   the snapshot's `ARTIFACTS.md` copy is not marked archived there and a
+   later ordinary archive of `current/` may repeat those artifact links once.
 4. **Retire the old files, on request.** `current/` is left as it is by
    default: another session may be using it. `synapse effort migrate
    --retire-current` (with `--apply` or later) moves its planning files to
-   `efforts/_closed/<snapshot-id>/`. Until then the index keeps its one
+   `efforts/_closed/<snapshot-id>/` and removes the marker. Until then the index keeps its one
    line about `current/`.
 
 **Constraints become Facts.** A session lists the project's Facts at start
@@ -437,5 +450,72 @@ constraints go there; one effort's constraints stay in its PLAN.
 
 ## Measured
 
-Filled in from the implementation run; see the end of this file's history
-in CHANGELOG.md for the release.
+Measured on 2026-11-15 with the implementation in this branch, driven
+through `bin/synapse` against a throwaway Synapse home and project (macOS,
+Python 3; character counts are exact, token counts are an estimate at four
+characters per token, since no tokenizer runs offline).
+
+| Case | Lines | Characters | Tokens (est.) |
+|------|-------|------------|---------------|
+| 3 open, 2 parked, session on none | 5 | 510 | about 130 |
+| 3 open, 2 parked, session on one | 5 | 443 | about 110 |
+| 17 open (15 shown, the cap), every title at the 80-character clip | 18 | 2,119 | about 530 |
+| 17 waiting (15 shown), every slug at 40 characters, every title and waiting text at 80 | 18 | 3,745 | about 940 |
+
+The hook's text is cut at 4,000 characters (about 1,000 tokens): when the
+lines for other checkouts would push it past that, effort lines are dropped
+first and the text ends with a `- more not shown` line that names `synapse
+effort list`; the command itself prints everything. That is well below the
+10,000-character cap on a hook's added context. The SessionStart handler took 0.07 s of wall time with 19 effort
+folders (one run).
+
+A real run: two sessions each start an effort, a third session opens, one
+effort is parked, the other is closed. The text is what `synapse effort
+list` and the SessionStart hook printed.
+
+After session A ran `synapse effort start billing-export --title "Billing
+export to CSV"` and session B ran `synapse effort start ci-cache --title
+"Cache the CI dependencies"`, session B sees:
+
+```
+Synapse efforts in this project: 2 open, 0 parked. This session is on ci-cache.
+Its files are in .claude-work/efforts/ci-cache/; read no other effort's files. Switch with `synapse effort resume <slug>`.
+- ci-cache [active] Cache the CI dependencies (just now) (this session)
+- billing-export [active] Billing export to CSV (just now; another session just now)
+```
+
+A new session C, at SessionStart:
+
+```
+Synapse efforts in this project: 2 open, 0 parked. This session is on none yet.
+Take one up with `synapse effort resume <slug>`, or start new work with `synapse effort start <slug> --title "..."`; read only that effort's files (.claude-work/efforts/<slug>/).
+- ci-cache [active] Cache the CI dependencies (just now; another session just now)
+- billing-export [active] Billing export to CSV (just now; another session just now)
+```
+
+After `synapse effort park ci-cache --reason "waiting for the runner
+upgrade"`, session A sees:
+
+```
+Synapse efforts in this project: 1 open, 1 parked. This session is on billing-export.
+Its files are in .claude-work/efforts/billing-export/; read no other effort's files. Switch with `synapse effort resume <slug>`.
+- billing-export [active] Billing export to CSV (just now) (this session)
+```
+
+After `synapse effort done billing-export --reason "export shipped"`
+(archive ID `2026-11-15-2134-billing-export`, marker
+`archive/<project>/.effort/2026-11-15-2134-billing-export`, and
+`- (2026-11-15) Done: export shipped` under `## Outcome` in both copies of
+the PLAN), `synapse effort list --all` prints:
+
+```
+- ci-cache [parked] Cache the CI dependencies (just now): waiting for the runner upgrade
+- billing-export [done] Billing export to CSV (archive 2026-11-15-2134-billing-export)
+```
+
+Session A, which ran the close, is unbound by it; its index then reads `0
+open, 1 parked. This session is on none yet.` and points at `synapse effort
+list --all` for the parked effort. A different session that was on
+`billing-export` gets one line on its next prompt: `Synapse: effort
+'billing-export' that this session was on is closed (done, archive
+2026-11-15-2134-billing-export). Take up another with ...`.

@@ -54,7 +54,8 @@ from the folder where the user usually starts Claude Code.
 | `autoCompactWindow` in `~/.claude/settings.json` (top level or under `modelSettings`) | `grep -n autoCompactWindow ~/.claude/settings.json 2>/dev/null` | Synapse writes it only through `synapse setup --autocompact N`, on the user's OK: it copies the file to `settings.json.synapse-backup-<time>` beside itself first and refuses if a window is already set. `synapse doctor` reports the value(s) found |
 | Managed settings that allow only managed hooks | macOS `/Library/Application Support/ClaudeCode/managed-settings.json`, Linux `/etc/claude-code/managed-settings.json`, Windows `C:\Program Files\ClaudeCode\managed-settings.json` | `allowManagedHooksOnly` means Synapse cannot load; stop and tell the user |
 | A V1 or v1.5 install, here, in a parent folder, or in a child folder | `ls -d kb/scripts .claude-work/archive .claude-work/kb ../.claude-work/archive */.claude-work/archive 2>/dev/null` | Offer migration in step 6 |
-| Working files a repo would commit | `git check-ignore -q .claude-work/current/PLAN.md; echo $?` inside a repo (`1` means not ignored) | Suggest adding `.claude-work/` to that repo's `.gitignore` (ask first) |
+| Working files a repo would commit | `git check-ignore -q .claude-work/current/PLAN.md; echo $?` inside a repo (`1` means not ignored; probe `.claude-work/efforts/x/PLAN.md` too when `.claude-work/efforts/` exists) | Suggest adding `.claude-work/` to that repo's `.gitignore` (ask first) |
+| Effort folders that look broken | `synapse doctor` (the `efforts` row): a folder under `.claude-work/efforts/` with no readable `effort.json`, or a close claim older than an hour | Report it; fix with the user's OK. Synapse never deletes an effort folder |
 | Another plugin named `synapse` (the life-sciences Synapse.org connector wrapper) | `grep -n 'synapse@' ~/.claude/settings.json ~/.claude/plugins/installed_plugins.json 2>/dev/null` | Anything other than `synapse@synapse` shares the `/synapse:` namespace. Uninstall it with `claude plugin uninstall synapse@<marketplace>` (removed upstream on 2026-10-23; the Synapse.org connector is available directly), ask first. `synapse doctor` reports it |
 | An earlier v1.6+ install (its `config.toml`) | `ls ~/.claude/synapse/config.toml 2>/dev/null` | Setup reuses it and never overwrites it |
 
@@ -249,7 +250,7 @@ facts = true       # false stops listing this project's Facts at session start
 remind = true      # false turns the reminder off
 accept = "auto"    # auto: write every proposed note, list them with `synapse extract review`; "review": ask first
 on_exit = false    # true: extract in a detached headless session at exit (costs money; see below)
-artifacts = true   # false stops recording published Artifact links in .claude-work/current/ARTIFACTS.md
+artifacts = true   # false stops recording published Artifact links in ARTIFACTS.md in the planning folder
 
 [archive]
 on_exit = true     # false stops the SessionEnd archive
@@ -273,7 +274,7 @@ extractor reads files on disk, never the conversation.
 
 The SessionEnd hook is the failsafe for a session that ends without it (a
 crash, a forgotten close, `/clear`). At exit, `/clear` and `/resume` it copies
-`.claude-work/current/` (PLAN, EXECUTION, REPORT, NOTES) into the archive as
+the session's planning folder (`.claude-work/current/`, or its effort's folder under `.claude-work/efforts/`: PLAN, EXECUTION, REPORT, NOTES) into the archive as
 the files stand, which may be stale. It makes no model call and no embedding,
 and skips when nothing changed since the last archive. The next session start
 reports the archived session as never extracted, and
@@ -359,6 +360,7 @@ background sync off.
 | `~/.claude/synapse/` | Config, stores (archives + `vectors.db`), venv, `state/` (which hints a session has seen, pruned after 7 days; the nudge hook's call counters, one small file per session, pruned after a day; each team's last sync), `shared/<team>/` (a git team's clone and every team's index) | `synapse setup`, `archive`, `extract`, `migrate`, `shared`, the hooks |
 | A folder team's synced folder | `Decisions/`, `Patterns/`, `Facts/`, `Retracted/`, `.synapse-team.toml` | `synapse shared init`, `/synapse:share`, `synapse shared retract` |
 | `<project>/.claude-work/current/` | `PLAN.md`, `EXECUTION.md` | The agent, during structured work |
+| `<project>/.claude-work/efforts/<slug>/` | `effort.json`, `PLAN.md`, `EXECUTION.md`, `NOTES.md` (only in a project that uses effort folders) | `synapse effort`, and the agent during structured work |
 | The store's notes vault | `Sessions/`, `Decisions/`, `Patterns/`, `Facts/`, `Projects/` notes | `/synapse:extract-session` |
 
 `~/.claude/synapse/` moves with `CLAUDE_CONFIG_DIR`, or anywhere with

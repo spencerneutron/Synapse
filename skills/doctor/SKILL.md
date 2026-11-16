@@ -45,7 +45,8 @@ each conflict into a finding and a recommendation the user decides on.
 | hooks | `disableAllHooks`, managed `allowManagedHooksOnly` | None of Synapse's hooks load |
 | agent-models | `CLAUDE_CODE_SUBAGENT_MODEL` / `_FORCE` in the environment or any settings `env` | A forced sub-agent model silently overrides every role agent's model |
 | old-install | `kb/scripts`, `.claude-work/archive`, `.claude-work/kb` in the project and parents | A V1/v1.5 memory system running beside the plugin |
-| gitignore | the project's git repo | `.claude-work/` working files would be committed |
+| gitignore | the project's git repo | `.claude-work/` working files (`current/` and `efforts/`) would be committed |
+| efforts | the project's `.claude-work/efforts/` (and a long `current/PLAN.md` when there is none) | A folder with no readable `effort.json`, a stale `.closing` claim, a closed effort's folder left in place; info when `current/PLAN.md` is long enough to split |
 | python, venv, vectors, ollama, obsidian, vault, vault_path, notes | Python, venv, `vectors.db` and its schema version, Ollama, `obsidian` CLI, the vault (only the active mode's checks) | Memory features degrade without them; an old schema needs `synapse setup` |
 | triggers | `[recall]` and `[extract]` in `config.toml` | Whether automatic recall hints and the pending-extraction reminder are on, and the hint threshold |
 | pending | `<store>/archive/<project>/` without a `.processed` marker | Archived sessions recall cannot find until they are extracted |

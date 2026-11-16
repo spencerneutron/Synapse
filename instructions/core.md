@@ -49,18 +49,27 @@ when batching hides which call produced what.
 
 ## Planning Files
 
-Working files live in the project, under `.claude-work/current/`:
+Working files live in the project, in `.claude-work/current/`, or, when the
+project has `.claude-work/efforts/`, in one folder per effort,
+`.claude-work/efforts/<slug>/`:
 
 - `PLAN.md` — long-lived strategy, constraints, Decision Log.
 - `EXECUTION.md` — the active task and its immediate next steps.
+- `NOTES.md` — working notes, when checkpoints wrote any.
 
 Archives, the vector DB, and the vault belong to the active Synapse store.
 Run `synapse where` to see them; never hard-code those paths.
 The store's notes vault holds durable knowledge; `/synapse:extract-session`
 writes it as summaries, never raw logs or transient output.
 
-- Read `PLAN.md` once at session start, or when direction is unclear.
-- Read `EXECUTION.md` at the start of each task, or when resuming work.
+- With efforts, a session starts with a short list of them. Read no planning
+  file until you know which effort the request belongs to, then run
+  `synapse effort resume <slug>` (or `start <slug> --title "..."`) and read
+  only that effort's files. Never read another effort's.
+- Without efforts: read `PLAN.md` once at session start, or when direction is
+  unclear, and `EXECUTION.md` at the start of each task, or when resuming.
+- Status changes only through the CLI: `synapse effort wait|park` when that is
+  the state; `done|cancel` only on the user's word.
 - Do not re-read either after every step; assume they are unchanged unless you
   updated them.
 - If the two conflict, follow `EXECUTION.md` and update `PLAN.md` to match.

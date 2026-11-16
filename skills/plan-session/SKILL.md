@@ -1,6 +1,6 @@
 ---
 name: plan-session
-description: Use when starting or resuming a structured multi-step task that involves PLAN.md and EXECUTION.md
+description: Use when starting or resuming a structured multi-step task that involves PLAN.md and EXECUTION.md, or when picking or starting an effort in a project with effort folders
 ---
 
 # Plan Session Skill
@@ -24,12 +24,40 @@ Use this skill when:
 
 ## Procedure
 
-1. Check for planning files:
+1. Find which layout the project uses:
+
+   - `.claude-work/efforts/` exists: the project uses effort folders. Go to
+     step 2a.
+   - It does not: the project uses `.claude-work/current/`. Go to
+     step 2b. Effort folders start only when the user asks
+     for them (or asks to split a large PLAN); never start them on your own.
+
+2a. Pick or start an effort (a project with `.claude-work/efforts/`):
+
+   - The SessionStart index (or `synapse effort list`) names the open
+     efforts. Read no planning file yet.
+   - The effort the user names wins. Otherwise match the task to the list.
+     Ask only when two efforts fit.
+   - Take one up: `synapse effort resume <slug>`. Then read only
+     `.claude-work/efforts/<slug>/PLAN.md` and `EXECUTION.md`, once, and
+     extract objective, constraints, progress and prior decisions.
+   - No effort fits: propose a slug (lower case, `a-z`, `0-9`, `-`) and run
+     `synapse effort start <slug> --title "..."`. It creates PLAN.md and
+     EXECUTION.md from the templates; fill them in.
+   - Never read another effort's files. New work is a new effort, not a new
+     section of this one.
+   - Status changes only through the CLI: `synapse effort wait <slug> --on
+     "..."` or `synapse effort park <slug>` when that is the state;
+     `synapse effort done <slug>` or `cancel <slug> --reason "..."` only on
+     the user's word.
+   - To split a large `current/PLAN.md` into efforts: `migrate.md` next to this file.
+
+2b. Without effort folders. Check for planning files:
 
    - `.claude-work/current/PLAN.md`
    - `.claude-work/current/EXECUTION.md`
 
-2. If present:
+   If present:
 
    - Read both files once
    - Extract:

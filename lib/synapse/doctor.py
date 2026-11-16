@@ -8,8 +8,8 @@ Checks the runtime (Python, venv, DB, Ollama, the obsidian CLI or the notes fold
 resolves, and the conflicts INSTALL.md lists: same-named skills, competing
 always-on rules, other Stop, PreCompact, PreToolUse, PostToolUse and SessionEnd hooks, the
 auto-compact window (and where Synapse's marks land for it), an output style,
-hooks disabled by settings, an old V1/v1.5 install, and an unignored
-.claude-work/. It changes nothing. Exit code 1 when any check is an error.
+hooks disabled by settings, an old V1/v1.5 install, an unignored
+.claude-work/, and the project's effort folders. It changes nothing. Exit code 1 when any check is an error.
 """
 
 import argparse
@@ -19,6 +19,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -479,11 +480,85 @@ def check_gitignore(rep: Report, project_dir: Path) -> None:
     work = project_dir / ".claude-work"
     if not work.exists() or not paths.find_upwards(project_dir, ".git"):
         return
-    probe = subprocess.run(["git", "-C", str(project_dir), "check-ignore", "-q", ".claude-work/current/PLAN.md"],
-                           capture_output=True)
-    if probe.returncode == 1:
-        rep.add("warn", "gitignore", f"{tilde(work)} is not ignored by git",
-                "add .claude-work/ to the repo's .gitignore (ask the user first)")
+    probes = []
+    if (work / "current").exists() or not paths.efforts_dir(project_dir).is_dir():
+        probes.append(".claude-work/current/PLAN.md")
+    if paths.efforts_dir(project_dir).is_dir():
+        probes.append(".claude-work/efforts/x/PLAN.md")
+    for probe_path in probes:
+        probe = subprocess.run(["git", "-C", str(project_dir), "check-ignore", "-q", probe_path],
+                               capture_output=True)
+        if probe.returncode == 1:
+            rep.add("warn", "gitignore", f"{tilde(work)} is not ignored by git ({probe_path})",
+                    "add .claude-work/ to the repo's .gitignore (ask the user first)")
+            return
+
+
+# ---------- Efforts ----------
+
+CLOSING_STALE_S = 3600        # a .closing claim this old is a crashed close
+CLOSED_IN_PLACE_S = 86400     # a closed effort's folder still under efforts/ after a day
+LARGE_PLAN_LINES = 400        # a current/PLAN.md this long is worth splitting
+
+
+def _age(path: Path) -> float | None:
+    try:
+        return time.time() - path.stat().st_mtime
+    except OSError:
+        return None
+
+
+def check_efforts(rep: Report, project_dir: Path) -> None:
+    """Read-only: the project's effort folders. Silent when the project has none
+    (and no current/PLAN.md long enough to split)."""
+    root = paths.work_root(project_dir)
+    if root is None:
+        return
+    base = paths.efforts_dir(root)
+    if not base.is_dir():
+        plan = paths.work_dir(root) / "PLAN.md"
+        try:
+            lines = len(plan.read_text(encoding="utf-8", errors="replace").splitlines())
+        except OSError:
+            return
+        if lines >= LARGE_PLAN_LINES:
+            rep.add("info", "efforts", f"{tilde(plan)} has {lines} lines",
+                    "to split it into one folder per effort, ask the user, then run: synapse effort migrate")
+        return
+    try:
+        folders = sorted(p for p in base.iterdir()
+                         if p.is_dir() and not p.name.startswith((".", "_")))
+    except OSError as e:
+        rep.add("warn", "efforts", f"cannot list {tilde(base)}: {e}")
+        return
+    open_n = problems = 0
+    for folder in folders:
+        try:
+            meta = json.loads(paths.effort_file(root, folder.name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            meta = None
+        if not isinstance(meta, dict) or not isinstance(meta.get("status"), str):
+            problems += 1
+            rep.add("warn", "efforts", f"{tilde(folder)} has no readable effort.json",
+                    "if it is a real effort, restore effort.json from the archive or move the folder out of "
+                    "efforts/; Synapse never deletes it")
+            continue
+        if meta["status"] in paths.EFFORT_OPEN:
+            open_n += 1
+        elif meta["status"] in paths.EFFORT_CLOSED:
+            age = _age(paths.effort_file(root, folder.name))
+            if age is not None and age > CLOSED_IN_PLACE_S:
+                rep.add("info", "efforts", f"closed effort {folder.name} is still in efforts/",
+                        "the next synapse effort start moves it to efforts/_closed/; "
+                        "close any program holding its files open")
+        claim = paths.effort_claim(root, folder.name)
+        age = _age(claim)
+        if age is not None and age > CLOSING_STALE_S:
+            problems += 1
+            rep.add("warn", "efforts", f"{tilde(claim)} is a close claim older than an hour",
+                    f"a close crashed; run synapse effort done {folder.name} again (it takes over a stale claim)")
+    if not problems:
+        rep.add("ok", "efforts", f"{len(folders)} effort folder(s), {open_n} open or parked")
 
 
 # ---------- Entry point ----------
@@ -542,6 +617,7 @@ def run(project_dir: Path) -> Report:
     check_subagent_models(rep, project_dir)
     check_old_installs(rep, project_dir, r)
     check_gitignore(rep, project_dir)
+    check_efforts(rep, project_dir)
     return rep
 
 

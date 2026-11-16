@@ -12,7 +12,7 @@ derived from your sessions:
 
 - **Planning files.** Under Synapse's skills, the model writes `PLAN.md`,
   `EXECUTION.md` and `NOTES.md` (the plan, the current task, open questions
-  and decisions) in your project's `.claude-work/current/`. The Stop hook
+  and decisions) in your project's `.claude-work/current/`, or, in a project that uses effort folders, in one folder per effort under `.claude-work/efforts/`. The Stop hook
   records the title and link of each Artifact the session published in
   `ARTIFACTS.md` there.
 - **Session notes.** `/synapse:end-session` has the model write a session
@@ -67,6 +67,8 @@ notes vault.
 Synapse sends nothing else anywhere.
 
 ## Retention and deletion
+
+The efforts folder is project working data like `current/`. For each session that took up an effort, the Synapse home's `state/` folder holds a small binding file (a project path, an effort slug and a time) and, after `/clear`, a handoff file of the same kind. Bindings are pruned after 7 days idle, handoffs after a day.
 
 Synapse keeps what it stores until you delete it. Deleting the Synapse home
 removes the default store and the team clones under it; delete any store or
