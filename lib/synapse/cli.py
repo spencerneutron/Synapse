@@ -16,6 +16,8 @@ synapse — command-line entry point for the Synapse plugin.
   synapse nudge --hook   hooks: dispatch reminder, context-size nudge, resume pointer
   synapse gate --hook                    hooks: cost-aware deny (PreToolUse); checkpoint ask, wait for agents (Stop)
   synapse checkpoint --stamp             record the time in EXECUTION.md's Resume section
+  synapse effort <verb> [...]            list | start | resume | wait | park | done | cancel | migrate
+                                         (per-effort planning folders in .claude-work/efforts/)
   synapse share <subcommand> [...]       scrub | lint | add (share a note with a team)
   synapse shared <subcommand> [...]      init | join | sync | status | retract | push
   synapse extract <subcommand> [...]     init | embed-archive | embed-note | status |
@@ -52,6 +54,7 @@ COMMANDS = {
     "nudge": "nudge",
     "gate": "gate",
     "checkpoint": "checkpoint",
+    "effort": "effort",
     "share": "share",
     "shared": "shared",
     "extract": "extract",

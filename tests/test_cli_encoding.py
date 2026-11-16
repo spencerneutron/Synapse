@@ -34,7 +34,7 @@ SKIP_SCRIPTS = {}
 # Left out on purpose (they provision a venv or read/write a store):
 # setup, doctor, archive, pending, facts, backfill, recall-hint.
 NOARG_ALLOWLIST = {
-    "recall", "recall-check", "compact-guide", "checkpoint",
+    "recall", "recall-check", "compact-guide", "checkpoint", "effort",
     "share", "shared", "extract", "vault", "migrate", "where", "version",
 }
 

@@ -121,6 +121,46 @@ def put(dest: Path, src) -> None:
     os.replace(tmp, dest)
 
 
+def copy_to_archive(current: Path, r, base_id: str, prefixes_or_sources) -> tuple[str, list[str]]:
+    """Copy working files into r.archive_dir under a free ID derived from base_id.
+
+    prefixes_or_sources: prefixes to gather from `current`, or a ready prefix ->
+    Path|bytes dict. Returns (session ID, copied paths). A copied ARTIFACTS
+    segment is marked archived in `current`."""
+    if isinstance(prefixes_or_sources, dict):
+        sources = prefixes_or_sources
+    else:
+        sources = gather(current, prefixes_or_sources)
+    r.archive_dir.mkdir(parents=True, exist_ok=True)
+    session_id = free_session_id(r.archive_dir, base_id)
+    copied = []
+    for prefix, src in sources.items():
+        dest = r.archive_dir / f"{prefix}_{session_id}.md"
+        put(dest, src)
+        copied.append(str(dest))
+    if "ARTIFACTS" in sources:
+        artifacts.mark_archived(current, session_id)
+    return session_id, copied
+
+
+def effort_of(r, archive_id: str) -> str | None:
+    """The effort slug an archived session came from (its marker file), else None."""
+    try:
+        slug = paths.archive_effort_marker(r, archive_id).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return slug or None
+
+
+def mark_effort(r, archive_id: str, slug: str) -> None:
+    """Record that an archived session came from an effort folder. Atomic."""
+    marker = paths.archive_effort_marker(r, archive_id)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    tmp = marker.with_name(f"{marker.name}.{os.getpid()}.tmp")
+    tmp.write_text(slug + "\n", encoding="utf-8", newline="\n")
+    os.replace(tmp, marker)
+
+
 def auto_archive(event: dict) -> None:
     """The SessionEnd archive. Raises on error; the caller fails open."""
     if os.environ.get("SYNAPSE_DETACHED"):
@@ -219,16 +259,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.exit(f"error: unsafe session ID {base!r}: use letters, digits, '.', '_' and '-'")
 
     r = paths.resolve(project=args.project, cwd=args.workdir)
-    r.archive_dir.mkdir(parents=True, exist_ok=True)
-    session_id = free_session_id(r.archive_dir, base)
-
-    copied = []
-    for prefix, src in sources.items():
-        dest = r.archive_dir / f"{prefix}_{session_id}.md"
-        put(dest, src)
-        copied.append(str(dest))
-    if "ARTIFACTS" in sources:
-        artifacts.mark_archived(current, session_id)
+    session_id, copied = copy_to_archive(current, r, base, sources)
 
     print(json.dumps({
         "session_id": session_id,
