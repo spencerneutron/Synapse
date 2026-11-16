@@ -17,8 +17,10 @@ from helpers import ROOT
 from test_effort import EffortBase
 
 HERE = Path(__file__).resolve().parent
-PLAN = (HERE / "fixtures-plan-giant.md").read_bytes()
-EXEC = (HERE / "fixtures-execution-giant.md").read_bytes()
+# git may check the fixtures out with CRLF (Windows autocrlf); the tests build
+# their own CRLF variants, so start from LF bytes everywhere.
+PLAN = (HERE / "fixtures-plan-giant.md").read_bytes().replace(b"\r\n", b"\n")
+EXEC = (HERE / "fixtures-execution-giant.md").read_bytes().replace(b"\r\n", b"\n")
 
 
 def digest(folder: Path) -> dict:
