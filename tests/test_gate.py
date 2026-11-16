@@ -7,11 +7,12 @@ from datetime import datetime, timedelta
 from helpers import LIB, ROOT  # noqa: F401  (sets up sys.path and SYNAPSE_HOME)
 from test_continuation import Base, usage_entry, write
 from test_hooks import BASH
-from test_nudge import CLI, PY_SH
+from test_nudge import CLI, PY_SH, bind_session, make_effort
 
 import checkpoint
 import gate
 import os
+from pathlib import Path
 
 REASON_5 = ("Synapse gate: 5 hands-on calls in this step at about 270k context (each call here "
             "costs about 27k base-equivalent). Brief the rest of this step to synapse:implementer "
@@ -277,6 +278,51 @@ WAIT = ("Synapse: a dispatched agent is still running. End this turn with one li
         "calling the work done, and if the agent asked a question, answer it or relay it.")
 RUNNING = [{"id": "a1", "type": "subagent", "status": "running", "agent_type": "synapse:implementer",
             "description": "fix loop"}]
+
+
+class EffortFolderTests(GateBase):
+    def setUp(self):
+        super().setUp()
+        self.config("[nudge]\ncontext_window = 100000\n")
+        self.eff = make_effort(self.proj, "alpha")
+        bind_session(self.home, "s1", self.proj, "alpha")
+        self.cur = self.proj / ".claude-work" / "current"
+
+    def test_resume_in_effort_satisfies_the_ask(self):
+        self.assertEqual(self.gate(event="Stop", ctx=65000),
+                         {"decision": "block", "reason": CKPT.format("65k")})
+        (self.home / "state" / "context-s1.ckpt.low").unlink()
+        (self.eff / "EXECUTION.md").write_text(
+            f"# E\n\n## Resume\nCheckpoint written: {checkpoint.stamp_text(datetime.now())}\nNext: x\n")
+        self.assertIsNone(self.gate(event="Stop", ctx=66000))
+
+    def test_resume_in_current_does_not_satisfy_a_bound_session(self):
+        self.cur.mkdir(parents=True)
+        (self.cur / "EXECUTION.md").write_text(
+            f"# E\n\n## Resume\nCheckpoint written: {checkpoint.stamp_text(datetime.now())}\nNext: x\n")
+        self.assertIsNotNone(self.gate(event="Stop", ctx=65000))
+
+    def test_low_level_needs_the_effort_folder_not_current(self):
+        # bound: the effort folder exists, so the 60% ask fires although current/ does not
+        self.assertFalse(self.cur.exists())
+        self.assertIsNotNone(self.gate(event="Stop", ctx=65000))
+
+    def test_artifacts_land_in_the_effort_folder(self):
+        FIXTURE = Path(__file__).resolve().parent / "artifacts-sample.jsonl"
+        self.tr.write_bytes(FIXTURE.read_bytes())
+        r = run_gate({"session_id": "s1", "hook_event_name": "Stop", "transcript_path": str(self.tr),
+                      "cwd": str(self.proj)}, self.home, cwd=self.dir)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue((self.eff / "ARTIFACTS.md").is_file())
+        self.assertFalse(self.cur.exists())
+
+    def test_unbound_session_still_uses_current(self):
+        FIXTURE = Path(__file__).resolve().parent / "artifacts-sample.jsonl"
+        self.tr.write_bytes(FIXTURE.read_bytes())
+        run_gate({"session_id": "s2", "hook_event_name": "Stop", "transcript_path": str(self.tr),
+                  "cwd": str(self.proj)}, self.home, cwd=self.dir)
+        self.assertTrue((self.cur / "ARTIFACTS.md").is_file())
+        self.assertFalse((self.eff / "ARTIFACTS.md").exists())
 
 
 class WaitTests(GateBase):

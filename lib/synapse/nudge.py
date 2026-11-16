@@ -31,7 +31,13 @@ nudge.py — hook-time reminders for the main session, in one process.
    the prompt cache lives and the context is at least 60% of the window, says
    what the request will rewrite.
 5. Resume pointer. At SessionStart after /compact or /clear, points at the
-   ## Resume section of .claude-work/current/EXECUTION.md (pointers only).
+   ## Resume section of EXECUTION.md (pointers only).
+6. Efforts. In a project with .claude-work/efforts/, SessionStart prints the
+   index of efforts before the resume pointer (after /clear, a session that
+   ended with /clear a moment ago hands its effort over). A new prompt marks
+   the session's binding active and says so once when its effort was closed.
+   A write to an open effort's PLAN.md, EXECUTION.md or NOTES.md binds a
+   session that is on none. Every step is silent on error.
 
 Stdlib only: no Ollama, no database, no venv. It must never block: it always
 exits 0, never prints a decision, and on any error prints nothing.
@@ -46,6 +52,7 @@ from pathlib import Path
 HANDS_ON = {"Bash", "PowerShell", "Edit", "Write", "MultiEdit", "NotebookEdit"}
 DISPATCH = {"Agent", "Task"}
 STALE_S = 24 * 3600
+BINDING_STALE_S = 7 * 24 * 3600
 CONTEXT_STALE_S = 7 * 24 * 3600  # the state file is only written on a change
 SHELLS = {"Bash", "PowerShell"}
 DIGEST = ("Synapse: a step over about five tool calls or three files is a brief for a role, "
@@ -94,6 +101,21 @@ def prune(paths, sid: str) -> None:
     for f in state.glob("nudge-*"):
         try:
             if f == own or now - f.stat().st_mtime > STALE_S:
+                f.unlink()
+        except OSError:
+            pass
+    own_bind = paths.effort_state(sid)
+    for f in state.glob("effort-*.json"):
+        try:
+            if f.name.startswith("effort-handoff-"):
+                continue
+            if f != own_bind and now - f.stat().st_mtime > BINDING_STALE_S:
+                f.unlink()
+        except OSError:
+            pass
+    for f in state.glob("effort-handoff-*"):
+        try:
+            if now - f.stat().st_mtime > STALE_S:
                 f.unlink()
         except OSError:
             pass
@@ -152,6 +174,49 @@ def digest_line(paths) -> str:
         return ""
 
 
+def effort_start(paths, sid: str, data: dict) -> str:
+    """SessionStart: claim a /clear handoff, then the effort index. Never raises."""
+    try:
+        cwd = data.get("cwd")
+        root = paths.work_root(Path(cwd)) if isinstance(cwd, str) and cwd else None
+        if root is None or not paths.efforts_dir(root).is_dir():
+            return ""
+        import effort   # only a project with efforts pays for the import
+        if data.get("source") == "clear" and paths.bound_effort(root, sid) is None:
+            slug = effort.handoff_claim(root, sid)
+            if slug:
+                effort.bind(sid, root, slug)
+        return effort.index_text(root, sid)
+    except Exception:
+        return ""
+
+
+def stale_line(paths, sid: str, data: dict) -> str:
+    try:
+        if not paths.effort_state(sid).exists():
+            return ""
+        import effort
+        effort.touch(sid)
+        cwd = data.get("cwd")
+        return effort.stale_notice(sid, cwd) if isinstance(cwd, str) and cwd else ""
+    except Exception:
+        return ""
+
+
+def bind_from_edit(paths, data: dict) -> None:
+    try:
+        inp = data.get("tool_input")
+        inp = inp if isinstance(inp, dict) else {}
+        p = inp.get("file_path") or inp.get("notebook_path")
+        # cheap test first: false positives are fine, a miss is not
+        if not isinstance(p, str) or paths.efforts_dir(".").name not in p:
+            return
+        import effort
+        effort.hook_bind(data)
+    except Exception:
+        pass
+
+
 def emit(event: str, *lines: str) -> str:
     text = "\n".join(x for x in lines if x)
     if not text:
@@ -167,6 +232,8 @@ def handle(data: dict) -> str:
     import paths
     import continuation
     if event in ("PostToolUse", "PostToolUseFailure"):
+        if event == "PostToolUse":
+            bind_from_edit(paths, data)
         if data.get("agent_id"):
             return ""
         first = dispatch_line(paths, sid, data)
@@ -178,10 +245,16 @@ def handle(data: dict) -> str:
     elif event == "UserPromptSubmit":
         reset(paths, sid)
         return emit(event, digest_line(paths),
-                    continuation.resume_time_line(paths, data, sid))
+                    continuation.resume_time_line(paths, data, sid),
+                    stale_line(paths, sid, data))
     elif event == "SessionStart":
         prune(paths, sid)
-        return emit(event, continuation.resume_pointer(paths, data))
+        first = effort_start(paths, sid, data)
+        try:
+            second = continuation.resume_pointer(paths, data)
+        except Exception:
+            second = ""
+        return emit(event, first, second)
     return ""
 
 

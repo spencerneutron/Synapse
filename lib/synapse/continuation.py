@@ -8,7 +8,8 @@ Called from nudge.handle; it never prints and never raises on its own account.
                            (Claude Code's auto-compact point when its settings set one)
   context_nudge(...)       PostToolUse: one line at 60% and 90% of the context window
   resume_time_line(...)    UserPromptSubmit: the prompt cache expired while idle
-  resume_pointer(...)      SessionStart (compact or clear): point at EXECUTION.md ## Resume
+  resume_pointer(...)      SessionStart (compact or clear): point at ## Resume in EXECUTION.md
+                           (the session's effort, efforts with a checkpoint, or current/)
   cross / uncross          when the context reached 60% / 90% (for the Stop gate in gate.py)
   resume_written(path)     when EXECUTION.md's ## Resume was last written
 """
@@ -472,26 +473,26 @@ def resume_written(f: Path):
     return found[0] if found else None
 
 
-def resume_pointer(paths, data: dict) -> str:
-    """SessionStart after /compact or /clear: point at EXECUTION.md ## Resume."""
-    if data.get("source") not in ("compact", "clear"):
-        return ""
-    cwd = data.get("cwd")
-    if not isinstance(cwd, str) or not cwd:
-        return ""
-    work = paths.find_work_dir(Path(cwd))
-    f = work / "EXECUTION.md"
+RESUME_RECENT_S = 7 * 24 * 3600
+POINTER_EFFORTS = 3
+
+
+def _when_text(when) -> tuple[str, str]:
+    age = fmt_age(max(0.0, (datetime.now(timezone.utc) - when).total_seconds()))
+    return when.astimezone().strftime("%Y-%m-%d %H:%M"), (age if age == "just now" else f"{age} ago")
+
+
+def _pointer(f: Path, work: Path, bases, slug: str | None = None) -> str:
+    """The sentence pointing at EXECUTION.md `f` ## Resume, or "" without one."""
     if not f.is_file():
         return ""
     found = _resume(f)
     if found is None:
         return ""
     when, label = found
-    age = fmt_age(max(0.0, (datetime.now(timezone.utc) - when).total_seconds()))
-    age = age if age == "just now" else f"{age} ago"
-    shown = when.astimezone().strftime("%Y-%m-%d %H:%M")
+    shown, age = _when_text(when)
     rel = f
-    for base in (Path(cwd), work.parent.parent):
+    for base in bases:
         try:
             rel = f.relative_to(base)
             break
@@ -499,6 +500,55 @@ def resume_pointer(paths, data: dict) -> str:
             pass
     notes = ("; NOTES.md beside it holds the checkpoint's facts and decisions"
              if (work / "NOTES.md").is_file() else "")
-    return (f"Synapse: work in progress is recorded in {rel.as_posix()} under ## Resume "
+    on = f" on effort '{slug}'" if slug else ""
+    return (f"Synapse: work in progress{on} is recorded in {rel.as_posix()} under ## Resume "
             f"({label} {shown}, {age}). If this conversation continues that work, "
             f"read it before acting{notes}.")
+
+
+def _effort_checkpoints(paths, root) -> str:
+    """Up to POINTER_EFFORTS open efforts with a recent ## Resume, freshest first."""
+    import effort
+    rows = []
+    for e in effort.open_efforts(root):
+        f = paths.effort_dir(root, e["slug"]) / "EXECUTION.md"
+        try:
+            found = _resume(f) if f.is_file() else None
+        except OSError:
+            found = None
+        if found and (datetime.now(timezone.utc) - found[0]).total_seconds() <= RESUME_RECENT_S:
+            rows.append((found[0], found[1], e["slug"]))
+    rows.sort(key=lambda r: r[0], reverse=True)
+    if not rows:
+        return ""
+    items = []
+    for when, label, slug in rows[:POINTER_EFFORTS]:
+        shown, age = _when_text(when)
+        items.append(f"{slug} ({label} {shown}, {age})")
+    return ("Synapse: efforts with a recorded checkpoint: " + ", ".join(items) +
+            ". If this conversation continues one, run `synapse effort resume <slug>` and read "
+            "## Resume in its EXECUTION.md before acting.")
+
+
+def resume_pointer(paths, data: dict) -> str:
+    """SessionStart after /compact or /clear: point at EXECUTION.md ## Resume, in the
+    session's effort, in the efforts that have one, or in .claude-work/current/."""
+    if data.get("source") not in ("compact", "clear"):
+        return ""
+    cwd = data.get("cwd")
+    if not isinstance(cwd, str) or not cwd:
+        return ""
+    sid = data.get("session_id")
+    sid = sid if isinstance(sid, str) and sid else None
+    root = paths.work_root(Path(cwd))
+    if root is not None and paths.efforts_dir(root).is_dir():
+        slug = paths.bound_effort(root, sid) if sid else None
+        if slug:
+            work = paths.effort_dir(root, slug)
+            return _pointer(work / "EXECUTION.md", work, (Path(cwd), root), slug)
+        lines = [_effort_checkpoints(paths, root)]
+        work = paths.work_dir(root)
+        lines.append(_pointer(work / "EXECUTION.md", work, (Path(cwd), work.parent.parent)))
+        return "\n".join(x for x in lines if x)
+    work = paths.find_work_dir(Path(cwd), session_id=sid)
+    return _pointer(work / "EXECUTION.md", work, (Path(cwd), work.parent.parent))

@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import subprocess
@@ -93,6 +94,75 @@ class CheckpointTests(unittest.TestCase):
             self.assertIn(s, skill)
         end = (ROOT / "skills" / "end-session" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("merged into NOTES_", end)
+
+
+class CheckpointEffortTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        t = Path(self.tmp.name)
+        self.root, self.home = t / "proj", t / "home"
+        (self.home / "state").mkdir(parents=True)
+        self.cur = self.root / ".claude-work" / "current"
+        self.cur.mkdir(parents=True)
+        self.eff = self.root / ".claude-work" / "efforts" / "alpha"
+        self.eff.mkdir(parents=True)
+        (self.eff / "effort.json").write_text('{"slug": "alpha", "status": "active"}')
+        (self.eff / "EXECUTION.md").write_text(DOC)
+
+    def run_cp(self, *args, sid=""):
+        env = dict(os.environ, SYNAPSE_OPTIONAL="1", SYNAPSE_HOME=str(self.home),
+                   CLAUDE_CODE_SESSION_ID=sid)
+        return subprocess.run([sys.executable, str(CLI), "checkpoint", *args],
+                              cwd=self.root, capture_output=True, env=env)
+
+    def test_effort_flag(self):
+        r = self.run_cp("--stamp", "--effort", "alpha")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Checkpoint written:", (self.eff / "EXECUTION.md").read_text())
+        self.assertNotIn("note:", r.stdout.decode())
+
+    def test_bound_session(self):
+        (self.home / "state" / "effort-s1.json").write_text(
+            json.dumps({"root": os.path.abspath(str(self.root)), "slug": "alpha"}))
+        r = self.run_cp("--stamp", sid="s1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Checkpoint written:", (self.eff / "EXECUTION.md").read_text())
+        self.assertNotIn("note:", r.stdout.decode())
+
+    def test_unknown_effort(self):
+        r = self.run_cp("--stamp", "--effort", "nope")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("alpha", r.stderr.decode())
+
+    def test_unbound_stamps_current_with_note(self):
+        (self.cur / "EXECUTION.md").write_text(DOC)
+        r = self.run_cp("--stamp")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Checkpoint written:", (self.cur / "EXECUTION.md").read_text())
+        self.assertNotIn("Checkpoint written:", (self.eff / "EXECUTION.md").read_text())
+        self.assertIn("note: this session is on no effort; stamped "
+                      ".claude-work/current/EXECUTION.md (open efforts: alpha)", r.stdout.decode())
+
+    def test_unbound_without_current_file_names_the_way_out(self):
+        r = self.run_cp("--stamp")
+        self.assertEqual(r.returncode, 1)
+        err = r.stderr.decode()
+        self.assertIn("is missing; create it first (plan-session).", err)
+        self.assertIn("synapse effort resume <slug>", err)
+        self.assertIn("(open: alpha)", err)
+
+    def test_no_efforts_dir_output_unchanged(self):
+        (self.root / ".claude-work" / "efforts" / "alpha" / "effort.json").unlink()
+        (self.eff / "EXECUTION.md").unlink()
+        self.eff.rmdir()
+        self.eff.parent.rmdir()
+        r = self.run_cp("--stamp")
+        self.assertEqual(r.returncode, 1)
+        self.assertTrue(r.stderr.decode().rstrip().endswith("is missing; create it first (plan-session)"))
+        (self.cur / "EXECUTION.md").write_text(DOC)
+        r = self.run_cp("--stamp")
+        self.assertEqual(r.stdout.decode().count("\n"), 1)
 
 
 if __name__ == "__main__":

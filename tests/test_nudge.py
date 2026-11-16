@@ -254,5 +254,187 @@ class NudgeTests(unittest.TestCase):
                         self.assertEqual(h["timeout"], 10)
 
 
+def make_effort(proj, slug, status="active", resume=None, title="T"):
+    """An effort folder under proj with effort.json; `resume` is EXECUTION.md's text."""
+    d = Path(proj) / ".claude-work" / "efforts" / slug
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "effort.json").write_text(json.dumps({"slug": slug, "title": title, "status": status}), "utf-8")
+    (d / "PLAN.md").write_text("# Plan\n", "utf-8")
+    if resume is not None:
+        (d / "EXECUTION.md").write_text(resume, "utf-8")
+    (Path(proj) / ".git").mkdir(exist_ok=True)
+    return d
+
+
+def bind_session(home, sid, proj, slug):
+    st = Path(home) / "state"
+    st.mkdir(parents=True, exist_ok=True)
+    f = st / f"effort-{sid}.json"
+    f.write_text(json.dumps({"root": os.path.abspath(str(proj)), "slug": slug, "time": "x"}), "utf-8")
+    return f
+
+
+def write_handoff(home, proj, slug, frm="old", ago=1.0):
+    import hashlib
+    h = hashlib.sha256(os.path.normcase(str(Path(proj).resolve())).encode("utf-8")).hexdigest()[:16]
+    st = Path(home) / "state"
+    st.mkdir(parents=True, exist_ok=True)
+    f = st / f"effort-handoff-{h}-{frm}.json"
+    f.write_text(json.dumps({"slug": slug, "from": frm, "time": time.time() - ago}), "utf-8")
+    return f
+
+
+class EffortNudgeTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.home = self.dir / "home"
+        self.home.mkdir()
+        self.proj = self.dir / "proj"
+        self.proj.mkdir()
+
+    def send(self, **ev):
+        r = run(ev, self.home)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stderr, b"")
+        text = r.stdout.decode().strip()
+        return json.loads(text)["hookSpecificOutput"]["additionalContext"] if text else ""
+
+    def start(self, source="startup", sid="s1"):
+        return self.send(session_id=sid, hook_event_name="SessionStart", source=source, cwd=str(self.proj))
+
+    def post(self, path, sid="s1", tool="Edit", **extra):
+        return self.send(session_id=sid, hook_event_name="PostToolUse", tool_name=tool,
+                         tool_input={"file_path": str(path)}, cwd=str(self.proj), **extra)
+
+    def bound(self, sid="s1"):
+        f = self.home / "state" / f"effort-{sid}.json"
+        return json.loads(f.read_text("utf-8"))["slug"] if f.is_file() else None
+
+    def test_index_printed_on_every_source(self):
+        make_effort(self.proj, "alpha")
+        for source in ("startup", "resume", "clear", "compact"):
+            self.assertIn("Synapse efforts in this project: 1 open", self.start(source))
+
+    def test_nothing_new_without_efforts(self):
+        (self.proj / ".claude-work" / "current").mkdir(parents=True)
+        self.assertEqual(self.start("startup"), "")
+        self.assertEqual(self.start("clear"), "")
+
+    def test_index_before_pointer(self):
+        make_effort(self.proj, "alpha", resume="# E\n## Resume\nnext\n")
+        text = self.start("compact")
+        self.assertTrue(text.startswith("Synapse efforts in this project"), text)
+        self.assertIn("\nSynapse: efforts with a recorded checkpoint: alpha (", text)
+        self.assertLess(text.index("Synapse efforts in"), text.index("recorded checkpoint"))
+
+    def test_handoff_claimed_on_clear(self):
+        make_effort(self.proj, "alpha", resume="# E\n## Resume\nnext\n")
+        make_effort(self.proj, "beta", resume="# E\n## Resume\nnext\n")
+        h = write_handoff(self.home, self.proj, "alpha")
+        text = self.start("clear", sid="new")
+        self.assertEqual(self.bound("new"), "alpha")
+        self.assertFalse(h.exists())
+        self.assertIn("work in progress on effort 'alpha' is recorded in "
+                      ".claude-work/efforts/alpha/EXECUTION.md", text)
+        self.assertIn("This session is on alpha", text)
+
+    def test_no_claim_on_startup(self):
+        make_effort(self.proj, "alpha")
+        h = write_handoff(self.home, self.proj, "alpha")
+        self.start("startup", sid="new")
+        self.assertIsNone(self.bound("new"))
+        self.assertTrue(h.exists())
+
+    def test_no_claim_when_already_bound(self):
+        make_effort(self.proj, "alpha")
+        make_effort(self.proj, "beta")
+        bind_session(self.home, "new", self.proj, "beta")
+        h = write_handoff(self.home, self.proj, "alpha")
+        self.start("clear", sid="new")
+        self.assertEqual(self.bound("new"), "beta")
+        self.assertTrue(h.exists())
+
+    def test_prune_bindings_and_handoffs(self):
+        make_effort(self.proj, "alpha")
+        old_t = time.time() - 8 * 24 * 3600
+        old = bind_session(self.home, "other", self.proj, "alpha")
+        own = bind_session(self.home, "s1", self.proj, "alpha")
+        fresh = bind_session(self.home, "fresh", self.proj, "alpha")
+        for f in (old, own):
+            os.utime(f, (old_t, old_t))
+        old_h = write_handoff(self.home, self.proj, "alpha", frm="x", ago=3 * 24 * 3600)
+        os.utime(old_h, (time.time() - 2 * 24 * 3600,) * 2)
+        new_h = write_handoff(self.home, self.proj, "alpha", frm="y", ago=3600)
+        self.start("startup")
+        self.assertFalse(old.exists())
+        self.assertFalse(old_h.exists())
+        self.assertTrue(own.exists() and fresh.exists() and new_h.exists())
+
+    def test_prompt_touches_binding_and_notice_once(self):
+        d = make_effort(self.proj, "alpha")
+        f = bind_session(self.home, "s1", self.proj, "alpha")
+        t = time.time() - 3600
+        os.utime(f, (t, t))
+        prompt = dict(session_id="s1", hook_event_name="UserPromptSubmit", cwd=str(self.proj))
+        self.assertNotIn("no longer open", self.send(**prompt))
+        self.assertGreater(f.stat().st_mtime, t + 1800)
+        (d / "effort.json").write_text(json.dumps({"slug": "alpha", "status": "done", "archive_id": "A1"}))
+        out = self.send(**prompt)
+        self.assertIn("effort 'alpha' that this session was on is closed (done, archive A1)", out)
+        self.assertNotIn("effort 'alpha' that this session", self.send(**prompt))
+
+    def test_post_tool_binds_unbound_session(self):
+        d = make_effort(self.proj, "alpha")
+        self.post(d / "PLAN.md")
+        self.assertEqual(self.bound(), "alpha")
+
+    def test_post_tool_binds_when_dispatch_line_is_exempt_and_failure_does_not(self):
+        d = make_effort(self.proj, "alpha")
+        self.send(session_id="s1", hook_event_name="PostToolUseFailure", tool_name="Edit",
+                  tool_input={"file_path": str(d / "PLAN.md")}, cwd=str(self.proj))
+        self.assertIsNone(self.bound())
+        self.post(d / "EXECUTION.md")
+        self.assertEqual(self.bound(), "alpha")
+
+    def test_post_tool_does_not_rebind(self):
+        make_effort(self.proj, "alpha")
+        d = make_effort(self.proj, "beta")
+        bind_session(self.home, "s1", self.proj, "alpha")
+        self.post(d / "PLAN.md")
+        self.assertEqual(self.bound(), "alpha")
+
+    def test_post_tool_ignores_subagent_and_closed_paths(self):
+        d = make_effort(self.proj, "alpha")
+        self.post(d / "PLAN.md", agent_id="a1")
+        self.assertIsNone(self.bound())
+        closed = d.parent / "_closed" / "2026-01-01-0000-alpha"
+        closed.mkdir(parents=True)
+        self.post(closed / "PLAN.md")
+        self.assertIsNone(self.bound())
+
+    def test_effort_module_not_imported_without_efforts(self):
+        (self.proj / ".claude-work" / "current").mkdir(parents=True)
+        prog = (
+            "import sys, json\n"
+            f"sys.path.insert(0, {str(LIB)!r})\n"
+            "import nudge\n"
+            "for ev in json.loads(sys.argv[1]):\n"
+            "    nudge.handle(ev)\n"
+            "print('effort' in sys.modules)\n")
+        proj = str(self.proj)
+        evs = [
+            dict(session_id="s1", hook_event_name="SessionStart", source="startup", cwd=proj),
+            dict(session_id="s1", hook_event_name="UserPromptSubmit", cwd=proj),
+            dict(session_id="s1", hook_event_name="PostToolUse", tool_name="Edit",
+                 tool_input={"file_path": proj + "/a.py"}, cwd=proj),
+        ]
+        r = subprocess.run([sys.executable, "-c", prog, json.dumps(evs)], capture_output=True,
+                           env=dict(os.environ, SYNAPSE_HOME=str(self.home), SYNAPSE_OPTIONAL="1"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.decode().strip().splitlines()[-1], "False", r.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
