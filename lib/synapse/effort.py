@@ -42,6 +42,7 @@ EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 BIND_FILES = ("plan.md", "execution.md", "notes.md")
 INDEX_LIMIT = 15
 INDEX_CAP = 4000
+INDEX_MORE = "- more not shown: `synapse effort list`"
 SWEEP_AFTER_S = 3600
 CLAIM_STALE_S = 60
 
@@ -130,7 +131,7 @@ def _touched(folder: Path) -> float:
 def _collect(root, statuses) -> list[dict]:
     out = []
     for folder in _folders(root):
-        meta = _json(folder / "effort.json")
+        meta = _json(paths.effort_file(root, folder.name))
         if meta and meta.get("status") in statuses:
             out.append({**meta, "slug": folder.name, "touched": _touched(folder)})
     return out
@@ -162,7 +163,18 @@ def all_efforts(root) -> list[dict]:
 
 # ---- bindings and handoff --------------------------------------------------
 
+def _usable(session_id) -> bool:
+    """A session ID that survives sanitizing; one that sanitizes to nothing binds nothing."""
+    return isinstance(session_id, str) and bool(paths._safe_id(session_id))
+
+
+def _bound(root, session_id) -> str | None:
+    return paths.bound_effort(root, session_id) if _usable(session_id) else None
+
+
 def bind(session_id: str, root, slug: str) -> None:
+    if not _usable(session_id):
+        return
     f = paths.effort_state(session_id)
     f.parent.mkdir(parents=True, exist_ok=True)
     _write_text(f, json.dumps({"root": os.path.abspath(str(root)), "slug": slug, "time": _iso(_now())}))
@@ -170,7 +182,7 @@ def bind(session_id: str, root, slug: str) -> None:
 
 def touch(session_id) -> None:
     try:
-        if session_id:
+        if _usable(session_id):
             os.utime(paths.effort_state(session_id), None)
     except Exception:
         pass
@@ -179,10 +191,10 @@ def touch(session_id) -> None:
 def others_on(root, slug: str, session_id, within_s: float = 1800) -> float | None:
     """Seconds since the freshest other session bound to this effort was active, within the window."""
     try:
-        own = paths.effort_state(session_id) if session_id else None
+        own = paths.effort_state(session_id) if _usable(session_id) else None
         ages = []
-        for f in (paths.home() / "state").glob("effort-*.json"):
-            if f.name.startswith("effort-handoff-") or f == own:
+        for f in paths.effort_states():
+            if f == own:
                 continue
             d = _json(f)
             if d and d.get("slug") == slug and paths.same_path(d.get("root", ""), root):
@@ -268,9 +280,24 @@ def _sibling_lines(root, now: float) -> list[str]:
     return lines
 
 
-def index_text(root, session_id=None, now=None) -> str:
+def _current_line(root) -> str:
+    """The index line about a current/ that still holds planning files."""
+    try:
+        marker = paths._json_dict(paths.split_marker(root))
+        snap = marker.get("snapshot_id") if marker else None
+        if isinstance(snap, str) and snap:
+            return (f"- (no effort) .claude-work/current/ is the pre-split copy (snapshot {_clip(snap, 60)}); "
+                    "read the efforts, not it. `synapse effort migrate --retire-current` moves it away "
+                    "on the user's word.")
+    except Exception:
+        pass
+    return ("- (no effort) .claude-work/current/ still holds planning files; "
+            "`synapse effort migrate` proposes a split.")
+
+
+def index_text(root, session_id=None, now=None, full: bool = False) -> str:
     """What SessionEnd-to-start shows the model about a project's efforts. "" for a
-    project that does not use efforts. Never raises."""
+    project with no efforts folder. Cut to INDEX_CAP unless `full`. Never raises."""
     try:
         if not root or not paths.efforts_dir(root).is_dir():
             return ""
@@ -280,17 +307,22 @@ def index_text(root, session_id=None, now=None) -> str:
         wd = paths.work_dir(root)
         legacy = (wd / "PLAN.md").is_file() or (wd / "EXECUTION.md").is_file()
         if not opened and not parked and not legacy:
-            return ""
-        bound = paths.bound_effort(root, session_id) if session_id else None
-        lines = [f"Synapse efforts in this project: {len(opened)} open, {len(parked)} parked. "
-                 f"This session is on {bound or 'none yet'}."]
+            return ("Synapse efforts in this project: 0 open, 0 parked. "
+                    "Start new work with `synapse effort start <slug> --title \"...\"`.")
+        bound = _bound(root, session_id)
+        head = [f"Synapse efforts in this project: {len(opened)} open, {len(parked)} parked. "
+                f"This session is on {bound or 'none yet'}."]
         if bound:
-            lines.append(f"Its files are in .claude-work/efforts/{bound}/; read no other effort's files. "
-                         "Switch with `synapse effort resume <slug>`.")
+            head.append(f"Its files are in .claude-work/efforts/{bound}/; read no other effort's files. "
+                        "Switch with `synapse effort resume <slug>`.")
+        elif not opened and parked:
+            head.append("Parked efforts: `synapse effort list --all`; start new work with "
+                        "`synapse effort start <slug> --title \"...\"`.")
         else:
-            lines.append("Take one up with `synapse effort resume <slug>`, or start new work with "
-                         "`synapse effort start <slug> --title \"...\"`; read only that effort's files "
-                         "(.claude-work/efforts/<slug>/).")
+            head.append("Take one up with `synapse effort resume <slug>`, or start new work with "
+                        "`synapse effort start <slug> --title \"...\"`; read only that effort's files "
+                        "(.claude-work/efforts/<slug>/).")
+        body = []
         for e in opened[:INDEX_LIMIT]:
             extra = ""
             other = others_on(root, e["slug"], session_id) if e["slug"] != bound else None
@@ -300,15 +332,24 @@ def index_text(root, session_id=None, now=None) -> str:
                     f"({_age(now - e['touched'])}{extra})")
             if e["slug"] == bound:
                 line += " (this session)"
-            lines.append(line)
+            body.append(line)
+        tail = []
         if len(opened) > INDEX_LIMIT:
-            lines.append(f"- and {len(opened) - INDEX_LIMIT} more: `synapse effort list`")
+            tail.append(f"- and {len(opened) - INDEX_LIMIT} more: `synapse effort list`")
         if legacy:
-            lines.append("- (no effort) .claude-work/current/ still holds planning files; "
-                         "`synapse effort migrate` proposes a split.")
-        lines.extend(_sibling_lines(root, now))
-        text = "\n".join(lines)
-        if len(text) > INDEX_CAP:
+            tail.append(_current_line(root))
+        tail.extend(_sibling_lines(root, now))
+
+        def join(lines, hint):
+            return "\n".join(head + lines + ([INDEX_MORE] if hint else []) + tail)
+
+        text = join(body, False)
+        if full or len(text) <= INDEX_CAP:
+            return text
+        while body and len(join(body, True)) > INDEX_CAP:
+            body.pop()
+        text = join(body, True)
+        if len(text) > INDEX_CAP:   # the tail alone is too long
             text = text[:INDEX_CAP].rsplit("\n", 1)[0]
         return text
     except Exception:
@@ -326,10 +367,10 @@ def hook_bind(data) -> None:
         sid = data.get("session_id")
         inp = data.get("tool_input") or {}
         p = inp.get("file_path") or inp.get("notebook_path")
-        if not sid or not isinstance(p, str):
+        if not _usable(sid) or not isinstance(p, str):
             return
         norm = p.replace("\\", "/")
-        marker = "/.claude-work/efforts/"
+        marker = "/" + "/".join(paths.efforts_dir(Path("x")).parts[-2:]) + "/"
         if marker not in norm:
             return
         prefix, rest = norm.split(marker, 1)
@@ -338,16 +379,17 @@ def hook_bind(data) -> None:
             return
         root = Path(prefix or "/")
         meta = read(root, parts[0])
-        if meta and meta.get("status") in paths.EFFORT_OPEN and not paths.bound_effort(root, sid):
+        if meta and meta.get("status") in paths.EFFORT_OPEN and not _bound(root, sid):
             bind(sid, root, parts[0])
     except Exception:
         pass
 
 
 def stale_notice(session_id, cwd) -> str:
-    """A line for a session whose bound effort was closed (by it or another session); drops the binding."""
+    """A line for a session whose bound effort was closed (by it or another session); drops the
+    binding. An effort.json that cannot be read leaves the binding alone and says nothing."""
     try:
-        if not session_id:
+        if not _usable(session_id):
             return ""
         f = paths.effort_state(session_id)
         state = _json(f)
@@ -355,16 +397,20 @@ def stale_notice(session_id, cwd) -> str:
         if not state or not root or not paths.same_path(state.get("root", ""), root):
             return ""
         slug = state.get("slug")
-        if not paths.valid_slug(slug) or paths.bound_effort(root, session_id):
+        if not paths.valid_slug(slug) or _bound(root, session_id):
             return ""
+        meta = read(root, slug)
+        if meta is None and paths.effort_dir(root, slug).exists():
+            return ""   # unreadable effort.json (typo, a file locked for a moment)
+        if meta is not None and meta.get("status") not in paths.EFFORT_CLOSED:
+            return ""
+        if meta is None:
+            found = [e for e in all_efforts(root) if e["slug"] == slug and e.get("closed_folder")]
+            meta = max(found, key=lambda e: e["touched"]) if found else None
         try:
             f.unlink()
         except OSError:
             pass
-        meta = read(root, slug)
-        if not meta:
-            found = [e for e in all_efforts(root) if e["slug"] == slug and e.get("closed_folder")]
-            meta = max(found, key=lambda e: e["touched"]) if found else None
         tail = ("Take up another with `synapse effort resume <slug>` or `synapse effort start <slug>` "
                 "before more planning.")
         if not meta or meta.get("status") not in paths.EFFORT_CLOSED:
@@ -386,10 +432,11 @@ def sweep_closed(root, force_slug: str | None = None) -> None:
     """Move closed efforts' folders to _closed/. Retried by every start and close. Never raises."""
     try:
         for folder in _folders(root):
-            meta = _json(folder / "effort.json")
+            meta = _json(paths.effort_file(root, folder.name))
             if not meta or meta.get("status") not in paths.EFFORT_CLOSED:
                 continue
-            if (folder / ".closing").exists() and _claim_fresh(folder / ".closing"):
+            claim = paths.effort_claim(root, folder.name)
+            if claim.exists() and _claim_fresh(claim):
                 continue
             try:
                 updated = datetime.fromisoformat(str(meta.get("updated")))
@@ -397,7 +444,9 @@ def sweep_closed(root, force_slug: str | None = None) -> None:
                 updated = datetime.fromtimestamp(_mtime(folder / "effort.json")).astimezone()
             if folder.name != force_slug and time.time() - updated.timestamp() <= SWEEP_AFTER_S:
                 continue
-            base = meta.get("archive_id") or f"{updated:%Y-%m-%d-%H%M}-{folder.name}"
+            base = meta.get("archive_id")
+            if not (isinstance(base, str) and archive.SAFE_ID_RE.fullmatch(base)):
+                base = f"{updated:%Y-%m-%d-%H%M}-{folder.name}"   # missing or unsafe: never a path
             try:
                 paths.closed_dir(root).mkdir(parents=True, exist_ok=True)
                 target, n = paths.closed_dir(root) / base, 2
@@ -448,9 +497,43 @@ def _notes_to_archive(folder: Path) -> bool:
     return not (last and last[-1].startswith("<!-- merged into NOTES_"))
 
 
+def _claim_id(claim: Path) -> str:
+    """The archive ID a crashed close left in its claim, else ""."""
+    try:
+        text = claim.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    return text if archive.SAFE_ID_RE.fullmatch(text) else ""
+
+
+def _take_claim(claim: Path, slug: str) -> str:
+    """Create the close claim exclusively. Returns the archive ID of a stale
+    claim taken over ("" when none). The new claim has a fresh mtime."""
+    stale_id = ""
+    if claim.exists():
+        if _claim_fresh(claim):
+            raise EffortError(f"effort {slug!r} is being closed by another session")
+        stale_id = _claim_id(claim)
+        try:
+            claim.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            raise EffortError(f"cannot close {slug!r}: {e}")
+    try:
+        os.close(os.open(claim, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+    except FileExistsError:
+        raise EffortError(f"effort {slug!r} is being closed by another session")
+    except OSError as e:
+        raise EffortError(f"cannot close {slug!r}: {e}")
+    return stale_id
+
+
 def close(root, slug: str, status: str, reason: str, r=None, now: datetime | None = None) -> dict:
     """Archive an effort's files and mark it done or cancelled. Raises EffortError
-    with effort.json and PLAN.md untouched when the claim or the archive fails."""
+    with effort.json and PLAN.md untouched when the claim or the archive fails. A
+    crash after the archive copy leaves the claim holding the archive ID; the rerun
+    that takes the stale claim over reuses that archive."""
     now = now or _now()
     folder = paths.effort_dir(root, slug)
     meta = read(root, slug)
@@ -459,14 +542,15 @@ def close(root, slug: str, status: str, reason: str, r=None, now: datetime | Non
     if meta.get("status") not in paths.EFFORT_OPEN:
         raise EffortError(f"effort {slug!r} is already closed ({meta.get('status')})")
     r = r or paths.resolve(cwd=Path(root))
-    claim = folder / ".closing"
-    if claim.exists() and _claim_fresh(claim):
-        raise EffortError(f"effort {slug!r} is being closed by another session")
+    claim = paths.effort_claim(root, slug)
+    stale_id = _take_claim(claim, slug)
+    release = True
     try:
-        os.close(os.open(claim, os.O_CREAT | os.O_WRONLY | (0 if claim.exists() else os.O_EXCL)))
-    except OSError as e:
-        raise EffortError(f"cannot close {slug!r}: {e}")
-    try:
+        meta = read(root, slug)   # another closer may have finished between the first read and the claim
+        if not meta:
+            raise EffortError(f"no effort {slug!r}")
+        if meta.get("status") not in paths.EFFORT_OPEN:
+            raise EffortError(f"effort {slug!r} is already closed ({meta.get('status')})")
         line = _outcome_line(status, reason, now)
         plan = folder / "PLAN.md"
         sources = {}
@@ -479,12 +563,22 @@ def close(root, slug: str, status: str, reason: str, r=None, now: datetime | Non
             sources.update({p: gathered[p] for p in archive.PREFIXES if p in gathered})
             archive_id, copied = "", []
             if sources.keys() & {"PLAN", "EXECUTION", "REPORT"}:
-                archive_id, copied = archive.copy_to_archive(
-                    folder, r, f"{now:%Y-%m-%d-%H%M}-{slug}", sources)
+                if stale_id and (r.archive_dir / f"PLAN_{stale_id}.md").is_file():
+                    archive_id = stale_id
+                    copied = [str(r.archive_dir / f"{p}_{stale_id}.md") for p in sources
+                              if (r.archive_dir / f"{p}_{stale_id}.md").is_file()]
+                else:
+                    archive_id, copied = archive.copy_to_archive(
+                        folder, r, f"{now:%Y-%m-%d-%H%M}-{slug}", sources)
+                release = False   # from here a crash leaves the claim, and the ID in it
+                _write_text(claim, archive_id + "\n")
                 archive.mark_effort(r, archive_id, slug)
         except (OSError, ValueError) as e:
+            if not release:
+                release = True
             raise EffortError(f"archive failed, {slug!r} left open: {e}")
         write(root, slug, {**meta, "status": status, "reason": reason or "", "archive_id": archive_id})
+        release = True
         try:
             if plan.is_file():
                 data = plan.read_bytes()
@@ -494,10 +588,11 @@ def close(root, slug: str, status: str, reason: str, r=None, now: datetime | Non
         except OSError:
             pass
     finally:
-        try:
-            claim.unlink()
-        except OSError:
-            pass
+        if release:
+            try:
+                claim.unlink()
+            except OSError:
+                pass
     sweep_closed(root)
     shown = folder
     if not folder.exists() and archive_id:
@@ -519,7 +614,8 @@ def _rel(path) -> str:
 
 
 def _session(args) -> str | None:
-    return getattr(args, "session", None) or os.environ.get("CLAUDE_CODE_SESSION_ID") or None
+    sid = getattr(args, "session", None) or os.environ.get("CLAUDE_CODE_SESSION_ID") or None
+    return sid if _usable(sid) else None   # an ID that sanitizes to nothing binds nothing
 
 
 def _root() -> Path | None:
@@ -558,6 +654,9 @@ def _template(name: str, title: str, today: str) -> str:
 def cmd_list(args) -> int:
     root = _root()
     if root is None:
+        if args.json:
+            print("[]")
+            return 0
         print("No effort folders in this project. Start one with "
               "`synapse effort start <slug> --title \"...\"`.")
         return 0
@@ -572,7 +671,7 @@ def cmd_list(args) -> int:
             "touched": e["touched"]} for e in entries], indent=2))
         return 0
     lines = []
-    text = index_text(root, _session(args))
+    text = index_text(root, _session(args), full=True)
     if text:
         lines.append(text)
     elif not args.all:
@@ -617,6 +716,9 @@ def cmd_start(args) -> int:
             if folder.exists():
                 raise EffortError(f"a closed effort still holds {_rel(folder)}/ (a file in it may be "
                                   "open); close the file or pick another slug")
+        elif meta is None:
+            raise EffortError(f"{_rel(folder)}/ exists but has no readable effort.json; "
+                              "pick another slug or restore effort.json")
         else:
             raise EffortError(f"effort {slug!r} exists; `synapse effort resume {slug}`")
     title = " ".join((args.title or slug).split())
@@ -662,11 +764,25 @@ def cmd_park(args) -> int:
     return _update(args, "parked", status="parked", reason=" ".join((args.reason or "").split()))
 
 
+def _drop_own_binding(session, root, slug) -> None:
+    """The closing session needs no "your effort was closed" notice for its own close."""
+    try:
+        f = paths.effort_state(session) if session else None
+        state = _json(f) if f else None
+        if state and state.get("slug") == slug and paths.same_path(state.get("root", ""), root):
+            f.unlink()
+    except Exception:
+        pass
+
+
 def cmd_close(args) -> int:
     status = "done" if args.verb == "done" else "cancelled"
+    if status == "cancelled" and not " ".join((args.reason or "").split()):
+        raise EffortError("cancel needs a reason: --reason \"...\"")
     root = _root()
     _need(root, args.slug)
     out = close(root, args.slug, status, args.reason or "")
+    _drop_own_binding(_session(args), root, args.slug)
     if args.json:
         print(json.dumps(out, indent=2))
         return 0
@@ -714,15 +830,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 def migrate(rest: list[str]) -> int:
-    try:
-        import effort_migrate
-    except ImportError:
-        if any(a in ("-h", "--help") for a in rest):
-            print("usage: synapse effort migrate [...]\n\nsplit .claude-work/current into efforts "
-                  "(not available in this build)")
-            return 0
-        print("error: `synapse effort migrate` is not available in this build", file=sys.stderr)
-        return 1
+    import effort_migrate
     return effort_migrate.main(rest)
 
 

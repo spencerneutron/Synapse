@@ -148,6 +148,26 @@ class WorkRootTests(unittest.TestCase):
         self.assertEqual(paths.auto_archive_state(r, "s-1", "alpha").name, "s-1--alpha.json")
 
 
+class SiblingRootsTests(unittest.TestCase):
+    def test_submodule_git_file_has_no_siblings(self):
+        with tempfile.TemporaryDirectory() as t:
+            top = Path(t).resolve() / "super"
+            sub = top / "sub"
+            (top / ".git" / "modules" / "sub").mkdir(parents=True)
+            sub.mkdir()
+            (sub / ".git").write_text("gitdir: ../.git/modules/sub\n")
+            self.assertEqual(paths.sibling_roots(sub), [])
+
+    def test_linked_worktree_git_file_still_finds_main(self):
+        with tempfile.TemporaryDirectory() as t:
+            main = Path(t).resolve() / "main"
+            wt = Path(t).resolve() / "wt"
+            (main / ".git" / "worktrees" / "wt").mkdir(parents=True)
+            wt.mkdir()
+            (wt / ".git").write_text(f"gitdir: {main / '.git' / 'worktrees' / 'wt'}\n")
+            self.assertEqual(paths.sibling_roots(wt), [main])
+
+
 class SlugTests(unittest.TestCase):
     def test_valid_slug_table(self):
         good = ["a", "alpha", "auth-token-rotation", "a1", "1a", "x" * 40, "v2x", "version"]

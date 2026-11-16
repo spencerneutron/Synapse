@@ -397,6 +397,26 @@ def effort_file(root, slug: str) -> Path:
     return effort_dir(root, slug) / "effort.json"
 
 
+def effort_claim(root, slug: str) -> Path:
+    """The claim a close holds while it runs (created with O_EXCL)."""
+    return effort_dir(root, slug) / ".closing"
+
+
+def split_marker(root) -> Path:
+    """Written by `synapse effort migrate --apply`: the snapshot ID and the
+    hashes of the current/ files that were split into efforts."""
+    return efforts_dir(root) / ".split.json"
+
+
+def effort_states() -> list[Path]:
+    """Every session's effort binding file (not the /clear handoffs)."""
+    try:
+        return sorted(p for p in (home() / "state").glob("effort-*.json")
+                      if not p.name.startswith("effort-handoff-"))
+    except OSError:
+        return []
+
+
 def _safe_id(session_id: str) -> str:
     return "".join(c for c in session_id if c.isalnum() or c in "-_")
 
@@ -464,6 +484,8 @@ def sibling_roots(root) -> list[Path]:
             gitdir = Path(line[len("gitdir:"):].strip())
             if not gitdir.is_absolute():
                 gitdir = (git.parent / gitdir).resolve()
+            if gitdir.parent.name != "worktrees":   # a submodule's gitdir is not a linked worktree
+                return []
             common = gitdir.parent.parent
         elif git.is_dir():
             common = git

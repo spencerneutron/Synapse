@@ -128,6 +128,46 @@ class VerbTests(EffortBase):
         self.assertEqual(r.stdout.splitlines()[0], "Synapse effort cancelled: alpha")
         self.assertEqual(self.meta("alpha")["status"], "cancelled")
 
+    def test_cancel_rejects_blank_reason(self):
+        self.start("alpha")
+        for reason in ("", "   "):
+            r = self.cli("cancel", "alpha", "--reason", reason)
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("cancel needs a reason", r.stderr)
+        self.assertEqual(self.meta("alpha")["status"], "active")
+
+    def test_start_on_folder_without_effort_json(self):
+        paths.effort_dir(self.proj, "stray").mkdir(parents=True)
+        r = self.cli("start", "stray")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no readable effort.json", r.stderr)
+        self.assertNotIn("resume", r.stderr)
+
+    def test_unusable_session_id_binds_nothing(self):
+        r = self.cli("start", "alpha", "--session", "../..")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("no session ID", r.stdout)
+        self.assertEqual(effort.paths.effort_states(), [])
+        effort.bind("///", self.proj, "alpha")
+        effort.touch("///")
+        self.assertEqual(effort.paths.effort_states(), [])
+        self.assertEqual(effort.stale_notice("///", self.proj), "")
+
+    def test_close_drops_own_binding_others_still_notified(self):
+        self.start("alpha", sid="s1")
+        effort.bind("s2", self.proj, "alpha")
+        r = self.cli("done", "alpha", "--reason", "x", sid="s1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(paths.effort_state("s1").exists())
+        self.assertEqual(effort.stale_notice("s1", self.proj), "")
+        self.assertIn("is closed (done", effort.stale_notice("s2", self.proj))
+
+    def test_list_json_without_work_root(self):
+        bare = Path(self.tmp.name) / "bare"
+        bare.mkdir()
+        r = self.cli("list", "--json", cwd=bare)
+        self.assertEqual(json.loads(r.stdout), [])
+
     def test_list_all_and_json(self):
         self.start("alpha", "Alpha work")
         self.start("beta", "Beta work")
@@ -174,20 +214,22 @@ class CloseTests(EffortBase):
     def test_outcome_line_once_and_line_endings(self):
         plan = self.folder / "PLAN.md"
         plan.write_bytes(b"# PLAN - x\r\n\r\n## Outcome\r\n\r\n## Later\r\ntext\r\n")
-        self.cli("done", "alpha", "--reason", "ok")
+        now = datetime.now().astimezone()
+        effort.close(self.proj, "alpha", "done", "ok", now=now)
         data = plan.read_bytes()
         self.assertEqual(data.count(b"Done: ok"), 1)
         self.assertNotIn(b"\n", data.replace(b"\r\n", b""))
         self.assertLess(data.index(b"Done: ok"), data.index(b"## Later"))
-        line = effort._outcome_line("done", "ok", datetime.now())
+        line = effort._outcome_line("done", "ok", now)
         self.assertEqual(effort.add_outcome(data, line), data)
 
     def test_outcome_heading_added_at_end(self):
         plan = self.folder / "PLAN.md"
         plan.write_bytes(b"# PLAN - x\nbody")
-        self.cli("cancel", "alpha", "--reason", "no longer needed")
+        now = datetime.now().astimezone()
+        effort.close(self.proj, "alpha", "cancelled", "no longer needed", now=now)
         text = plan.read_text(encoding="utf-8")
-        self.assertTrue(text.endswith("## Outcome\n- (" + f"{datetime.now():%Y-%m-%d}" + ") Cancelled: no longer needed\n"))
+        self.assertTrue(text.endswith("## Outcome\n- (" + f"{now:%Y-%m-%d}" + ") Cancelled: no longer needed\n"))
 
     def test_archive_failure_leaves_effort_open(self):
         before = (self.folder / "PLAN.md").read_bytes()
@@ -209,6 +251,70 @@ class CloseTests(EffortBase):
         os.utime(claim, (old, old))
         self.assertEqual(self.cli("done", "alpha").returncode, 0)
         self.assertFalse(claim.exists())
+
+    def test_second_closer_that_read_open_stops_after_claim(self):
+        real = effort._take_claim
+
+        def take(claim, slug):   # close A completes between B's first read and B's claim
+            with mock.patch.object(effort, "_take_claim", real):
+                effort.close(self.proj, "alpha", "done", "first")
+            return real(claim, slug)
+        with mock.patch.object(effort, "_take_claim", side_effect=take):
+            with self.assertRaises(effort.EffortError) as cm:
+                effort.close(self.proj, "alpha", "done", "second")
+        self.assertIn("already closed", str(cm.exception))
+        plans = list(self.archive_dir().glob("PLAN_*.md"))
+        self.assertEqual(len(plans), 1)
+        self.assertEqual(self.meta("alpha")["reason"], "first")
+        self.assertFalse((self.folder / ".closing").exists())
+        text = (self.folder / "PLAN.md").read_text(encoding="utf-8")
+        self.assertEqual(text.count("Done:"), 1)
+
+    def test_crash_after_copy_rerun_reuses_archive(self):
+        with mock.patch.object(effort, "write", side_effect=RuntimeError("killed")):
+            with self.assertRaises(RuntimeError):
+                effort.close(self.proj, "alpha", "done", "ok")
+        claim = self.folder / ".closing"
+        self.assertTrue(claim.is_file())
+        self.assertEqual(self.meta("alpha")["status"], "active")
+        crashed_id = claim.read_text(encoding="utf-8").strip()
+        self.assertRegex(crashed_id, r"-alpha$")
+        with self.assertRaises(effort.EffortError):   # fresh claim: another close is running
+            effort.close(self.proj, "alpha", "done", "ok")
+        old = time.time() - 600
+        os.utime(claim, (old, old))
+        out = effort.close(self.proj, "alpha", "done", "ok")
+        self.assertEqual(out["session_id"], crashed_id)
+        self.assertEqual(len(list(self.archive_dir().glob("PLAN_*.md"))), 1)
+        self.assertEqual(self.meta("alpha")["archive_id"], crashed_id)
+        self.assertEqual((self.folder / "PLAN.md").read_text(encoding="utf-8").count("Done: ok"), 1)
+        self.assertFalse(claim.exists())
+
+    def test_stale_claim_takeover_is_exclusive_and_fresh(self):
+        claim = self.folder / ".closing"
+        claim.write_text("x")
+        old = time.time() - 600
+        os.utime(claim, (old, old))
+        effort._take_claim(claim, "alpha")
+        self.assertTrue(effort._claim_fresh(claim))
+        with self.assertRaises(effort.EffortError) as cm:   # a second taker loses
+            effort._take_claim(claim, "alpha")
+        self.assertIn("another session", str(cm.exception))
+
+    def test_sweep_ignores_unsafe_archive_id(self):
+        for bad in ("../../x", str(Path(self.tmp.name) / "outside")):
+            self.cli("done", "alpha")
+            meta = self.meta("alpha")
+            meta["archive_id"] = bad
+            (self.folder / "effort.json").write_text(json.dumps(meta), encoding="utf-8")
+            effort.sweep_closed(self.proj, force_slug="alpha")
+            self.assertFalse(self.folder.exists())
+            moved = [m.name for m in paths.closed_dir(self.proj).iterdir()]
+            self.assertTrue(any(n.endswith("-alpha") for n in moved), moved)
+            self.assertFalse((self.proj / ".claude-work" / "x").exists())
+            self.assertFalse((Path(self.tmp.name) / "outside").exists())
+            self.start("alpha")   # slug reuse for the next round
+        self.assertEqual(len(list(paths.closed_dir(self.proj).iterdir())), 2)
 
     def test_nothing_to_archive(self):
         (self.folder / "PLAN.md").unlink()
@@ -233,7 +339,7 @@ class CloseTests(EffortBase):
     def test_move_waits_for_sweep_and_failure_is_harmless(self):
         self.cli("done", "alpha")
         self.assertTrue(self.folder.is_dir())          # not moved at close
-        self.assertEqual(effort.index_text(self.proj), "")   # closed: not in the index
+        self.assertNotIn("alpha", effort.index_text(self.proj))   # closed: not in the index
         old = datetime.now().astimezone().timestamp() - 7200
         meta = self.meta("alpha")
         meta["updated"] = datetime.fromtimestamp(old).astimezone().isoformat()
@@ -326,6 +432,12 @@ class BindingTests(EffortBase):
         self.assertEqual(paths.bound_effort(self.proj, "s1"), "alpha")
         effort.hook_bind("garbage")   # never raises
 
+    def test_stale_notice_unreadable_effort_json_keeps_binding(self):
+        self.start("alpha", sid="s1")
+        paths.effort_file(self.proj, "alpha").write_text("{ broken", encoding="utf-8")
+        self.assertEqual(effort.stale_notice("s1", self.proj), "")
+        self.assertTrue(paths.effort_state("s1").exists())
+
     def test_stale_notice(self):
         self.start("alpha", sid="s1")
         self.assertEqual(effort.stale_notice("s1", self.proj), "")
@@ -413,6 +525,64 @@ class IndexTests(EffortBase):
         self.assertIn("- and 2 more: `synapse effort list`", text)
         self.assertLessEqual(len(text), 4000)
         self.assertNotIn("t" * 81, text)
+
+    def test_cap_cut_says_more_and_keeps_tail(self):
+        for i in range(17):
+            self.start(f"{'e' * 37}{i:03d}"[:40], "t" * 80)
+            self.cli("wait", f"{'e' * 37}{i:03d}"[:40], "--on", "w" * 80)
+        cur = self.proj / ".claude-work" / "current"
+        cur.mkdir()
+        (cur / "PLAN.md").write_text("p")
+        wt = self.proj.parent / "wt"
+        (wt / ".claude-work" / "efforts" / "side").mkdir(parents=True)
+        (self.proj / ".git" / "worktrees" / "wt").mkdir(parents=True)
+        (self.proj / ".git" / "worktrees" / "wt" / "gitdir").write_text(str(wt / ".git") + "\n")
+        for n in range(5):
+            effort.write(wt, f"side{n}", {"title": "Side work " + "s" * 60, "status": "active"})
+        effort.write(wt, "side", {"title": "Side work", "status": "active"})
+        full = effort.index_text(self.proj, full=True)
+        self.assertGreater(len(full), 4000)
+        text = effort.index_text(self.proj)
+        self.assertLessEqual(len(text), 4000)
+        lines = text.splitlines()
+        self.assertIn("- more not shown: `synapse effort list`", lines)
+        self.assertLess(len([l for l in lines if l.startswith("- e")]), 15)
+        self.assertIn("- and 2 more: `synapse effort list`", lines)
+        self.assertTrue(any("still holds planning files" in l for l in lines))
+        self.assertTrue(any(l.startswith("- wt: side") for l in lines))
+        self.assertEqual(self.cli("list").stdout.rstrip("\n"), full)
+
+    def test_parked_only_does_not_tell_to_resume(self):
+        self.start("alpha")
+        self.cli("park", "alpha")
+        text = effort.index_text(self.proj)
+        self.assertIn("Parked efforts: `synapse effort list --all`; start new work with "
+                      "`synapse effort start <slug> --title \"...\"`.", text)
+        self.assertNotIn("resume", text)
+
+    def test_empty_efforts_folder_prints_zero_line(self):
+        paths.efforts_dir(self.proj).mkdir(parents=True)
+        self.assertEqual(effort.index_text(self.proj),
+                         "Synapse efforts in this project: 0 open, 0 parked. "
+                         "Start new work with `synapse effort start <slug> --title \"...\"`.")
+        shutil_free = self.proj / "other"
+        shutil_free.mkdir()
+        self.assertEqual(effort.index_text(shutil_free), "")   # no efforts folder: nothing
+
+    def test_current_line_after_split(self):
+        self.start("alpha")
+        cur = self.proj / ".claude-work" / "current"
+        cur.mkdir()
+        (cur / "PLAN.md").write_text("p")
+        marker = paths.split_marker(self.proj)
+        marker.write_text(json.dumps({"snapshot_id": "2026-01-01-0000-snap", "sources": {}, "time": "t"}),
+                          encoding="utf-8")
+        last = effort.index_text(self.proj).splitlines()[-1]
+        self.assertEqual(last, "- (no effort) .claude-work/current/ is the pre-split copy "
+                               "(snapshot 2026-01-01-0000-snap); read the efforts, not it. "
+                               "`synapse effort migrate --retire-current` moves it away on the user's word.")
+        marker.write_text("{ nope", encoding="utf-8")
+        self.assertIn("still holds planning files", effort.index_text(self.proj).splitlines()[-1])
 
     def test_legacy_line(self):
         self.start("alpha")
