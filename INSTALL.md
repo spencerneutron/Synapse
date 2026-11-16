@@ -359,8 +359,8 @@ background sync off.
 | `~/.claude/settings.json` | `enabledPlugins`, `extraKnownMarketplaces` entries | Claude Code's installer |
 | `~/.claude/synapse/` | Config, stores (archives + `vectors.db`), venv, `state/` (which hints a session has seen, pruned after 7 days; the nudge hook's call counters, one small file per session, pruned after a day; each team's last sync), `shared/<team>/` (a git team's clone and every team's index) | `synapse setup`, `archive`, `extract`, `migrate`, `shared`, the hooks |
 | A folder team's synced folder | `Decisions/`, `Patterns/`, `Facts/`, `Retracted/`, `.synapse-team.toml` | `synapse shared init`, `/synapse:share`, `synapse shared retract` |
-| `<project>/.claude-work/current/` | `PLAN.md`, `EXECUTION.md` | The agent, during structured work |
-| `<project>/.claude-work/efforts/<slug>/` | `effort.json`, `PLAN.md`, `EXECUTION.md`, `NOTES.md` (only in a project that uses effort folders) | `synapse effort`, and the agent during structured work |
+| `<project>/.claude-work/current/` | `PLAN.md`, `EXECUTION.md` (a project that already has them, or when `synapse` cannot run) | The agent, during structured work |
+| `<project>/.claude-work/efforts/<slug>/` | `effort.json`, `PLAN.md`, `EXECUTION.md`, `NOTES.md` (the default for new planning) | `synapse effort`, and the agent during structured work |
 | The store's notes vault | `Sessions/`, `Decisions/`, `Patterns/`, `Facts/`, `Projects/` notes | `/synapse:extract-session` |
 
 `~/.claude/synapse/` moves with `CLAUDE_CONFIG_DIR`, or anywhere with

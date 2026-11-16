@@ -8,6 +8,7 @@ import multiprocessing
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest import mock
 
 from helpers import LIB, ROOT
 
@@ -317,17 +318,79 @@ class EffortNudgeTests(unittest.TestCase):
         for source in ("startup", "resume", "clear", "compact"):
             self.assertIn("Synapse efforts in this project: 1 open", self.start(source))
 
+    def test_one_effort_binds_session_at_start(self):
+        make_effort(self.proj, "alpha")
+        text = self.start("startup", sid="n1")
+        self.assertEqual(self.bound("n1"), "alpha")
+        self.assertIn("This session is on alpha.", text)
+        self.assertIn("(this session)", text)
+        self.assertIn("unrelated new work gets `synapse effort start", text)
+
+    def test_two_efforts_do_not_bind_at_start(self):
+        make_effort(self.proj, "alpha")
+        make_effort(self.proj, "beta")
+        text = self.start("startup", sid="n1")
+        self.assertIsNone(self.bound("n1"))
+        self.assertIn("This session is on none yet.", text)
+
+    def test_one_effort_with_current_plan_does_not_bind(self):
+        make_effort(self.proj, "alpha")
+        cur = self.proj / ".claude-work" / "current"
+        cur.mkdir(parents=True)
+        (cur / "PLAN.md").write_text("p", "utf-8")
+        self.start("startup", sid="n1")
+        self.assertIsNone(self.bound("n1"))
+
     def test_nothing_new_without_efforts(self):
         (self.proj / ".claude-work" / "current").mkdir(parents=True)
         self.assertEqual(self.start("startup"), "")
         self.assertEqual(self.start("clear"), "")
 
     def test_index_before_pointer(self):
-        make_effort(self.proj, "alpha", resume="# E\n## Resume\nnext\n")
+        make_effort(self.proj, "alpha")
+        make_effort(self.proj, "beta", resume="# E\n## Resume\nnext\n")
+        bind_session(self.home, "s1", self.proj, "beta")
         text = self.start("compact")
         self.assertTrue(text.startswith("Synapse efforts in this project"), text)
-        self.assertIn("\nSynapse: efforts with a recorded checkpoint: alpha (", text)
-        self.assertLess(text.index("Synapse efforts in"), text.index("recorded checkpoint"))
+        self.assertIn("This session is on beta.", text)
+        self.assertIn("work in progress on effort 'beta' is recorded in "
+                      ".claude-work/efforts/beta/EXECUTION.md", text)
+        self.assertLess(text.index("Synapse efforts in"), text.index("work in progress on effort 'beta'"))
+
+    def test_resume_clear_compact_bind_a_fresh_session(self):
+        make_effort(self.proj, "alpha")
+        for source in ("resume", "clear", "compact"):
+            sid = f"f-{source}"
+            text = self.start(source, sid=sid)
+            self.assertEqual(self.bound(sid), "alpha", source)
+            self.assertIn("This session is on alpha.", text)
+
+    def test_unwritable_state_never_raises(self):
+        import effort
+        import nudge
+        import paths
+        make_effort(self.proj, "alpha")
+        data = dict(session_id="s1", hook_event_name="SessionStart", source="startup", cwd=str(self.proj))
+        with mock.patch.dict(os.environ, {"SYNAPSE_HOME": str(self.home)}), \
+                mock.patch.object(effort, "bind", side_effect=OSError("read-only")):
+            self.assertIsNone(effort.auto_bind(self.proj, "s1"))
+            text = nudge.effort_start(paths, "s1", data)
+        self.assertIn("Synapse efforts in this project: 1 open", text)
+        (self.home / "state").write_text("not a folder", "utf-8")   # a state folder that cannot exist
+        r = run(data, self.home)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Synapse efforts in this project: 1 open", r.stdout.decode())
+
+    def test_compact_after_another_session_closed_the_effort(self):
+        d = make_effort(self.proj, "alpha")
+        make_effort(self.proj, "beta", status="parked")   # alpha closed: no other open effort to rebind to
+        f = bind_session(self.home, "s1", self.proj, "alpha")
+        (d / "effort.json").write_text(json.dumps({"slug": "alpha", "status": "done", "archive_id": "A1"}))
+        text = self.start("compact")
+        self.assertIn("This session is on none yet.", text)
+        self.assertEqual(json.loads(f.read_text("utf-8"))["slug"], "alpha")   # not rebound
+        out = self.send(session_id="s1", hook_event_name="UserPromptSubmit", cwd=str(self.proj))
+        self.assertIn("effort 'alpha' that this session was on is closed (done, archive A1)", out)
 
     def test_handoff_claimed_on_clear(self):
         make_effort(self.proj, "alpha", resume="# E\n## Resume\nnext\n")
@@ -342,6 +405,7 @@ class EffortNudgeTests(unittest.TestCase):
 
     def test_no_claim_on_startup(self):
         make_effort(self.proj, "alpha")
+        make_effort(self.proj, "beta")
         h = write_handoff(self.home, self.proj, "alpha")
         self.start("startup", sid="new")
         self.assertIsNone(self.bound("new"))

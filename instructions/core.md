@@ -49,32 +49,35 @@ when batching hides which call produced what.
 
 ## Planning Files
 
-Working files live in the project, in `.claude-work/current/`, or, when the
-project has `.claude-work/efforts/`, in one folder per effort,
-`.claude-work/efforts/<slug>/`:
+Working files live in `.claude-work/efforts/<slug>/`, one folder per effort.
+A project whose `.claude-work/current/` holds planning files plans there and
+starts no effort unless the user asks. With none, start an effort only when
+the task justifies structured planning: `synapse effort start <slug>` (no
+`synapse` command: use `current/`). With one open effort, a session starts
+on it.
 
 - `PLAN.md` — long-lived strategy, constraints, Decision Log.
-- `EXECUTION.md` — the active task and its immediate next steps.
-- `NOTES.md` — working notes, when checkpoints wrote any.
+- `EXECUTION.md` — the active task and next steps.
+- `NOTES.md` — checkpoint notes.
 
-Archives, the vector DB, and the vault belong to the active Synapse store.
-Run `synapse where` to see them; never hard-code those paths.
-The store's notes vault holds durable knowledge; `/synapse:extract-session`
-writes it as summaries, never raw logs or transient output.
+Archives, the vector DB and the vault belong to the active Synapse store;
+run `synapse where`; never hard-code paths. The vault holds
+durable knowledge; `/synapse:extract-session` writes summaries, never raw
+logs or transient output.
 
-- With efforts, a session starts with a short list of them. Read no planning
-  file until you know which effort the request belongs to, then run
-  `synapse effort resume <slug>` (or `start <slug> --title "..."`) and read
-  only that effort's files. Never read another effort's.
-- Without efforts: read `PLAN.md` once at session start, or when direction is
-  unclear, and `EXECUTION.md` at the start of each task, or when resuming.
-- Status changes only through the CLI: `synapse effort wait|park` when that is
-  the state; `done|cancel` only on the user's word.
-- Do not re-read either after every step; assume they are unchanged unless you
-  updated them.
-- If the two conflict, follow `EXECUTION.md` and update `PLAN.md` to match.
-- Update `EXECUTION.md` often. Update `PLAN.md` only for a durable decision, a
-  scope or approach change, or a reusable insight.
+- A project with efforts starts a session with a short list of them. Unless
+  it says the session is on one, read no planning file until you know the
+  request's effort, then `synapse effort resume <slug>` (or `start`); read
+  only that effort's files.
+- Effort or `current/`: read `PLAN.md` once at the start of work on it, or
+  when direction is unclear; `EXECUTION.md` at each task start, or when
+  resuming.
+- Status changes: `synapse effort wait|park`; `done|cancel` only on the
+  user's word.
+- Do not re-read them each step; they are unchanged unless you updated them.
+- On conflict, follow `EXECUTION.md` and update `PLAN.md` to match.
+- Update `EXECUTION.md` often; `PLAN.md` only for a durable decision, a scope
+  or approach change, or a reusable insight.
 
 If the files do not exist, proceed normally; create them only when the task's
 complexity justifies structured planning.

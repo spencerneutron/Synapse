@@ -482,6 +482,148 @@ class HandoffTests(EffortBase):
         self.assertIsNone(effort.handoff_claim(self.proj, "new"))
 
 
+class AutoBindTests(EffortBase):
+    def setUp(self):
+        super().setUp()
+        self.wd = self.proj / ".claude-work" / "current"
+
+    def mk(self, slug, status="active"):
+        self.start(slug)
+        if status != "active":
+            meta = self.meta(slug)
+            meta["status"] = status
+            effort.write(self.proj, slug, meta)
+
+    def test_binds_one_active(self):
+        self.mk("alpha")
+        self.assertEqual(effort.auto_bind(self.proj, "s9"), "alpha")
+        self.assertEqual(paths.bound_effort(self.proj, "s9"), "alpha")
+
+    def test_binds_one_waiting(self):
+        self.mk("alpha", "waiting")
+        self.assertEqual(effort.auto_bind(self.proj, "s9"), "alpha")
+
+    def test_parked_do_not_count(self):
+        self.mk("alpha")
+        self.mk("beta", "parked")
+        self.assertEqual(effort.auto_bind(self.proj, "s9"), "alpha")
+
+    def test_none_for_two_zero_current_files_and_bad_id(self):
+        self.assertIsNone(effort.auto_bind(self.proj, "s9"))          # zero
+        self.mk("alpha", "parked")
+        self.assertIsNone(effort.auto_bind(self.proj, "s9"))          # zero open
+        self.mk("beta")
+        self.mk("gamma")
+        self.assertIsNone(effort.auto_bind(self.proj, "s9"))          # two open
+        self.assertIsNone(paths.bound_effort(self.proj, "s9"))
+        self.mk("delta", "parked")
+        self.cli("park", "gamma")
+        self.assertIsNone(effort.auto_bind(self.proj, ""))            # unusable id
+        self.assertIsNone(effort.auto_bind(self.proj, "///"))
+        self.assertIsNone(effort.auto_bind(self.proj, None))
+        for name in ("PLAN.md", "EXECUTION.md"):
+            self.wd.mkdir(parents=True, exist_ok=True)
+            (self.wd / name).write_text("x", "utf-8")
+            self.assertIsNone(effort.auto_bind(self.proj, "s9"), name)
+            (self.wd / name).unlink()
+        self.assertEqual(effort.auto_bind(self.proj, "s9"), "beta")
+
+    def test_keeps_valid_binding(self):
+        self.mk("alpha")
+        self.mk("beta", "parked")
+        effort.bind("s9", self.proj, "beta")
+        self.assertIsNone(effort.auto_bind(self.proj, "s9"))
+        self.assertEqual(paths.bound_effort(self.proj, "s9"), "beta")
+
+    def test_leaves_stale_binding_alone(self):
+        self.mk("alpha")
+        self.mk("beta")
+        effort.bind("s9", self.proj, "beta")
+        self.cli("done", "beta")
+        self.assertIsNone(paths.bound_effort(self.proj, "s9"))
+        self.assertIsNone(effort.auto_bind(self.proj, "s9"))
+        self.assertIsNone(paths.bound_effort(self.proj, "s9"))
+        self.assertTrue(paths.effort_state("s9").exists())
+        self.assertIn("effort 'beta' that this session was on is closed", effort.stale_notice("s9", self.proj))
+
+    def test_leaves_binding_to_another_root_alone(self):
+        self.mk("alpha")
+        other = self.proj.parent / "other"
+        (other / ".git").mkdir(parents=True)
+        effort.bind("s9", other, "alpha")
+        before = paths.effort_state("s9").read_text("utf-8")
+        self.assertIsNone(effort.auto_bind(self.proj, "s9"))
+        self.assertEqual(paths.effort_state("s9").read_text("utf-8"), before)
+
+    def test_waiting_status_is_left_alone(self):
+        self.mk("alpha", "waiting")
+        self.cli("wait", "alpha", "--on", "sign-off")
+        self.assertEqual(effort.auto_bind(self.proj, "s9"), "alpha")
+        meta = self.meta("alpha")
+        self.assertEqual((meta["status"], meta["waiting_on"]), ("waiting", "sign-off"))
+
+    def test_split_marker_lifts_current_condition(self):
+        self.mk("alpha")
+        self.wd.mkdir(parents=True)
+        (self.wd / "PLAN.md").write_text("x", "utf-8")
+        marker = paths.split_marker(self.proj)
+        marker.write_text("{ nope", "utf-8")
+        self.assertIsNone(effort.auto_bind(self.proj, "s9"))
+        marker.write_text(json.dumps({"snapshot_id": ""}), "utf-8")
+        self.assertIsNone(effort.auto_bind(self.proj, "s9"))
+        marker.write_text(json.dumps({"snapshot_id": "2026-01-01-0000-snap"}), "utf-8")
+        self.assertEqual(effort.auto_bind(self.proj, "s9"), "alpha")
+
+    def test_unreadable_effort_folder_blocks(self):
+        self.mk("alpha")
+        stray = paths.efforts_dir(self.proj) / "stray"
+        stray.mkdir()
+        self.assertIsNone(effort.auto_bind(self.proj, "s9"))
+        (stray / "effort.json").write_text("{ nope", "utf-8")
+        self.assertIsNone(effort.auto_bind(self.proj, "s9"))
+        (stray / "effort.json").write_text(json.dumps({"status": "parked"}), "utf-8")
+        self.assertEqual(effort.auto_bind(self.proj, "s9"), "alpha")
+
+    def test_closed_folder_does_not_block(self):
+        self.mk("alpha")
+        (paths.efforts_dir(self.proj) / "_closed" / "old").mkdir(parents=True)
+        self.assertEqual(effort.auto_bind(self.proj, "s9"), "alpha")
+
+
+class StartNoteTests(EffortBase):
+    NOTE = "note: .claude-work/current/ still holds planning files; this project now has both."
+
+    def current(self, name="PLAN.md"):
+        cur = self.proj / ".claude-work" / "current"
+        cur.mkdir(parents=True, exist_ok=True)
+        (cur / name).write_text("x", "utf-8")
+
+    def test_first_effort_beside_current_plan_prints_note(self):
+        self.current()
+        r = self.start("alpha")
+        self.assertIn(self.NOTE, r.stdout)
+        self.assertIn("`synapse effort migrate` proposes a split.", r.stdout.splitlines()[-1])
+        self.assertEqual(r.stdout.splitlines()[0], "Synapse effort started: alpha")
+
+    def test_note_for_execution_only_but_not_for_second_effort_or_clean_project(self):
+        self.current("EXECUTION.md")
+        self.assertIn(self.NOTE, self.start("alpha").stdout)
+        self.assertNotIn("note:", self.start("beta").stdout)
+
+    def test_no_note_without_planning_files(self):
+        self.current("NOTES.md")
+        self.assertNotIn("note:", self.start("alpha").stdout)
+
+
+class ImportWeightTests(unittest.TestCase):
+    def test_hook_path_imports_neither_archive_nor_argparse(self):
+        code = ("import sys; sys.path.insert(0, sys.argv[1]); import effort; "
+                "sys.exit(1 if ('archive' in sys.modules or 'argparse' in sys.modules) else 0)")
+        r = subprocess.run([sys.executable, "-c", code, str(ROOT / "lib" / "synapse")],
+                           capture_output=True, encoding="utf-8")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+
 class IndexTests(EffortBase):
     def test_no_efforts_dir_is_empty(self):
         self.assertEqual(effort.index_text(self.proj), "")
@@ -506,9 +648,26 @@ class IndexTests(EffortBase):
         text = effort.index_text(self.proj, "s1")
         self.assertIn("This session is on alpha.", text)
         self.assertIn("Its files are in .claude-work/efforts/alpha/; read no other effort's files.", text)
-        self.assertTrue(text.splitlines()[2].endswith("(this session)"))
+        self.assertTrue(text.splitlines()[2].endswith("(this session; another session just now)"))
         text2 = effort.index_text(self.proj, "s3")
         self.assertIn("another session just now)", text2)
+
+    def test_two_sessions_on_one_effort_each_see_the_other(self):
+        self.start("alpha", "Alpha", sid="s1")
+        effort.bind("s2", self.proj, "alpha")
+        for me in ("s1", "s2"):
+            line = effort.index_text(self.proj, me).splitlines()[2]
+            self.assertTrue(line.endswith("(just now) (this session; another session just now)"), line)
+        effort.bind("s3", self.proj, "alpha")
+        os.utime(paths.effort_state("s2"), (time.time() - 600,) * 2)
+        os.utime(paths.effort_state("s3"), (time.time() - 600,) * 2)
+        line = effort.index_text(self.proj, "s1").splitlines()[2]
+        self.assertEqual(line.count("another session"), 1)
+        alone = effort.index_text(self.proj, "s9")   # never counts the session itself
+        self.assertNotIn("(this session", alone)
+        os.remove(paths.effort_state("s2"))
+        os.remove(paths.effort_state("s3"))
+        self.assertNotIn("another session", effort.index_text(self.proj, "s1"))
 
     def test_parked_only(self):
         self.start("alpha")

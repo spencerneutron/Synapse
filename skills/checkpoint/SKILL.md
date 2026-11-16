@@ -8,7 +8,7 @@ allowed-tools: Bash(synapse checkpoint *), Bash(synapse effort *)
 
 Save what only this conversation knows (objective, position, facts the user stated, reasons for decisions) to disk, then keep working. `/clear` and `/compact` remove that record.
 
-Working folder: the session's planning folder. With effort folders (`.claude-work/efforts/` exists) that is the effort the session is on, `.claude-work/efforts/<slug>/`; otherwise `.claude-work/current/`, at the project root. If the project has efforts and this session has taken none up, run `synapse effort resume <slug>` (or `synapse effort start <slug> --title "..."`) first. Write only that folder's files.
+Working folder: the session's planning folder. With effort folders (`.claude-work/efforts/` exists) that is the effort the session is on, `.claude-work/efforts/<slug>/`. If the project has efforts and this session has taken none up, run `synapse effort resume <slug>` (or `synapse effort start <slug> --title "..."`) first. With no efforts folder, a project whose `.claude-work/current/` holds PLAN.md or EXECUTION.md keeps using `current/`. With neither, start an effort (`synapse effort start <slug> --title "..."`, a short lower-case slug from the task) and write `## Resume` in its EXECUTION.md; if the `synapse` command is not available (command not found), use `.claude-work/current/` and say so once. If it prints an `error:` line, fix the argument and run it again; do not fall back. Write only that folder's files.
 
 ## Procedure
 

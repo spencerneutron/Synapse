@@ -34,7 +34,9 @@ nudge.py — hook-time reminders for the main session, in one process.
    ## Resume section of EXECUTION.md (pointers only).
 6. Efforts. In a project with .claude-work/efforts/, SessionStart prints the
    index of efforts before the resume pointer (after /clear, a session that
-   ended with /clear a moment ago hands its effort over). A new prompt marks
+   ended with /clear a moment ago hands its effort over). A session with no
+   binding is put on the project's only open effort when `current/` holds no
+   planning files (effort.auto_bind; it never replaces a binding). A new prompt marks
    the session's binding active and says so once when its effort was closed.
    A write to an open effort's PLAN.md, EXECUTION.md or NOTES.md binds a
    session that is on none. Every step is silent on error.
@@ -175,7 +177,8 @@ def digest_line(paths) -> str:
 
 
 def effort_start(paths, sid: str, data: dict) -> str:
-    """SessionStart: claim a /clear handoff, then the effort index. Never raises."""
+    """SessionStart: claim a /clear handoff, bind an unbound session to the only open
+    effort (effort.auto_bind, never over an existing binding), then the index. Never raises."""
     try:
         cwd = data.get("cwd")
         root = paths.work_root(Path(cwd)) if isinstance(cwd, str) and cwd else None
@@ -186,6 +189,8 @@ def effort_start(paths, sid: str, data: dict) -> str:
             slug = effort.handoff_claim(root, sid)
             if slug:
                 effort.bind(sid, root, slug)
+        if paths.bound_effort(root, sid) is None:
+            effort.auto_bind(root, sid)
         return effort.index_text(root, sid)
     except Exception:
         return ""

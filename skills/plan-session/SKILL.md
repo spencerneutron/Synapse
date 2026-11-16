@@ -24,13 +24,21 @@ Use this skill when:
 
 ## Procedure
 
-1. Find which layout the project uses:
+1. Find which layout applies, in this order:
 
    - `.claude-work/efforts/` exists: the project uses effort folders. Go to
      step 2a.
-   - It does not: the project uses `.claude-work/current/`. Go to
-     step 2b. Effort folders start only when the user asks
-     for them (or asks to split a large PLAN); never start them on your own.
+   - It does not, but `.claude-work/current/` holds `PLAN.md` or
+     `EXECUTION.md`: continue in `current/` (step 2b). An existing project is
+     not moved; splitting it happens only on the user's request (`migrate.md`).
+   - Neither exists and the task justifies structured planning: start an
+     effort with `synapse effort start <slug> --title "..."` (a short
+     lower-case slug from the task). It creates PLAN.md and EXECUTION.md from
+     the templates and puts this session on the effort; fill both in. Only if
+     the `synapse` command is not available (command not found), use
+     `.claude-work/current/` from the templates (step 2b) and say so once.
+     If it prints an `error:` line (invalid slug, folder exists), fix the
+     argument and run it again; do not fall back.
 
 2a. Pick or start an effort (a project with `.claude-work/efforts/`):
 
@@ -38,12 +46,18 @@ Use this skill when:
      efforts. Read no planning file yet.
    - The effort the user names wins. Otherwise match the task to the list.
      Ask only when two efforts fit.
+   - When the index says "This session is on <slug>" and the request belongs
+     to that effort, do not run `resume`. Run it only to move to another
+     effort, or when the effort is `waiting` and the wait is over.
    - Take one up: `synapse effort resume <slug>`. Then read only
      `.claude-work/efforts/<slug>/PLAN.md` and `EXECUTION.md`, once, and
      extract objective, constraints, progress and prior decisions.
    - No effort fits: propose a slug (lower case, `a-z`, `0-9`, `-`) and run
      `synapse effort start <slug> --title "..."`. It creates PLAN.md and
-     EXECUTION.md from the templates; fill them in.
+     EXECUTION.md from the templates; fill them in. If the index shows an open
+     effort untouched for 7 days or more, ask the user once whether it is
+     done, parked or still open, and record the answer with the CLI
+     (`done`/`cancel` only on their word).
    - Never read another effort's files. New work is a new effort, not a new
      section of this one.
    - Status changes only through the CLI: `synapse effort wait <slug> --on
@@ -52,7 +66,7 @@ Use this skill when:
      the user's word.
    - To split a large `current/PLAN.md` into efforts: `migrate.md` next to this file.
 
-2b. Without effort folders. Check for planning files:
+2b. In `.claude-work/current/` (an existing project, or the fallback). Check for planning files:
 
    - `.claude-work/current/PLAN.md`
    - `.claude-work/current/EXECUTION.md`
@@ -66,7 +80,7 @@ Use this skill when:
      - current progress
      - prior decisions
 
-   If absent and the task justifies structured planning, start them from
+   If absent (the fallback), start them from
    `${CLAUDE_PLUGIN_ROOT}/templates/PLAN.md` and
    `${CLAUDE_PLUGIN_ROOT}/templates/EXECUTION.md`.
 

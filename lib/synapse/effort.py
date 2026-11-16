@@ -20,7 +20,6 @@ a closed effort's folder is moved to efforts/_closed/ (os.rename, retried later
 by sweep_closed when it fails). Stdlib only.
 """
 
-import argparse
 import json
 import os
 import re
@@ -34,7 +33,6 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import archive  # noqa: E402
 import paths  # noqa: E402
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -180,6 +178,38 @@ def bind(session_id: str, root, slug: str) -> None:
     _write_text(f, json.dumps({"root": os.path.abspath(str(root)), "slug": slug, "time": _iso(_now())}))
 
 
+def auto_bind(root, session_id) -> str | None:
+    """Put an unbound session on the project's only open effort, so a one-effort
+    project needs no `resume`. Never replaces a binding (valid, stale or for another
+    root). Not when current/ holds a PLAN or EXECUTION (those keep the session on
+    them), unless a readable split marker says they are the pre-split copy. Not when
+    an effort folder has no readable effort.json (the count cannot be trusted).
+    Returns the slug, or None. Never raises."""
+    try:
+        if not _usable(session_id) or paths.effort_state(session_id).exists():
+            return None
+        wd = paths.work_dir(root)
+        if (wd / "PLAN.md").is_file() or (wd / "EXECUTION.md").is_file():
+            marker = paths._json_dict(paths.split_marker(root))
+            snap = marker.get("snapshot_id") if marker else None
+            if not (isinstance(snap, str) and snap):
+                return None
+        base = paths.efforts_dir(root)
+        if base.is_dir():
+            for folder in base.iterdir():
+                if (folder.is_dir() and folder.name != "_closed"
+                        and not isinstance(_json(folder / "effort.json"), dict)):
+                    return None
+        opened = open_efforts(root)
+        if len(opened) != 1:
+            return None
+        slug = opened[0]["slug"]
+        bind(session_id, root, slug)
+        return slug
+    except Exception:
+        return None
+
+
 def touch(session_id) -> None:
     try:
         if _usable(session_id):
@@ -314,7 +344,8 @@ def index_text(root, session_id=None, now=None, full: bool = False) -> str:
                 f"This session is on {bound or 'none yet'}."]
         if bound:
             head.append(f"Its files are in .claude-work/efforts/{bound}/; read no other effort's files. "
-                        "Switch with `synapse effort resume <slug>`.")
+                        "Switch with `synapse effort resume <slug>`; unrelated new work gets "
+                        "`synapse effort start <slug> --title \"...\"`.")
         elif not opened and parked:
             head.append("Parked efforts: `synapse effort list --all`; start new work with "
                         "`synapse effort start <slug> --title \"...\"`.")
@@ -325,13 +356,15 @@ def index_text(root, session_id=None, now=None, full: bool = False) -> str:
         body = []
         for e in opened[:INDEX_LIMIT]:
             extra = ""
-            other = others_on(root, e["slug"], session_id) if e["slug"] != bound else None
+            other = others_on(root, e["slug"], session_id)
             if other is not None:
-                extra = f"; another session {_age(other)}"
+                extra = f"another session {_age(other)}"
             line = (f"- {e['slug']} [{_status_label(e)}] {_clip(e.get('title'))} "
-                    f"({_age(now - e['touched'])}{extra})")
+                    f"({_age(now - e['touched'])})")
             if e["slug"] == bound:
-                line += " (this session)"
+                line += " (this session" + (f"; {extra}" if extra else "") + ")"
+            elif extra:
+                line = line[:-1] + f"; {extra})"
             body.append(line)
         tail = []
         if len(opened) > INDEX_LIMIT:
@@ -430,6 +463,7 @@ def _claim_fresh(path: Path) -> bool:
 
 def sweep_closed(root, force_slug: str | None = None) -> None:
     """Move closed efforts' folders to _closed/. Retried by every start and close. Never raises."""
+    import archive
     try:
         for folder in _folders(root):
             meta = _json(paths.effort_file(root, folder.name))
@@ -499,6 +533,7 @@ def _notes_to_archive(folder: Path) -> bool:
 
 def _claim_id(claim: Path) -> str:
     """The archive ID a crashed close left in its claim, else ""."""
+    import archive
     try:
         text = claim.read_text(encoding="utf-8").strip()
     except OSError:
@@ -534,6 +569,7 @@ def close(root, slug: str, status: str, reason: str, r=None, now: datetime | Non
     with effort.json and PLAN.md untouched when the claim or the archive fails. A
     crash after the archive copy leaves the claim holding the archive ID; the rerun
     that takes the stale claim over reuses that archive."""
+    import archive
     now = now or _now()
     folder = paths.effort_dir(root, slug)
     meta = read(root, slug)
@@ -721,6 +757,7 @@ def cmd_start(args) -> int:
                               "pick another slug or restore effort.json")
         else:
             raise EffortError(f"effort {slug!r} exists; `synapse effort resume {slug}`")
+    first = not _folders(root)
     title = " ".join((args.title or slug).split())
     today = f"{datetime.now():%Y-%m-%d}"
     folder.mkdir(parents=True)
@@ -731,6 +768,10 @@ def cmd_start(args) -> int:
         _write_text(folder / name, _template(name, title, today))
     print(f"Synapse effort started: {slug}")
     _bound_lines(_session(args), root, slug, folder)
+    wd = paths.work_dir(root)
+    if first and ((wd / "PLAN.md").is_file() or (wd / "EXECUTION.md").is_file()):
+        print("note: .claude-work/current/ still holds planning files; this project now has both. "
+              "`synapse effort migrate` proposes a split.")
     return 0
 
 
@@ -793,7 +834,8 @@ def cmd_close(args) -> int:
     return 0
 
 
-def parser() -> argparse.ArgumentParser:
+def parser():
+    import argparse
     p = argparse.ArgumentParser(prog="synapse effort", description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="verb", required=True)
 

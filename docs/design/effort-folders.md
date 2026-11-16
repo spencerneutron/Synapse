@@ -141,7 +141,7 @@ same session-keyed pattern as the hint, nudge and context state
    handoffs for its root written in the last 20 seconds. Exactly one: it
    claims it by rename (so one session gets it) and is bound; the resume
    pointer then names that effort. None or several: no binding, and the
-   pointer falls back to a list (below). The wrong session can claim a
+   pointer falls back to a list (next section). The wrong session can claim a
    handoff only when two sessions in one checkout run `/clear` within about
    a second and the bound one's hook loses the race; the index then says
    which effort the session is on, and `resume` corrects it.
@@ -170,18 +170,33 @@ A binding is valid when its root is this work root and
 archive` pass `CLAUDE_CODE_SESSION_ID` and accept `--effort <slug>` for a
 shell with no session.
 
+**Automatic binding.** At every SessionStart (any source), after the
+`/clear` handoff and before the index, an unbound session is bound to the
+project's only effort when exactly one is `active` or `waiting` (parked and
+closed ones do not count) and `current/` holds neither PLAN.md nor
+EXECUTION.md (`effort.auto_bind`). A readable split marker lifts the
+`current/` condition: those files are then the pre-split copy. It never
+replaces a binding (valid, stale or for another root), so a stale binding
+reaches the closed-effort notice, and it does nothing when an effort folder
+has no readable `effort.json` (the count is not trustworthy). A waiting
+effort keeps its status. A project with one effort then costs no `resume`
+call, and the hooks and the SessionEnd failsafe archive follow the
+effort as they follow `current/` today. With two or more open efforts the
+session picks one, as before. The check reads the efforts folder's small
+`effort.json` files once, and only in a project that has an efforts folder.
+
 **The cases.**
 
 | Case | What happens |
 |------|--------------|
-| No binding yet | Hooks use `current/` as today. The index says the session is on no effort and names the two commands. |
+| No binding yet | A project with exactly one open effort and no PLAN.md or EXECUTION.md in `current/` binds the session at SessionStart (see Automatic binding). With two or more open efforts, or files in `current/`, the session is unbound: hooks use `current/` as today, and the index says the session is on no effort and names the two commands. |
 | Stale: the effort was closed | The binding no longer validates; the session is unbound. If another session closed it, the next prompt carries one line saying so, once, and the binding file is removed. |
 | Stale: crashed or ended session | The file stays, harmless; SessionStart prunes bindings idle for 7 days, as it prunes the context state (`lib/synapse/nudge.py:100-107`), and handoffs after a day. |
 | `/clear` | Handoff, above. If none is claimed, the pointer lists up to three efforts with the freshest `## Resume` and the command to take one up. |
 | `claude --resume <id>` | The ID is kept ("Resumes the session with that ID", [sessions](https://code.claude.com/docs/en/sessions)), so the binding is still there. |
 | Fork or `/branch` | A new ID ("get their own session IDs", same page), so no binding; the restored conversation names the effort and the index names the command. |
 | Compaction | The docs do not say whether the ID changes. Existing code relies on the session continuing: it finds the `compact_boundary` in the same transcript and keeps the observed window under the same session ID (`lib/synapse/continuation.py:119-130`, `:299-303`). If the ID did change, the session would be unbound and get the same fallback list as after `/clear`. Needs a live check. |
-| Two sessions on one effort | Advisory only. Each prompt touches the session's binding file; `resume` and the index say when another session's binding to the same effort was touched in the last 30 minutes. No lock: a lock needs a release on crash, and the cost of a miss is an overwritten planning line, which the archive keeps. |
+| Two sessions on one effort | Advisory only. Each prompt touches the session's binding file; `resume` and the index say when another session's binding to the same effort was touched in the last 30 minutes; the index shows it on the session's own effort too (`(this session; another session 5m ago)`). No lock: a lock needs a release on crash, and the cost of a miss is an overwritten planning line, which the archive keeps. |
 | Sub-agent calls | Ignored by the hook binding (the hook input carries `agent_id`, [hooks](https://code.claude.com/docs/en/hooks)): the main session conducts the planning files. |
 | Worktrees | Each worktree has its own `.claude-work/` (it is git-ignored), so its own efforts; a session binds only to efforts of its own checkout. The index adds the open efforts of the repository's other checkouts, read-only (next section). Archives of all worktrees share one project (`lib/synapse/paths.py:197-213`). Removing a worktree removes its working files, efforts included, as it removes `current/` today; what was archived stays in the store. |
 
@@ -307,7 +322,7 @@ again at every exit. In a project with no efforts the check is today's.
   efforts: the effort the user names wins; otherwise the task is matched to
   `synapse effort list`; otherwise the skill proposes a slug and starts it,
   asking only when two efforts fit. It then reads that effort's PLAN and
-  EXECUTION. The reset paragraph goes: unrelated work is another effort.
+  EXECUTION. In a project with no planning files it starts an effort. The reset paragraph goes: unrelated work is another effort.
 - **checkpoint**, **end-session**, the **resume pointer**, the **checkpoint
   ask**, the **compaction guide**, the **artifact record** and the
   **SessionEnd archive** follow the bound effort through `find_work_dir`.
@@ -325,12 +340,12 @@ again at every exit. In a project with no efforts the check is today's.
 
 Removed: the full-PLAN read at every session start, the reset step nothing
 triggered, and the phase lettering. Added: one command group (eight verbs),
-one small JSON file per effort, and one `resume` call when a session takes
-up existing work.
+one small JSON file per effort, and one `resume` call when a session in a
+project with several open efforts takes one up.
 
 ## Compatibility
 
-A project with no `.claude-work/efforts/` behaves as before: no index is
+A project with no `.claude-work/efforts/` and files in `current/` behaves as before: no index is
 printed, `find_work_dir` returns `current/`, archive IDs are unchanged, and
 plan-session, checkpoint and end-session read `current/`. A session with no
 binding in a project that has efforts also uses `current/`. One existing
@@ -343,11 +358,15 @@ EXECUTION and `CHECKPOINTS.md`, a name that nothing writes:
 for a separate change) and lists PLAN, EXECUTION and NOTES for an effort's
 folder.
 
-**Default left to the owner.** As built, effort folders start only on
-request: the user names an effort, asks for effort folders, or runs the
-migration. A project with no planning files still gets `current/` from
-plan-session. Making effort folders the default for a project with no
-planning files is a one-paragraph change in `skills/plan-session/SKILL.md`.
+**Default.** Effort folders are the default layout (owner's decision,
+2026-11-15: "so long as it doesn't cost significantly in a single-effort
+space"; the automatic binding above is what keeps that cost near zero). A
+project with files in `current/` is not moved; splitting it stays on the
+user's request; `synapse effort start` prints a note when it creates the first
+effort beside `current/` planning files. In a project with no planning files, plan-session and
+checkpoint start an effort with `synapse effort start`, and fall back to
+`current/` from the templates when the `synapse` command is not available
+(an `error:` line is fixed and retried, not a fallback).
 
 ## Migration
 
@@ -519,3 +538,20 @@ list --all` for the parked effort. A different session that was on
 `billing-export` gets one line on its next prompt: `Synapse: effort
 'billing-export' that this session was on is closed (done, archive
 2026-11-15-2134-billing-export). Take up another with ...`.
+
+**A project with one effort** (the owner's condition for making efforts the
+default: no significant cost there), against a project that plans in
+`current/`:
+
+| Measure | `current/` only | One effort |
+|---------|-----------------|------------|
+| Text added at SessionStart | none | 310 to 383 characters (about 80 to 95 tokens): the header, the folder line, one effort line |
+| Tool calls per session to get on the effort | none | none (bound at SessionStart) |
+| Tool calls to start planning | the two template files | one `synapse effort start` |
+| SessionStart and UserPromptSubmit hook time, median of 20 | 32 to 33 ms | 38 ms in the implementer's run; +0.7 to +0.8 ms in the reviewer's run of the same lazy-import change |
+
+A session that starts in that project was bound with no `resume` call,
+`synapse checkpoint --stamp` stamped the effort's EXECUTION.md, and the
+SessionEnd failsafe archived under `<date>-<time>-billing-export` with its
+marker. A project with only `current/` files printed nothing new at
+SessionStart.

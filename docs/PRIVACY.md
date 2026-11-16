@@ -12,7 +12,7 @@ derived from your sessions:
 
 - **Planning files.** Under Synapse's skills, the model writes `PLAN.md`,
   `EXECUTION.md` and `NOTES.md` (the plan, the current task, open questions
-  and decisions) in your project's `.claude-work/current/`, or, in a project that uses effort folders, in one folder per effort under `.claude-work/efforts/`. The Stop hook
+  and decisions) in one folder per effort under your project's `.claude-work/efforts/`, or, in a project that already plans there, in `.claude-work/current/`. The Stop hook
   records the title and link of each Artifact the session published in
   `ARTIFACTS.md` there.
 - **Session notes.** `/synapse:end-session` has the model write a session

@@ -387,6 +387,17 @@ class ArchiveEffortTests(unittest.TestCase):
         self.assertEqual((data["slug"], data["from"]), ("alpha", "s1"))
         self.assertEqual(self.ids(), [])
 
+    def test_auto_bound_session_archives_its_effort(self):
+        self.effort("alpha", "alpha plan\n")
+        (self.cur / "NOTES.md").write_text("leftover\n")   # no PLAN/EXECUTION: does not block
+        ev = {"session_id": "n1", "hook_event_name": "SessionStart", "source": "startup", "cwd": str(self.proj)}
+        r = run_cli(["nudge", "--hook"], self.home, json.dumps(ev).encode())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(b"This session is on alpha", r.stdout)
+        self.hook("n1")
+        (sid,) = self.ids()
+        self.assertEqual((self.adir() / f"PLAN_{sid}.md").read_text(), "alpha plan\n")
+
     def test_handoff_only_for_bound_clear(self):
         self.effort("alpha")
         self.bind("s1", "alpha")

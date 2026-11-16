@@ -2,9 +2,12 @@
 
 ## 2.9.0 — 2026-11-15 — Effort folders
 
-No store schema change. A project with no `.claude-work/efforts/` behaves as
-before: `.claude-work/current/`, no index, the same archive IDs. Effort
-folders start only when the user asks for them. Update with
+No store schema change. A project with existing `.claude-work/current/` files
+behaves as before: `.claude-work/current/`, no index, the same archive IDs.
+New planning in a project with no planning files starts an effort folder. A
+session in a project with exactly one open effort and no planning files in
+`current/` is put on it at start.
+Update with
 `claude plugin update synapse@synapse` and start new sessions.
 
 ### Added
