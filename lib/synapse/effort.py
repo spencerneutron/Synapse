@@ -123,7 +123,8 @@ def _folders(root):
 
 
 def _touched(folder: Path) -> float:
-    return max(_mtime(folder / n) for n in ("EXECUTION.md", "PLAN.md", "effort.json"))
+    return max(_mtime(folder / "EXECUTION.md"), _mtime(folder / "PLAN.md"),
+               _mtime(paths.effort_meta(folder)))
 
 
 def _collect(root, statuses) -> list[dict]:
@@ -152,7 +153,7 @@ def all_efforts(root) -> list[dict]:
     except OSError:
         moved = []
     for folder in moved:
-        meta = _json(folder / "effort.json") if folder.is_dir() else None
+        meta = _json(paths.effort_meta(folder)) if folder.is_dir() else None
         if meta and meta.get("status") in paths.EFFORT_CLOSED:
             slug = meta.get("slug") or re.sub(r"^\d{4}-\d{2}-\d{2}-\d{4}-|-(?:v?\d+)$", "", folder.name)
             out.append({**meta, "slug": slug, "touched": _touched(folder), "closed_folder": str(folder)})
@@ -197,8 +198,8 @@ def auto_bind(root, session_id) -> str | None:
         base = paths.efforts_dir(root)
         if base.is_dir():
             for folder in base.iterdir():
-                if (folder.is_dir() and folder.name != "_closed"
-                        and not isinstance(_json(folder / "effort.json"), dict)):
+                if (folder.is_dir() and folder.name != paths.closed_dir(root).name
+                        and not isinstance(_json(paths.effort_meta(folder)), dict)):
                     return None
         opened = open_efforts(root)
         if len(opened) != 1:
@@ -475,7 +476,7 @@ def sweep_closed(root, force_slug: str | None = None) -> None:
             try:
                 updated = datetime.fromisoformat(str(meta.get("updated")))
             except ValueError:
-                updated = datetime.fromtimestamp(_mtime(folder / "effort.json")).astimezone()
+                updated = datetime.fromtimestamp(_mtime(paths.effort_meta(folder))).astimezone()
             if folder.name != force_slug and time.time() - updated.timestamp() <= SWEEP_AFTER_S:
                 continue
             base = meta.get("archive_id")

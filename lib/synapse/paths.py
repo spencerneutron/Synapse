@@ -393,8 +393,13 @@ def closed_dir(root) -> Path:
     return efforts_dir(root) / "_closed"
 
 
+def effort_meta(folder) -> Path:
+    """The effort.json inside an effort folder (open, or moved to _closed/)."""
+    return Path(folder) / "effort.json"
+
+
 def effort_file(root, slug: str) -> Path:
-    return effort_dir(root, slug) / "effort.json"
+    return effort_meta(effort_dir(root, slug))
 
 
 def effort_claim(root, slug: str) -> Path:

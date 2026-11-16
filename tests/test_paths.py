@@ -137,6 +137,11 @@ class WorkRootTests(unittest.TestCase):
         self.assertEqual(paths.find_work_dir(deep), paths.work_dir(self.root))   # does not exist; callers cope
         self.assertEqual(paths.find_work_dir(deep, effort="a"), paths.effort_dir(self.root, "a"))
 
+    def test_effort_meta_matches_effort_file(self):
+        self.assertEqual(paths.effort_meta(paths.effort_dir(self.root, "a")), paths.effort_file(self.root, "a"))
+        closed = paths.closed_dir(self.root) / "x"
+        self.assertEqual(paths.effort_meta(closed), closed / "effort.json")
+
     def test_stops_at_git(self):
         (self.root / "src" / ".git").mkdir()
         paths.work_dir(self.root).mkdir(parents=True)
