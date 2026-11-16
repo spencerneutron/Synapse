@@ -128,7 +128,7 @@ or `"fable"`; follow their answer for the rest of the session.
 
 ## Local Knowledge Recall
 
-Invoke it proactively when planning work that resembles prior work, when a
+Invoke `/synapse:recall` proactively when planning work that resembles prior work, when a
 decision may have been made before, when the user says "last time", "before",
 or similar, when debugging something that may have been seen before, or when
 entering a project area with session history. Skip it for self-contained, novel

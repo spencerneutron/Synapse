@@ -9,9 +9,10 @@ its own.
   only when two efforts fit.
 - Take one up: `synapse effort resume <slug>`. Then read only
   `.claude-work/efforts/<slug>/PLAN.md` and `EXECUTION.md`, once, and extract
-  objective, constraints, progress and prior decisions. Run `resume` only to
+  objective, constraints, progress and prior decisions. Run `resume` to
   move to another effort, or when the effort is `waiting` and the wait is
-  over, not for the effort the session is already on.
+  over (also for the session's own effort); otherwise not for the effort the
+  session is already on.
 - No effort fits: propose a slug (lower case, `a-z`, `0-9`, `-`) and run
   `synapse effort start <slug> --title "..."`. It creates PLAN.md and
   EXECUTION.md from the templates; fill them in.
@@ -35,9 +36,8 @@ session on the effort; fill both in. If it prints an `error:` line (invalid
 slug, folder exists), fix the argument and run it again; do not fall back.
 
 Only if the `synapse` command is not available (command not found), use
-`.claude-work/current/` from the templates (step 2b) and say so once. Start
-the files from `${CLAUDE_PLUGIN_ROOT}/templates/PLAN.md` and
-`${CLAUDE_PLUGIN_ROOT}/templates/EXECUTION.md`.
+`.claude-work/current/` and say so once. Start the files from the template
+paths in SKILL.md step 2b.
 
 ## Reset current/ for a new task
 

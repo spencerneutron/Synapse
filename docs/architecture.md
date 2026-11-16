@@ -16,7 +16,9 @@ hooks enforce what instructions can only request.
    sub-agent for cross-repo searches; run any session hooks the plan lists;
    `/synapse:recall` when the work resembles prior work. Write
    `.claude-work/current/PLAN.md` (strategy, constraints, Decision Log) and
-   `EXECUTION.md` (the active task). In a project with
+   `EXECUTION.md` (the active task). New planning in a project with no
+   planning files starts an effort folder, `.claude-work/efforts/<slug>/`; a
+   project already on `current/` stays there. In a project with
    `.claude-work/efforts/`, each effort has its own folder,
    `.claude-work/efforts/<slug>/`, and the session takes one up with
    `synapse effort resume <slug>`: it reads that effort's files only.

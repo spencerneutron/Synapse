@@ -8,7 +8,7 @@ description: Reference text of the emission contract that Synapse's Stop hook en
 This contract applies to the final user-facing message of a turn. The
 plugin's Stop hook enforces it: when the message breaks a mechanical rule, the
 hook blocks the stop once and its reason carries the directive below in
-compact form, plus what it found (Synapse rules — Emission). This file is the
+compact form, plus what it found (Synapse rules, Session Lifecycle table, Emit row). This file is the
 reference text; keep its Directive in step with `directive` in the plugin's
 `hooks/emission_patterns.json`.
 

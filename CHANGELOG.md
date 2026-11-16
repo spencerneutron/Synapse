@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.9.0 — 2026-11-15 — Effort folders
+## 2.9.0 — 2026-11-16 — Effort folders
 
 No store schema change. A project with existing `.claude-work/current/` files
 behaves as before: `.claude-work/current/`, no index, the same archive IDs.
@@ -45,26 +45,35 @@ Update with
 
 ### Limits and size
 
-- **`instructions/core.md` is 8,212 characters (was 9,494, cap 9,500).**
+- **`instructions/core.md` is 8,227 characters (was 9,494, cap 9,500).**
   Removed: three rules that a SessionStart note already prints when it
   applies (project facts, archived sessions never extracted, a team that has
   not synced), four passages said twice (the Emission section, the recall
   intro, "If the files do not exist", "Do not re-read them each step"), and
   the `---` rules and long table separators. No rule was reworded.
-- **`plan-session` and `end-session` load less.** Their conditional branches
-  (starting or choosing an effort, status changes, resetting `current/`,
-  session hooks, closing or pausing an effort, the review-mode extraction
-  wording) moved to a `branches.md` beside each skill, with a one-line
-  pointer for each: `plan-session/SKILL.md` 5,901 to 4,494 characters,
-  `end-session/SKILL.md` 9,649 to 9,033. A new project starting its first
-  effort reads `plan-session/branches.md` once.
+- **`plan-session` and `end-session` keep their conditional branches in a
+  side file.** The branches (starting or choosing an effort, status changes,
+  resetting `current/`, session hooks, closing or pausing an effort, the
+  review-mode extraction wording) moved to a `branches.md` beside each skill,
+  with a one-line pointer for each: `plan-session/SKILL.md` 5,899 to 4,688
+  characters, `end-session/SKILL.md` 9,605 to 9,003. A session already on its
+  effort and a `current/` project read SKILL.md alone. Starting a first
+  effort, choosing or switching efforts, an effort that is waiting or idle 7
+  days, status changes, and closing or pausing an effort also read
+  `branches.md` (one more read); for those paths the total is more than
+  before (`plan-session` SKILL.md plus `branches.md`: 7,227 characters).
 - **`effort.py` asks `paths.py` for every location.** New helper
   `paths.effort_meta(folder)`; resolved paths are unchanged.
 - **Eval check of the trim** (Sonnet, with Synapse, the whole suite before
-  and after): 43 of 52 graders unchanged; the one that fell,
-  `general-purpose-brief` / `brief-carries-rules`, scored 3 of 6 on both
-  trees when rerun. Its judge reads a trace with the middle elided, so it
-  is unstable on any tree. The side files are not covered by evals.
+  and after): 50 graders; 42 unchanged, 4 fell, 4 rose. The four that fell:
+  `general-purpose-brief` / `brief-carries-rules`,
+  `memory-flag-convention` / `flag-registered`, and
+  `compound-archived-lesson` / `caps-batches` and `names-cause`. Rerunning
+  the two cases that fell furthest gave `general-purpose-brief` /
+  `brief-carries-rules` 3 of 6 on both trees and `compound-archived-lesson`
+  2 of 4 before against 3 of 4 after. The judge reads a trace with the
+  middle elided, so it is unstable on any tree. The side files are not
+  covered by evals.
 
 ## 2.8.1 — 2026-11-15 — The wait ask reads the message
 

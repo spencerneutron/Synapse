@@ -33,19 +33,22 @@ Use this skill when:
      not moved; splitting it happens only on the user's request (`migrate.md`).
    - Neither exists and the task justifies structured planning, or the
      `synapse` command is not available (command not found): read
-     `branches.md` section "Start the first effort" before anything else.
+     `branches.md` (next to this file) section "Start the first effort"
+     before anything else.
 
 2a. An effort project (`.claude-work/efforts/`). The SessionStart index (or
    `synapse effort list`) names the open efforts. Read no planning file yet.
 
+   - If the session is on no effort, the request belongs to another effort
+     or fits no open effort, the effort is `waiting`, or the index shows an
+     open effort untouched for 7 days or more: read `branches.md` (next to
+     this file) section "Choose or start an effort" before reading any
+     effort's files.
    - When the index says "This session is on <slug>" and the request belongs
-     to that effort, do not run `resume`. Read only
-     `.claude-work/efforts/<slug>/PLAN.md` and `EXECUTION.md`, once, and
-     extract objective, constraints, progress and prior decisions.
-   - If the session is on no effort, the request belongs to another effort,
-     the effort is `waiting`, or the index shows an open effort untouched for
-     7 days or more: read `branches.md` section "Choose or start an effort"
-     before reading any effort's files.
+     to that effort, do not run `resume` unless the effort is `waiting` (the
+     bullet above). Read only `.claude-work/efforts/<slug>/PLAN.md` and
+     `EXECUTION.md`, once, and extract objective, constraints, progress and
+     prior decisions.
    - Never read another effort's files. New work is a new effort, not a new
      section of this one.
    - Status changes only through the CLI. To wait, park, finish or cancel an
@@ -66,7 +69,9 @@ Use this skill when:
      - current progress
      - prior decisions
 
-   If absent (the fallback): `branches.md` section "Start the first effort".
+   If absent (the fallback), start them from
+   `${CLAUDE_PLUGIN_ROOT}/templates/PLAN.md` and
+   `${CLAUDE_PLUGIN_ROOT}/templates/EXECUTION.md`.
 
    When you reset the planning files for a new task: `branches.md` section
    "Reset current/ for a new task".

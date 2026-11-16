@@ -41,7 +41,7 @@ Do **not** use this skill just because a task finished — only when the session
 
 ### 1–2. Archive the planning files
 
-If the session is on an effort **and the user says that effort is finished**, or its true state is waiting or parked: read `branches.md` (next to this file) section "Closing or pausing an effort" before archiving. A finished effort is archived with `synapse effort done`, in place of `synapse archive`; never run it without the user's word.
+If the session is on an effort **and the user says that effort is finished**, or its true state is waiting or parked: read `branches.md` (next to this file) section "Closing or pausing an effort" before archiving. A finished effort is archived with `synapse effort done <slug> --json`, in place of `synapse archive`; never run it without the user's word.
 
 Otherwise (an effort that continues, or a project with no efforts), run `synapse archive`, which follows the session's effort and leaves it open. From the project root, run:
 
