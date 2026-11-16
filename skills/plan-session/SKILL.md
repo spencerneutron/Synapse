@@ -31,39 +31,25 @@ Use this skill when:
    - It does not, but `.claude-work/current/` holds `PLAN.md` or
      `EXECUTION.md`: continue in `current/` (step 2b). An existing project is
      not moved; splitting it happens only on the user's request (`migrate.md`).
-   - Neither exists and the task justifies structured planning: start an
-     effort with `synapse effort start <slug> --title "..."` (a short
-     lower-case slug from the task). It creates PLAN.md and EXECUTION.md from
-     the templates and puts this session on the effort; fill both in. Only if
-     the `synapse` command is not available (command not found), use
-     `.claude-work/current/` from the templates (step 2b) and say so once.
-     If it prints an `error:` line (invalid slug, folder exists), fix the
-     argument and run it again; do not fall back.
+   - Neither exists and the task justifies structured planning, or the
+     `synapse` command is not available (command not found): read
+     `branches.md` section "Start the first effort" before anything else.
 
-2a. Pick or start an effort (a project with `.claude-work/efforts/`):
+2a. An effort project (`.claude-work/efforts/`). The SessionStart index (or
+   `synapse effort list`) names the open efforts. Read no planning file yet.
 
-   - The SessionStart index (or `synapse effort list`) names the open
-     efforts. Read no planning file yet.
-   - The effort the user names wins. Otherwise match the task to the list.
-     Ask only when two efforts fit.
    - When the index says "This session is on <slug>" and the request belongs
-     to that effort, do not run `resume`. Run it only to move to another
-     effort, or when the effort is `waiting` and the wait is over.
-   - Take one up: `synapse effort resume <slug>`. Then read only
+     to that effort, do not run `resume`. Read only
      `.claude-work/efforts/<slug>/PLAN.md` and `EXECUTION.md`, once, and
      extract objective, constraints, progress and prior decisions.
-   - No effort fits: propose a slug (lower case, `a-z`, `0-9`, `-`) and run
-     `synapse effort start <slug> --title "..."`. It creates PLAN.md and
-     EXECUTION.md from the templates; fill them in. If the index shows an open
-     effort untouched for 7 days or more, ask the user once whether it is
-     done, parked or still open, and record the answer with the CLI
-     (`done`/`cancel` only on their word).
+   - If the session is on no effort, the request belongs to another effort,
+     the effort is `waiting`, or the index shows an open effort untouched for
+     7 days or more: read `branches.md` section "Choose or start an effort"
+     before reading any effort's files.
    - Never read another effort's files. New work is a new effort, not a new
      section of this one.
-   - Status changes only through the CLI: `synapse effort wait <slug> --on
-     "..."` or `synapse effort park <slug>` when that is the state;
-     `synapse effort done <slug>` or `cancel <slug> --reason "..."` only on
-     the user's word.
+   - Status changes only through the CLI. To wait, park, finish or cancel an
+     effort, read `branches.md` section "Status changes".
    - To split a large `current/PLAN.md` into efforts: `migrate.md` next to this file.
 
 2b. In `.claude-work/current/` (an existing project, or the fallback). Check for planning files:
@@ -80,24 +66,14 @@ Use this skill when:
      - current progress
      - prior decisions
 
-   If absent (the fallback), start them from
-   `${CLAUDE_PLUGIN_ROOT}/templates/PLAN.md` and
-   `${CLAUDE_PLUGIN_ROOT}/templates/EXECUTION.md`.
+   If absent (the fallback): `branches.md` section "Start the first effort".
 
-   When you reset the planning files for a new task, reset the rest too: an
-   `EXECUTION.md` `## Resume` section from the previous task is replaced or
-   removed, and a working `NOTES.md` is started fresh only if its last line is
-   a merge marker or end-session has run.
+   When you reset the planning files for a new task: `branches.md` section
+   "Reset current/ for a new task".
 
-3. Run session hooks (optional, per project):
-
-   - If `PLAN.md` has a `## Session hooks` section, run each command or skill
-     it lists before choosing the next step. Typical hooks pull outside state
-     into the plan: an issue-tracker or roadmap sync, a CI status check, a
-     dependency audit.
-   - Fold anything new the hooks surface (fresh issues, failing checks, drift)
-     into the plan **before** choosing the next step.
-   - Skip this step when the section is absent.
+3. Session hooks: if `PLAN.md` has a `## Session hooks` section, read
+   `branches.md` section "Session hooks" and follow it before choosing the
+   next step. Skip this step when the section is absent.
 
 4. Explore in parallel:
 

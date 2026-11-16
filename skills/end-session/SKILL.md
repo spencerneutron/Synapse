@@ -41,15 +41,9 @@ Do **not** use this skill just because a task finished — only when the session
 
 ### 1–2. Archive the planning files
 
-When the session is on an effort **and the user says that effort is finished**, run this in place of `synapse archive`:
+If the session is on an effort **and the user says that effort is finished**, or its true state is waiting or parked: read `branches.md` (next to this file) section "Closing or pausing an effort" before archiving. A finished effort is archived with `synapse effort done`, in place of `synapse archive`; never run it without the user's word.
 
-```
-synapse effort done <slug> --json
-```
-
-It archives the effort and closes it. Its JSON has the same keys as `synapse archive` (`session_id`, `copied`, `missing`, `notes_path`) plus `folder`, the effort's folder: use `folder` for the working files in steps 3, 4 and 6 (the scan and the merge marker in `NOTES.md`), and `session_id` (the archive ID) for everything else. `done` copies an unmerged working `NOTES.md` as `NOTES_<id>.md`; step 4 then writes the fuller notes over that copy. Never run `done` without the user's word.
-
-For an effort that continues (or a project with no efforts), run `synapse archive`, which follows the session's effort. The effort stays open. If its true state is waiting or parked, say so with `synapse effort wait <slug> --on "..."` or `synapse effort park <slug>`. From the project root, run:
+Otherwise (an effort that continues, or a project with no efforts), run `synapse archive`, which follows the session's effort and leaves it open. From the project root, run:
 
 ```
 synapse archive [--project <name>] [--id <session-id>]
@@ -146,12 +140,8 @@ After verification succeeds, learn the mode with `synapse extract review
   procedure for the session just archived, in this same turn, so the tail is
   one turn. Do not stop to ask; that skill prints its own summary and how to
   review.
-- `review`, or the user declined extraction: recommend, do not run:
-
-> "Archive complete. Recommend running `/synapse:extract-session 2026-04-23-1645`
-> to promote this session's decisions and patterns into the vault and
-> embed it for recall. Skip if this was a throwaway session or if
-> `synapse vault verify` fails."
+- `review`, or the user declined extraction: recommend, do not run. Read
+  `branches.md` section "Recommend extraction" for the wording.
 
 If the `accept` check fails, fall back to the recommendation. Extraction can
 also be run later; there is no expiration.
