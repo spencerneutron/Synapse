@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.8.1 — 2026-11-15 — The wait ask reads the message
+
+No store schema change; update with `claude plugin update synapse@synapse`
+and start new sessions.
+
+### Changed
+
+- **The Stop hook's wait-for-agents ask now reads the final message.** It is
+  skipped when one sentence names both a wait (waiting, still running,
+  resuming when the agent reports) and an agent, a role, or its report or
+  findings. Backtick code and quoted lines are not read. A message that opens
+  by calling the work finished (Done, Fixed, Shipped and the like) is always
+  asked. Before, the hook blocked after every dispatch and every prompt
+  whatever the message said. In the 46 blocks found in local transcripts,
+  every blocked message had already named the wait, and the check passes 45
+  of them (one of those on a chance word); the one still asked names the
+  topic but no agent or report. It is a wording heuristic, English only: a
+  wait phrased another way (for example a pronoun for an agent named in the
+  previous sentence) or in another language is still asked once, and a
+  finished-work report that does not open with such a word and pairs those
+  words in one sentence is no longer asked. The emission contract's rule 7
+  (one line) is not enforced by this check. `[gate] wait_for_agents = false`
+  still turns the ask off.
+
 ## 2.8.0 — 2026-11-09 — Notes without Obsidian
 
 No store schema change; existing configs keep Obsidian mode. Update with

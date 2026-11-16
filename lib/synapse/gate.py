@@ -21,7 +21,13 @@ gate.py — hook gates for the main session, where a reminder line was not enoug
 3. Wait for agents (Stop, after 2). When the Stop input's background_tasks
    lists a sub-agent still running, block once per prompt asking the session
    to end the turn with one line naming what it waits for, then verify the
-   report when it resumes. [gate] wait_for_agents switches it.
+   report when it resumes. The ask is skipped when the final message
+   (last_assistant_message) does not open by calling the work finished (Done,
+   Fixed, Finished, Shipped, Complete, Merged, Pushed) and one sentence of its
+   prose names both a wait and an agent, a role, or its report or findings.
+   Backtick code spans, fences and `>` lines are not read as prose (a role
+   named in a code span still counts as the agent); negated waits do not
+   count. A wording heuristic. [gate] wait_for_agents switches it.
 
 [gate] enabled, min_context, checkpoint and wait_for_agents switch them; a project's
 .synapse.toml may override them. State sits next to context-<sid>.json:
@@ -37,6 +43,39 @@ import sys
 from pathlib import Path
 
 SHELLS = {"Bash", "PowerShell"}
+# Wording heuristic, English only: the wait-for-agents ask is skipped when the message does not
+# open by calling the work finished and one sentence of its prose names both a wait and an agent,
+# a role, or its report or findings. Backtick code spans, fences and `>` lines are not read as prose.
+# Not the session's own statement: fenced code, quoted lines, inline code, negated waits.
+_FENCE = re.compile(r"```.*?(?:```|\Z)", re.S)
+_QUOTE = re.compile(r"^[ \t]*>[^\n]*", re.M)
+_INLINE = re.compile(r"`[^`\n]*`")
+_NEGATED = re.compile(
+    r"(?:\b(?:not|never|without|no\s+longer|rather\s+than|instead\s+of|no\s+(?:need|reason)\s+to)|n['\u2019]t)"
+    r"(?:\s+(?:need|have)\s+to)?\s+a?wait\w*", re.I)
+# A message that opens by calling the work finished is asked whatever else it says.
+_DONE_LEAD = re.compile(r"[\s*_#>-]*(?:all\s+)?(?:done|fixed|finished|shipped|completed?|merged|pushed)\b", re.I)
+# Sentence ends: .!? (and closers) before a space, a blank line, a list or table line.
+_SENTENCE = re.compile(r"[.!?][\"')\]*_\u201d\u2019]*\s+|\n\s*\n|\n(?=[ \t]*(?:[-*+]|\d+[.)]|\|)[ \t])")
+# Who is awaited: a sub-agent, a role, or what it hands back ("review" not in its pull-request senses).
+_AGENT = re.compile(
+    r"\b(?:sub-?agents?|agents?|scouts?|implementers?|verifiers?|researchers?|reviewers?|extractors?"
+    r"|reports?|findings"
+    r"|(?<!\byour\s)(?<!\bfor\s)(?<!\bawaiting\s)(?<!\bpending\s)(?<!\bcode\s)(?<!\bto\s)(?<!\bon\s)(?<!\ba\s)"
+    r"(?<!\bPR\s)(?<!\bmy\s)review(?!\s+comments?))\b", re.I)
+_DONE = r"(?:is|are|['\u2019]s)\s+(?:done|finished|back|in)"
+# The wait itself: waiting, still running, or resuming when it hands back.
+_HOLD = re.compile(
+    r"\b(?:a?wait(?:s|ing)?|pending|blocked\s+on|on\s+hold|holding\s+(?:for|until)|paused\s+until"
+    r"|standing\s+by|check\s+back|resum(?:e|es|ing)|in\s+flight|in\s+the\s+background)\b"
+    r"|\bstill\s+(?:[\w-]+ing|in\s+progress|out)\b"
+    r"|\b(?:is|are|['\u2019]re)\s+(?:now\s+|currently\s+)?(?:running|working|going)\b"
+    r"|\b(?:has|have)(?:n['\u2019]t|\s+not)\s+(?:yet\s+)?(?:reported|finished|returned|come\s+back|replied)\b"
+    r"|\b(?:when|once|until|after|while|as\s+soon\s+as|upon)\b.{0,120}?"
+    r"(?:\b(?:reports(?=\s*(?:$|[,;:.!?)]|back\b|and\b|or\b|then\b))|report\s+back|returns?|finish(?:es)?"
+    r"|lands?|arrives?|comes?\s+(?:back|in)|hands?\s+back|completes?|completion|repl(?:y|ies)"
+    r"|(?:has|have)\s+(?:reported|finished|returned))\b|" + _DONE + r"\b)",
+    re.I)
 # git commit / git push / gh pr, after any leading `cd DIR &&` or `git add ... &&`
 LEAD = re.compile(r"^(?:cd\s+[^&;|]+|git(?:\s+-C\s+\S+)?\s+add\b[^&;|]*)\s*(?:&&|;)\s*")
 SHIP = re.compile(r"^(?:git(?:\s+-C\s+\S+)?\s+(?:commit|push)\b|gh\s+pr\b)")
@@ -207,9 +246,36 @@ def stop(paths, sid: str, data: dict) -> str:
     return checkpoint_ask(paths, sid, data, s, scanned) or wait_ask(paths, sid, data, s)
 
 
+def waiting_text(msg: str) -> bool:
+    """True when the message does not open as a finished-work report and one sentence of its
+    prose names both a wait and an agent, a role, or its report or findings."""
+    if _DONE_LEAD.match(msg):
+        return False
+    text = _NEGATED.sub(" ", _QUOTE.sub(" ", _FENCE.sub(" ", msg)))
+    for s in _SENTENCE.split(text):
+        s = " ".join(s.split())
+        if _AGENT.search(s.replace("`", "")) and _HOLD.search(_INLINE.sub(" ", s)):
+            return True
+    return False
+
+
+def says_waiting(data: dict) -> bool:
+    """True when the final message (last_assistant_message) does not open by calling the work
+    finished and one sentence of its prose names both a wait and an agent, a role, or its report
+    or findings. Code spans, fences and `>` lines are not prose (a role in a code span still
+    counts as the agent); negated waits do not count. A wording heuristic."""
+    msg = data.get("last_assistant_message")
+    return isinstance(msg, str) and waiting_text(msg)
+
+
 def wait_ask(paths, sid: str, data: dict, s: dict) -> str:
-    """Block once per prompt (the marker is cleared with the count) while a sub-agent runs."""
+    """Block once per prompt (the marker is cleared with the count) while a sub-agent runs,
+    unless says_waiting: the message does not open by calling the work finished and one sentence
+    of its prose names both a wait and an agent, a role, or its report or findings (no marker is
+    claimed then). A wording heuristic."""
     if not s["gate_wait_for_agents"] or not running_agent(data):
+        return ""
+    if says_waiting(data):
         return ""
     if not _claim(_marker(paths, sid, "gate.wait")):
         return ""

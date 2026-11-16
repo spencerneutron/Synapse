@@ -86,7 +86,7 @@ it harvests finished agents' results from disk before anything is relaunched.
 | Skills | `/synapse:setup`, `/synapse:doctor` | Provision the Synapse home; read-only health and conflict report |
 | Agents | `synapse:implementer`, `verifier`, `researcher`, `reviewer`, `scout`, `extractor` | Wave roles with their own models and tool limits (the extractor is dispatched by `/synapse:extract-session`, not by waves); each body carries the rules its job needs, because sub-agents do not receive the `SessionStart` rules |
 | Hooks | `emission_check.py` (Stop) | Blocks a non-compliant final message once; the reason names the violations and carries the contract's directive (from `emission_patterns.json`); allows the stop on `stop_hook_active` or any internal error, which it logs to stderr |
-| Hooks | `synapse gate --hook` (PreToolUse on Edit, Write, MultiEdit, NotebookEdit, Bash, PowerShell; Stop) | Denies a hands-on call once per crossing at 5, 10 and 20 calls in a step when the context is at least `[gate] min_context` (0.5) of the window, naming the role to brief; the retry goes through and a dispatch or new prompt re-arms it. On Stop, blocks once at 60% and once at 90% of the window to ask for `/synapse:checkpoint` when `## Resume` is stale, and once per prompt while a dispatched sub-agent is still running. A project's `.synapse.toml` may override `[gate]` and `[nudge]` |
+| Hooks | `synapse gate --hook` (PreToolUse on Edit, Write, MultiEdit, NotebookEdit, Bash, PowerShell; Stop) | Denies a hands-on call once per crossing at 5, 10 and 20 calls in a step when the context is at least `[gate] min_context` (0.5) of the window, naming the role to brief; the retry goes through and a dispatch or new prompt re-arms it. On Stop, blocks once at 60% and once at 90% of the window to ask for `/synapse:checkpoint` when `## Resume` is stale, and once per prompt while a dispatched sub-agent is still running, unless the final message already names the wait and the agent. A project's `.synapse.toml` may override `[gate]` and `[nudge]` |
 | Hooks | `synapse archive --auto --hook` (SessionEnd) | Failsafe for a session that ends without `/synapse:end-session`: copies `.claude-work/current/` into the store as it stands at exit, `/clear` and a `/resume` switch: no model call, about 60 ms inside Claude Code's shared 1.5 s SessionEnd budget; skips when nothing changed; `[extract] on_exit = true` then starts a detached headless extraction (off by default) |
 | Hooks | `synapse recall-hint` (UserPromptSubmit), `synapse pending --hook` and `synapse shared hook` (SessionStart) | Automatic recall hints, the extraction reminder, the count of notes automatic extraction wrote (`synapse extract review`), and the team sync (started in the background); all fail silently |
 | Hooks | `synapse compact-guide --hook` (PreCompact) | Tells the compaction summary what to keep and drop; defers to the user's `/compact` text; never blocks; fails silently |
@@ -241,7 +241,7 @@ flowchart TD
         DR["Final message"]:::model
         SH{"emission_check.py<br/>contract violated?"}:::hook
         EC["Rewrite with the rules<br/>in the block reason (once)"]:::model
-        SG{"synapse gate --hook<br/>agents still running? checkpoint overdue?<br/>Artifact links → ARTIFACTS.md"}:::hook
+        SG{"synapse gate --hook<br/>agent running, wait not named? checkpoint overdue?<br/>Artifact links → ARTIFACTS.md"}:::hook
         DN{"Session done?"}:::model
     end
     UP --> DR

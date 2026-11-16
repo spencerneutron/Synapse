@@ -74,7 +74,7 @@ vault = "Synapse"                         # the Obsidian vault's name (obsidian 
 # enabled = true       # PreToolUse: deny the next hands-on call once at [nudge] calls, 2x and 4x, above min_context
 # min_context = 0.5    # share of the context window the gate needs; below it the [nudge] reminder line runs instead
 # checkpoint = true    # Stop: ask once for /synapse:checkpoint at 60% and at 90% of the window
-# wait_for_agents = true  # Stop: once per prompt, ask to wait while a dispatched sub-agent is still running
+# wait_for_agents = true  # Stop: once per prompt, ask to wait while a dispatched sub-agent is still running, unless the final message already names the wait and the agent
 # A project's .synapse.toml may override [nudge] and [gate] keys for that project.
 
 [continuation]

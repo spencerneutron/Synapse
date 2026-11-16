@@ -48,7 +48,7 @@ If a session ends without `/synapse:end-session` (a crash, a forgotten close, `/
 | UserPromptSubmit | Adds a recall hint (up to three ranked snippets above a score threshold) and a one-line digest of the delegation rule |
 | PreToolUse | Above half the context window, denies the next hands-on call once at the fifth, tenth and twentieth call of a step and names the role to brief; the retry goes through, and a dispatch or a new prompt resets the count |
 | PostToolUse, PostToolUseFailure | Below that threshold, a reminder at the same counts; a context-size line at 60% and 90% of the window |
-| Stop | The emission contract, with one rewrite; a checkpoint ask once at 60% and once at 90% of the window; a hold while a dispatched sub-agent is still running |
+| Stop | The emission contract, with one rewrite; a checkpoint ask once at 60% and once at 90% of the window; a hold while a dispatched sub-agent is still running (skipped when the final message already names the wait and the agent) |
 | PreCompact | Guidance for the compaction summary: what to keep, which planning files exist, where the resume state is |
 | SessionEnd | The failsafe archive of the working files at exit, `/clear` and `/resume`, with no model call |
 
@@ -69,7 +69,7 @@ One global store, `main`, serves every project by default; a project opts into i
 | `[nudge] calls` | 5 | Hands-on calls per step before the reminder and the gate; 0 turns the reminder off |
 | `[nudge] context_window` | unset | Window the context marks are measured against; unset reads Claude Code's auto-compact setting, else the model's default |
 | `[gate] enabled`, `min_context` | true, 0.5 | The deny, and the context fraction above which it applies |
-| `[gate] checkpoint`, `wait_for_agents` | true, true | The Stop checkpoint ask and the hold for a running sub-agent |
+| `[gate] checkpoint`, `wait_for_agents` | true, true | The Stop checkpoint ask and the hold for a running sub-agent (skipped when the final message already names the wait and the agent) |
 | `[stores.<name>] notes` | obsidian | `obsidian` keeps the store's notes in an Obsidian vault; `folder` keeps them in a plain folder (`vault_path`, default `<store>/vault`) and never runs the Obsidian CLI |
 | `[extract] accept` | auto | `auto` writes notes and lists them for review; `review` asks before writing |
 | `[extract] on_exit` | false | Detached extraction after the failsafe archive |
