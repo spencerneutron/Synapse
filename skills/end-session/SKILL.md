@@ -1,7 +1,7 @@
 ---
 name: end-session
 description: Use when the session itself is closing (not merely when a task finishes). Writes the session notes (open questions, deferred items, why the pivots happened) from live context, archives PLAN.md and EXECUTION.md under a session tag, and runs extraction last in the same turn. The SessionEnd hook is only the failsafe for sessions that end without it.
-allowed-tools: Bash(synapse archive *), Bash(synapse where *), Bash(synapse extract *)
+allowed-tools: Bash(synapse archive *), Bash(synapse effort *), Bash(synapse where *), Bash(synapse extract *)
 ---
 
 # End Session Skill
@@ -31,7 +31,7 @@ Do **not** use this skill just because a task finished — only when the session
 
 ## Inputs
 
-- Required: `.claude-work/current/PLAN.md` and/or `.claude-work/current/EXECUTION.md`. If neither exists, report that and stop — there is nothing to archive.
+- Required: `PLAN.md` and/or `EXECUTION.md` in the session's planning folder (`.claude-work/current/`, or `.claude-work/efforts/<slug>/` when the session is on an effort). If neither exists, report that and stop — there is nothing to archive.
 - Optional: a session ID provided by the user. If not provided, `synapse archive` uses `YYYY-MM-DD-HHMM` in local time (e.g. `2026-04-23-1645`) and appends `-v2`, `-v3`, etc. when that ID is taken.
 - Optional: the project. `synapse archive` defaults to the project's `.synapse.toml` or its git root's folder name. If the session's work was mostly in one repo but started elsewhere (for example a multi-repo workspace root), pass `--project <repo>`.
 
@@ -41,13 +41,15 @@ Do **not** use this skill just because a task finished — only when the session
 
 ### 1–2. Archive the planning files
 
-From the project root, run:
+If the session is on an effort **and the user says that effort is finished**, or its true state is waiting or parked: read `branches.md` (next to this file) section "Closing or pausing an effort" before archiving. A finished effort is archived with `synapse effort done <slug> --json`, in place of `synapse archive`; never run it without the user's word.
+
+Otherwise (an effort that continues, or a project with no efforts), run `synapse archive`, which follows the session's effort and leaves it open. From the project root, run:
 
 ```
 synapse archive [--project <name>] [--id <session-id>]
 ```
 
-It copies (never moves) `.claude-work/current/PLAN.md`, `EXECUTION.md`,
+It copies (never moves) the planning folder's `PLAN.md`, `EXECUTION.md`,
 `REPORT.md`, and `ARTIFACTS.md` (the artifact links the Stop hook recorded) when present into the active store as
 `archive/<project>/<PREFIX>_<session-id>.md`, picks a free session ID, and
 prints JSON with `session_id`, `project`, `copied`, `missing`, and
@@ -66,7 +68,7 @@ Scan the **working** `PLAN.md` and `EXECUTION.md` for anything still in flight. 
 - Steps marked in-progress that never completed
 - Explicit "out-of-scope" or "scope deliberately skipped" items the user may still want to track
 
-If `/synapse:checkpoint` wrote a working `.claude-work/current/NOTES.md`, scan it too, unless its last non-blank line is a `<!-- merged into NOTES_` marker: an earlier end-session already merged it, so it holds nothing new.
+If `/synapse:checkpoint` wrote a working `NOTES.md` in the planning folder, scan it too, unless its last non-blank line is a `<!-- merged into NOTES_` marker: an earlier end-session already merged it, so it holds nothing new.
 
 Also scan current in-memory task list for tasks still `pending` or `in_progress` — those are deferred by definition.
 
@@ -74,7 +76,7 @@ Be selective: only capture items that a future session would actually act on. Do
 
 ### 4. Write the session notes file
 
-If `.claude-work/current/NOTES.md` exists and its last non-blank line is not a `<!-- merged into NOTES_` marker, start from it (a file ending in a marker was already merged by an earlier session: skip it; checkpoint restarts the file after a marker, so a file without a trailing marker is all new): carry each entry into the matching section below (it records facts and rationale from parts of the conversation a `/clear` or `/compact` may have removed), then add what the conversation and files add. After writing the notes file, append one line to that working NOTES.md: `<!-- merged into NOTES_<session-id> -->`, so the next checkpoint starts it fresh.
+If the working `NOTES.md` exists and its last non-blank line is not a `<!-- merged into NOTES_` marker, start from it (a file ending in a marker was already merged by an earlier session: skip it; checkpoint restarts the file after a marker, so a file without a trailing marker is all new): carry each entry into the matching section below (it records facts and rationale from parts of the conversation a `/clear` or `/compact` may have removed), then add what the conversation and files add. After writing the notes file, append one line to that working NOTES.md: `<!-- merged into NOTES_<session-id> -->`, so the next checkpoint starts it fresh.
 
 Write to the `notes_path` that `synapse archive` printed (`archive/<project>/NOTES_<session-id>.md` in the store) with this structure:
 
@@ -138,12 +140,8 @@ After verification succeeds, learn the mode with `synapse extract review
   procedure for the session just archived, in this same turn, so the tail is
   one turn. Do not stop to ask; that skill prints its own summary and how to
   review.
-- `review`, or the user declined extraction: recommend, do not run:
-
-> "Archive complete. Recommend running `/synapse:extract-session 2026-04-23-1645`
-> to promote this session's decisions and patterns into the vault and
-> embed it for recall. Skip if this was a throwaway session or if
-> `synapse vault verify` fails."
+- `review`, or the user declined extraction: recommend, do not run. Read
+  `branches.md` section "Recommend extraction" for the wording.
 
 If the `accept` check fails, fall back to the recommendation. Extraction can
 also be run later; there is no expiration.

@@ -2,7 +2,7 @@
 """
 archive.py — archive a session's working files into the active store.
 
-  synapse archive [--project P] [--id SESSION_ID] [--workdir DIR]
+  synapse archive [--project P] [--id SESSION_ID] [--workdir DIR] [--effort SLUG]
   synapse archive --auto --hook     # SessionEnd: archive without a model call
 
 Copies DIR/.claude-work/current/{PLAN,EXECUTION,REPORT,ARTIFACTS}.md (whichever exist)
@@ -15,12 +15,21 @@ which a `<!-- archived: ID -->` marker is appended to the working file.
 The session ID defaults to the local time as YYYY-MM-DD-HHMM; a taken ID gets
 -v2, -v3, and so on.
 
+The folder is the nearest .claude-work from DIR up (find_work_dir). With
+--effort SLUG, or when this Claude session (CLAUDE_CODE_SESSION_ID) is bound to
+an open effort, it is that effort's folder: the default ID becomes
+YYYY-MM-DD-HHMM-<slug>, the archive gets an effort marker, and the JSON carries
+"effort" (the slug, else null) and "folder". --effort naming no effort is an error.
+
 --auto --hook (SessionEnd hook) reads the event JSON from stdin and copies
 PLAN, EXECUTION, REPORT, ARTIFACTS and NOTES (whichever exist) in one pass: no model call,
 no embedding, no DB. It skips when the content hash matches the last auto
 archive of this Claude session or the newest archived session, and reuses the
 session's archive ID until that ID is extracted. Off with [archive] on_exit =
-false or SYNAPSE_DETACHED. Fails open: any error exits 0 with no output.
+false or SYNAPSE_DETACHED. A session bound to an effort archives that effort's
+folder, with its own state file, an ID ending in -<slug>, and a "same as the
+newest archive" check against that effort's newest archive only. On /clear
+(reason "clear") a bound session first writes its effort handoff. Fails open: any error exits 0 with no output.
 """
 
 import argparse
@@ -121,24 +130,74 @@ def put(dest: Path, src) -> None:
     os.replace(tmp, dest)
 
 
+def copy_to_archive(current: Path, r, base_id: str, prefixes_or_sources) -> tuple[str, list[str]]:
+    """Copy working files into r.archive_dir under a free ID derived from base_id.
+
+    prefixes_or_sources: prefixes to gather from `current`, or a ready prefix ->
+    Path|bytes dict. Returns (session ID, copied paths). A copied ARTIFACTS
+    segment is marked archived in `current`."""
+    if isinstance(prefixes_or_sources, dict):
+        sources = prefixes_or_sources
+    else:
+        sources = gather(current, prefixes_or_sources)
+    r.archive_dir.mkdir(parents=True, exist_ok=True)
+    session_id = free_session_id(r.archive_dir, base_id)
+    copied = []
+    for prefix, src in sources.items():
+        dest = r.archive_dir / f"{prefix}_{session_id}.md"
+        put(dest, src)
+        copied.append(str(dest))
+    if "ARTIFACTS" in sources:
+        artifacts.mark_archived(current, session_id)
+    return session_id, copied
+
+
+def effort_of(r, archive_id: str) -> str | None:
+    """The effort slug an archived session came from (its marker file), else None."""
+    try:
+        slug = paths.archive_effort_marker(r, archive_id).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return slug or None
+
+
+def mark_effort(r, archive_id: str, slug: str) -> None:
+    """Record that an archived session came from an effort folder. Atomic."""
+    marker = paths.archive_effort_marker(r, archive_id)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    tmp = marker.with_name(f"{marker.name}.{os.getpid()}.tmp")
+    tmp.write_text(slug + "\n", encoding="utf-8", newline="\n")
+    os.replace(tmp, marker)
+
+
 def auto_archive(event: dict) -> None:
     """The SessionEnd archive. Raises on error; the caller fails open."""
     if os.environ.get("SYNAPSE_DETACHED"):
         return
     cwd = event.get("cwd")
     cwd = Path(cwd) if isinstance(cwd, str) and os.path.isdir(cwd) else Path.cwd()
+    real_sid = event.get("session_id")
+    real_sid = real_sid if isinstance(real_sid, str) and real_sid else None
+    root = paths.work_root(cwd)
+    slug = paths.bound_effort(root, real_sid) if root and real_sid else None
+    if slug and event.get("reason") == "clear":
+        try:   # first: all SessionEnd hooks share 1.5 s, and the returns below skip it
+            import effort
+            effort.handoff_write(root, slug, real_sid)
+        except Exception:
+            pass
     os.chdir(cwd)   # a project's .synapse.toml applies
     if not paths.settings()["archive_on_exit"]:
         return
-    current = paths.find_work_dir(cwd)
+    current = paths.find_work_dir(cwd, session_id=real_sid)
     sources = gather(current, PREFIXES)
     if "PLAN" not in sources and "EXECUTION" not in sources:
         return
     digest = content_hash(sources)
 
-    r = paths.resolve(cwd=cwd)
+    r = paths.resolve(cwd=root if (slug and root) else cwd)   # an effort resolves from the work root, as effort close does
     sid = str(event.get("session_id") or "unknown")
-    state_path = paths.auto_archive_state(r, sid)
+    state_path = paths.auto_archive_state(r, sid, slug)
     try:
         state = json.loads(state_path.read_text(encoding="utf-8"))
         if not isinstance(state, dict):
@@ -148,7 +207,11 @@ def auto_archive(event: dict) -> None:
     if state.get("hash") == digest:
         return
     sessions = discover_sessions(r.archive_dir)
-    if sessions:
+    compare = sessions
+    if root and paths.efforts_dir(root).is_dir():
+        # this folder's own newest archive: the effort's marked ones, or for current/ the unmarked
+        compare = next(([s] for s in reversed(sessions) if effort_of(r, s["id"]) == slug), [])
+    if compare:
         # end-session archives the planning files and writes its own NOTES_<id>
         # from the conversation, so NOTES is left out of this comparison.
         # ARTIFACTS is compared only when the working file has a current segment
@@ -156,7 +219,7 @@ def auto_archive(event: dict) -> None:
         # behind never counts.
         skip = {"NOTES"} if "ARTIFACTS" in sources else {"NOTES", "ARTIFACTS"}
         plan = lambda files: {p: f for p, f in files.items() if p not in skip}  # noqa: E731
-        newest, mine = plan(sessions[-1]["files"]), plan(sources)
+        newest, mine = plan(compare[-1]["files"]), plan(sources)
         if mine and set(newest) == set(mine) and content_hash(newest) == content_hash(mine):
             return
 
@@ -165,9 +228,12 @@ def auto_archive(event: dict) -> None:
              and any(s["id"] == session_id and not s["processed"] for s in sessions))
     r.archive_dir.mkdir(parents=True, exist_ok=True)
     if not reuse:
-        session_id = free_session_id(r.archive_dir, datetime.now().strftime("%Y-%m-%d-%H%M"))
+        base = datetime.now().strftime("%Y-%m-%d-%H%M") + (f"-{slug}" if slug else "")
+        session_id = free_session_id(r.archive_dir, base)
     for prefix, src in sources.items():
         put(r.archive_dir / f"{prefix}_{session_id}.md", src)
+    if slug:
+        mark_effort(r, session_id, slug)
     if "ARTIFACTS" in sources:
         artifacts.mark_archived(current, session_id)
         digest = content_hash(gather(current, PREFIXES))   # the state after the marker
@@ -202,6 +268,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="session ID (default: local time, YYYY-MM-DD-HHMM)")
     parser.add_argument("--workdir", type=Path, default=Path.cwd(),
                         help="folder holding .claude-work/current (default: cwd)")
+    parser.add_argument("--effort", default=None, metavar="SLUG",
+                        help="archive this effort's folder (default: the bound effort, else current)")
     parser.add_argument("--auto", action="store_true", help="archive only if the content changed")
     parser.add_argument("--hook", action="store_true", help="read SessionEnd JSON from stdin (with --auto)")
     args = parser.parse_args(argv)
@@ -209,26 +277,30 @@ def main(argv: list[str] | None = None) -> int:
     if args.auto and args.hook:
         return hook_main()
 
-    current = paths.work_dir(args.workdir)
+    sid = os.environ.get("CLAUDE_CODE_SESSION_ID") or None
+    root = paths.work_root(args.workdir)
+    slug = None
+    if args.effort:
+        import effort
+        if not (root and paths.valid_slug(args.effort) and effort.read(root, args.effort)):
+            open_ = ", ".join(sorted(e["slug"] for e in effort.open_efforts(root))) if root else ""
+            sys.exit(f"error: no effort {args.effort!r} (open: {open_ or 'none'})")
+        slug = args.effort
+    elif root and sid:
+        slug = paths.bound_effort(root, sid)
+    current = paths.find_work_dir(args.workdir, session_id=sid, effort=slug)
     sources = gather(current, ("PLAN", "EXECUTION", "REPORT", "ARTIFACTS"))
     if not (sources.keys() & {"PLAN", "EXECUTION", "REPORT"}):
         sys.exit(f"error: nothing to archive: no PLAN.md or EXECUTION.md in {current}")
 
-    base = args.session_id or datetime.now().strftime("%Y-%m-%d-%H%M")
+    base = args.session_id or (datetime.now().strftime("%Y-%m-%d-%H%M") + (f"-{slug}" if slug else ""))
     if not SAFE_ID_RE.match(base):
         sys.exit(f"error: unsafe session ID {base!r}: use letters, digits, '.', '_' and '-'")
 
-    r = paths.resolve(project=args.project, cwd=args.workdir)
-    r.archive_dir.mkdir(parents=True, exist_ok=True)
-    session_id = free_session_id(r.archive_dir, base)
-
-    copied = []
-    for prefix, src in sources.items():
-        dest = r.archive_dir / f"{prefix}_{session_id}.md"
-        put(dest, src)
-        copied.append(str(dest))
-    if "ARTIFACTS" in sources:
-        artifacts.mark_archived(current, session_id)
+    r = paths.resolve(project=args.project, cwd=root or args.workdir)   # same project as effort close
+    session_id, copied = copy_to_archive(current, r, base, sources)
+    if slug:
+        mark_effort(r, session_id, slug)
 
     print(json.dumps({
         "session_id": session_id,
@@ -238,6 +310,8 @@ def main(argv: list[str] | None = None) -> int:
         "copied": copied,
         "missing": [p for p in ("PLAN", "EXECUTION") if p not in sources],
         "notes_path": str(r.archive_dir / f"NOTES_{session_id}.md"),
+        "effort": slug,
+        "folder": str(current),
     }, indent=2))
     return 0
 

@@ -1,6 +1,6 @@
 ---
 name: plan-session
-description: Use when starting or resuming a structured multi-step task that involves PLAN.md and EXECUTION.md
+description: Use when starting or resuming a structured multi-step task that involves PLAN.md and EXECUTION.md, or when picking or starting an effort in a project with effort folders
 ---
 
 # Plan Session Skill
@@ -24,12 +24,43 @@ Use this skill when:
 
 ## Procedure
 
-1. Check for planning files:
+1. Find which layout applies, in this order:
+
+   - `.claude-work/efforts/` exists: the project uses effort folders. Go to
+     step 2a.
+   - It does not, but `.claude-work/current/` holds `PLAN.md` or
+     `EXECUTION.md`: continue in `current/` (step 2b). An existing project is
+     not moved; splitting it happens only on the user's request (`migrate.md`).
+   - Neither exists and the task justifies structured planning, or the
+     `synapse` command is not available (command not found): read
+     `branches.md` (next to this file) section "Start the first effort"
+     before anything else.
+
+2a. An effort project (`.claude-work/efforts/`). The SessionStart index (or
+   `synapse effort list`) names the open efforts. Read no planning file yet.
+
+   - If the session is on no effort, the request belongs to another effort
+     or fits no open effort, the effort is `waiting`, or the index shows an
+     open effort untouched for 7 days or more: read `branches.md` (next to
+     this file) section "Choose or start an effort" before reading any
+     effort's files.
+   - When the index says "This session is on <slug>" and the request belongs
+     to that effort, do not run `resume` unless the effort is `waiting` (the
+     bullet above). Read only `.claude-work/efforts/<slug>/PLAN.md` and
+     `EXECUTION.md`, once, and extract objective, constraints, progress and
+     prior decisions.
+   - Never read another effort's files. New work is a new effort, not a new
+     section of this one.
+   - Status changes only through the CLI. To wait, park, finish or cancel an
+     effort, read `branches.md` section "Status changes".
+   - To split a large `current/PLAN.md` into efforts: `migrate.md` next to this file.
+
+2b. In `.claude-work/current/` (an existing project, or the fallback). Check for planning files:
 
    - `.claude-work/current/PLAN.md`
    - `.claude-work/current/EXECUTION.md`
 
-2. If present:
+   If present:
 
    - Read both files once
    - Extract:
@@ -38,24 +69,16 @@ Use this skill when:
      - current progress
      - prior decisions
 
-   If absent and the task justifies structured planning, start them from
+   If absent (the fallback), start them from
    `${CLAUDE_PLUGIN_ROOT}/templates/PLAN.md` and
    `${CLAUDE_PLUGIN_ROOT}/templates/EXECUTION.md`.
 
-   When you reset the planning files for a new task, reset the rest too: an
-   `EXECUTION.md` `## Resume` section from the previous task is replaced or
-   removed, and a working `NOTES.md` is started fresh only if its last line is
-   a merge marker or end-session has run.
+   When you reset the planning files for a new task: `branches.md` section
+   "Reset current/ for a new task".
 
-3. Run session hooks (optional, per project):
-
-   - If `PLAN.md` has a `## Session hooks` section, run each command or skill
-     it lists before choosing the next step. Typical hooks pull outside state
-     into the plan: an issue-tracker or roadmap sync, a CI status check, a
-     dependency audit.
-   - Fold anything new the hooks surface (fresh issues, failing checks, drift)
-     into the plan **before** choosing the next step.
-   - Skip this step when the section is absent.
+3. Session hooks: if `PLAN.md` has a `## Session hooks` section, read
+   `branches.md` section "Session hooks" and follow it before choosing the
+   next step. Skip this step when the section is absent.
 
 4. Explore in parallel:
 

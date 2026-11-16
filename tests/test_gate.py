@@ -7,11 +7,12 @@ from datetime import datetime, timedelta
 from helpers import LIB, ROOT  # noqa: F401  (sets up sys.path and SYNAPSE_HOME)
 from test_continuation import Base, usage_entry, write
 from test_hooks import BASH
-from test_nudge import CLI, PY_SH
+from test_nudge import CLI, PY_SH, bind_session, make_effort
 
 import checkpoint
 import gate
 import os
+from pathlib import Path
 
 REASON_5 = ("Synapse gate: 5 hands-on calls in this step at about 270k context (each call here "
             "costs about 27k base-equivalent). Brief the rest of this step to synapse:implementer "
@@ -279,6 +280,51 @@ RUNNING = [{"id": "a1", "type": "subagent", "status": "running", "agent_type": "
             "description": "fix loop"}]
 
 
+class EffortFolderTests(GateBase):
+    def setUp(self):
+        super().setUp()
+        self.config("[nudge]\ncontext_window = 100000\n")
+        self.eff = make_effort(self.proj, "alpha")
+        bind_session(self.home, "s1", self.proj, "alpha")
+        self.cur = self.proj / ".claude-work" / "current"
+
+    def test_resume_in_effort_satisfies_the_ask(self):
+        self.assertEqual(self.gate(event="Stop", ctx=65000),
+                         {"decision": "block", "reason": CKPT.format("65k")})
+        (self.home / "state" / "context-s1.ckpt.low").unlink()
+        (self.eff / "EXECUTION.md").write_text(
+            f"# E\n\n## Resume\nCheckpoint written: {checkpoint.stamp_text(datetime.now())}\nNext: x\n")
+        self.assertIsNone(self.gate(event="Stop", ctx=66000))
+
+    def test_resume_in_current_does_not_satisfy_a_bound_session(self):
+        self.cur.mkdir(parents=True)
+        (self.cur / "EXECUTION.md").write_text(
+            f"# E\n\n## Resume\nCheckpoint written: {checkpoint.stamp_text(datetime.now())}\nNext: x\n")
+        self.assertIsNotNone(self.gate(event="Stop", ctx=65000))
+
+    def test_low_level_needs_the_effort_folder_not_current(self):
+        # bound: the effort folder exists, so the 60% ask fires although current/ does not
+        self.assertFalse(self.cur.exists())
+        self.assertIsNotNone(self.gate(event="Stop", ctx=65000))
+
+    def test_artifacts_land_in_the_effort_folder(self):
+        FIXTURE = Path(__file__).resolve().parent / "artifacts-sample.jsonl"
+        self.tr.write_bytes(FIXTURE.read_bytes())
+        r = run_gate({"session_id": "s1", "hook_event_name": "Stop", "transcript_path": str(self.tr),
+                      "cwd": str(self.proj)}, self.home, cwd=self.dir)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue((self.eff / "ARTIFACTS.md").is_file())
+        self.assertFalse(self.cur.exists())
+
+    def test_unbound_session_still_uses_current(self):
+        FIXTURE = Path(__file__).resolve().parent / "artifacts-sample.jsonl"
+        self.tr.write_bytes(FIXTURE.read_bytes())
+        run_gate({"session_id": "s2", "hook_event_name": "Stop", "transcript_path": str(self.tr),
+                  "cwd": str(self.proj)}, self.home, cwd=self.dir)
+        self.assertTrue((self.cur / "ARTIFACTS.md").is_file())
+        self.assertFalse((self.eff / "ARTIFACTS.md").exists())
+
+
 class WaitTests(GateBase):
     """Stop: block once per prompt while background_tasks lists a running sub-agent."""
 
@@ -294,6 +340,89 @@ class WaitTests(GateBase):
         self.assertIsNone(self.stop(RUNNING))
         self.nudge("UserPromptSubmit", ctx=10000)        # a new prompt re-arms it
         self.assertEqual(self.stop(RUNNING), {"decision": "block", "reason": WAIT})
+
+    ROLES = ("agent", "sub-agent", "subagent", "scout", "implementer", "verifier", "researcher", "reviewer",
+             "extractor")
+    PASS = [
+        "Waiting on the scout's file list before I touch the parser.",
+        "The verifier is still running; its report comes next.",
+        "I will continue when the implementer reports.",
+        "Two agents are working in the background on the docs and the tests.",
+        "Both agents are running. Their results decide the next step.",
+        "Awaiting the reviewer's findings.",
+        "Blocked on the implementer's report.",
+        "The scout hasn't reported yet; nothing else can start.",
+        "The verifier hasn't come back yet.",
+        "I'll write the notes once the v2.8.1 verifier reports.",
+        "I'll verify the diff when\nthe implementer reports.",
+        "I will fold the results in when the second implementer on the docs branch reports.",
+        "I\u2019ll continue when the implementer\u2019s done.",
+        "While the second implementer finishes, I'll draft the notes.",
+        "Waiting on `synapse:verifier`.",
+        "Still waiting on the report.",
+        "Still waiting on the findings.",
+        "The review is still running; I'll fold it in next.",
+        "WAITING ON THE VERIFIER.",
+        "The parser change is in and its tests pass.\n\n## Next for you\n\n- Open the settings page.\n- Pick the custom mode.\n\n"
+        "The docs agent is still working on the guide; I'll read its report before I call this finished.",
+        "Status line. " * 200 + "Waiting on the verifier's report.",
+    ] + [f"Waiting on the {r}." for r in ROLES]
+    BLOCK = [
+        "All 412 tests pass and the PR is open.",
+        "The fix is in place. Tests are still failing on Windows.",
+        "PR 41 is open; CI is still running.",
+        "The PR is open and waiting for your review.",
+        "The PR is open and waiting for review.",
+        "PR 212 is open and awaiting review.",
+        "The fix is pushed. One review comment is still pending.",
+        "After the change, the parser returns None instead of raising.",
+        "I started the dev server in the background.",
+        "After reading the report I fixed the two findings; tests pass.",
+        "After a report from QA came in I closed the ticket.",
+        "After both reports came in I opened the PR.",
+        "I did not wait for the reviewer; the PR is merged.",
+        "I never wait for the reviewer on docs changes; the PR is merged.",
+        "The PR is merged without waiting for the reviewer.",
+        "I won't wait for the verifier; the PR is open.",
+        "Rather than wait for the second reviewer, I merged the PR.",
+        "The agent's patch is merged. The build is still running.",
+        "**The reviewer's findings are fixed.** The build is still running.",
+        "Summary:\n- The reviewer's findings are fixed\n- CI is still running\n- The PR is open",
+        "## Reviewer findings\n\nAll fixed\n\nThe build is still running",
+        "The reviewer's patch is still broken on Windows.",
+        "After the reviewer's findings were all fixed in the parser, the tokenizer, the formatter, the command-line entry "
+        "point, the documentation and the changelog, the nightly build finally completes.",
+        "The deploy script is:\n\n```bash\nwait $PID  # for the agent\n```\n\nAll checks pass.",
+        "`agent.wait()` now has a timeout.",
+        "The hook's text was:\n\n> a dispatched agent is still running\n\nThe PR is open.",
+        "Done. The implementer's fix is merged; I am still waiting on the reviewer.",
+        "Fixed. The verifier is still running.",
+        "**Done.** Waiting on the reviewer's findings.",
+        "",
+    ]
+
+    def test_waiting_messages_pass(self):
+        for msg in self.PASS:
+            with self.subTest(msg=msg):
+                self.nudge("UserPromptSubmit", ctx=10000)
+                self.assertIsNone(self.stop(RUNNING, last_assistant_message=msg))
+
+    def test_other_messages_still_block(self):
+        cases = [{"last_assistant_message": m} for m in self.BLOCK] + [{"last_assistant_message": 5}, {}]
+        for kw in cases:
+            with self.subTest(kw=kw):
+                self.nudge("UserPromptSubmit", ctx=10000)
+                self.assertEqual(self.stop(RUNNING, **kw), {"decision": "block", "reason": WAIT})
+
+    def test_pass_does_not_claim_marker(self):
+        self.assertIsNone(self.stop(RUNNING, last_assistant_message=self.PASS[0]))
+        self.assertEqual(self.stop(RUNNING, last_assistant_message="Done. The PR is open."),
+                         {"decision": "block", "reason": WAIT})
+
+    def test_checkpoint_ask_comes_first_for_waiting_message(self):
+        self.config("[nudge]\ncontext_window = 10000\n")
+        out = self.stop(RUNNING, last_assistant_message=self.PASS[0])
+        self.assertIn("/synapse:checkpoint", out["reason"])
 
     def test_finished_shell_or_no_tasks_pass(self):
         self.assertIsNone(self.stop([dict(RUNNING[0], status="completed")]))

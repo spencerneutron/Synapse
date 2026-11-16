@@ -1,5 +1,105 @@
 # Changelog
 
+## 2.9.0 — 2026-11-16 — Effort folders
+
+No store schema change. A project with existing `.claude-work/current/` files
+behaves as before: `.claude-work/current/`, no index, the same archive IDs.
+New planning in a project with no planning files starts an effort folder. A
+session in a project with exactly one open effort and no planning files in
+`current/` is put on it at start.
+Update with
+`claude plugin update synapse@synapse` and start new sessions.
+
+### Added
+
+- **Effort folders.** A project with `.claude-work/efforts/` keeps one
+  planning folder per effort, `.claude-work/efforts/<slug>/`, with its own
+  `PLAN.md`, `EXECUTION.md` and a CLI-written `effort.json` for the status
+  (`active`, `waiting`, `parked`, `done`, `cancelled`).
+- **`synapse effort`:** `list`, `start`, `resume`, `wait`, `park`, `done`,
+  `cancel` and `migrate`. `done` and `cancel` archive the effort under
+  `YYYY-MM-DD-HHMM-<slug>` and run only on the user's word.
+- **A session binding.** `start` and `resume` bind the session to an effort.
+  The hooks, `synapse archive` and `synapse checkpoint --stamp` then use that
+  effort's folder; both also take `--effort SLUG`.
+- **An index at SessionStart.** The open efforts, one line each, derived from
+  the `effort.json` files. A session reads no planning file until it knows
+  which effort the request belongs to.
+- **`synapse effort migrate`.** Prints a JSON proposal that splits a large
+  `current/PLAN.md` into efforts; `--apply FILE` writes an edited proposal
+  after a snapshot of `current/`; `--retire-current` moves the old files to
+  `efforts/_closed/`. `plan-session` carries the procedure (`migrate.md`),
+  including turning repo-wide constraints into Facts.
+- **`synapse doctor` `efforts` row.** A folder with no readable
+  `effort.json`, a close claim older than an hour, a closed effort left in
+  place; the `gitignore` check also probes the efforts path.
+
+### Changed
+
+- **Skills and rules.** `plan-session` becomes "pick or start an effort" in a
+  project with efforts and drops the reset paragraph there; `checkpoint` and
+  `end-session` follow the session's effort (`end-session` runs
+  `synapse effort done <slug> --json` for a finished effort). `core.md`'s
+  Planning Files section says where the files live in both layouts.
+- **Templates.** `PLAN.md` has no phase lettering: one plan per effort.
+
+### Limits and size
+
+- **`instructions/core.md` is 8,227 characters (was 9,494, cap 9,500).**
+  Removed: three rules that a SessionStart note already prints when it
+  applies (project facts, archived sessions never extracted, a team that has
+  not synced), four passages said twice (the Emission section, the recall
+  intro, "If the files do not exist", "Do not re-read them each step"), and
+  the `---` rules and long table separators. No rule was reworded; the recall
+  section now names `/synapse:recall` where the removed intro did.
+- **`plan-session` and `end-session` keep their conditional branches in a
+  side file.** The branches (starting or choosing an effort, status changes,
+  resetting `current/`, session hooks, closing or pausing an effort, the
+  review-mode extraction wording) moved to a `branches.md` beside each skill,
+  with a one-line pointer for each: `plan-session/SKILL.md` 5,899 to 4,688
+  characters, `end-session/SKILL.md` 9,605 to 9,003. A session already on its
+  effort and a `current/` project read SKILL.md alone. Starting a first
+  effort, choosing or switching efforts, an effort that is waiting or idle 7
+  days, status changes, and closing or pausing an effort also read
+  `branches.md` (one more read); for those paths the total is more than
+  before (`plan-session` SKILL.md plus `branches.md`: 7,227 characters).
+- **`effort.py` asks `paths.py` for every location.** New helper
+  `paths.effort_meta(folder)`; resolved paths are unchanged.
+- **Eval check of the trim** (Sonnet, with Synapse, the whole suite before
+  and after): 50 graders; 42 unchanged, 4 fell, 4 rose. The four that fell:
+  `general-purpose-brief` / `brief-carries-rules`,
+  `memory-flag-convention` / `flag-registered`, and
+  `compound-archived-lesson` / `caps-batches` and `names-cause`. Rerunning
+  the two cases that fell furthest gave `general-purpose-brief` /
+  `brief-carries-rules` 3 of 6 on both trees and `compound-archived-lesson`
+  2 of 4 before against 3 of 4 after. The judge reads a trace with the
+  middle elided, so it is unstable on any tree. The side files are not
+  covered by evals.
+
+## 2.8.1 — 2026-11-15 — The wait ask reads the message
+
+No store schema change; update with `claude plugin update synapse@synapse`
+and start new sessions.
+
+### Changed
+
+- **The Stop hook's wait-for-agents ask now reads the final message.** It is
+  skipped when one sentence names both a wait (waiting, still running,
+  resuming when the agent reports) and an agent, a role, or its report or
+  findings. Backtick code and quoted lines are not read. A message that opens
+  by calling the work finished (Done, Fixed, Shipped and the like) is always
+  asked. Before, the hook blocked after every dispatch and every prompt
+  whatever the message said. In the 46 blocks found in local transcripts,
+  every blocked message had already named the wait, and the check passes 45
+  of them (one of those on a chance word); the one still asked names the
+  topic but no agent or report. It is a wording heuristic, English only: a
+  wait phrased another way (for example a pronoun for an agent named in the
+  previous sentence) or in another language is still asked once, and a
+  finished-work report that does not open with such a word and pairs those
+  words in one sentence is no longer asked. The emission contract's rule 7
+  (one line) is not enforced by this check. `[gate] wait_for_agents = false`
+  still turns the ask off.
+
 ## 2.8.0 — 2026-11-09 — Notes without Obsidian
 
 No store schema change; existing configs keep Obsidian mode. Update with

@@ -59,7 +59,33 @@ class CompactGuideTests(unittest.TestCase):
         self.assertIn("PLAN.md", text)
         self.assertIn("EXECUTION.md", text)
         self.assertNotIn("CHECKPOINTS.md", text)
+        self.assertNotIn("NOTES.md", text)
         self.assertNotIn("'## Resume'", text)
+
+    def test_current_folder_lists_checkpoints_not_notes(self):
+        self.work.mkdir(parents=True)
+        for n in ("PLAN.md", "EXECUTION.md", "CHECKPOINTS.md", "NOTES.md"):
+            (self.work / n).write_text("x")
+        text = self.out(self.hook())
+        w = self.work.as_posix()
+        self.assertIn(f"checkpoints: {w}/PLAN.md, {w}/EXECUTION.md, {w}/CHECKPOINTS.md.", text)
+        self.assertNotIn("NOTES.md", text)
+
+    def test_effort_files_and_notes(self):
+        d = self.root / ".claude-work" / "efforts" / "alpha"
+        d.mkdir(parents=True)
+        (self.root / ".git").mkdir()
+        (d / "effort.json").write_text(json.dumps({"slug": "alpha", "status": "active"}))
+        for n in ("PLAN.md", "EXECUTION.md", "NOTES.md"):
+            (d / n).write_text("x")
+        state = Path(self.tmp.name) / "home" / "state"
+        state.mkdir(parents=True)
+        (state / "effort-s1.json").write_text(
+            json.dumps({"root": os.path.abspath(str(self.root)), "slug": "alpha", "time": "x"}))
+        text = self.out(self.hook(session_id="s1"), SYNAPSE_HOME=str(Path(self.tmp.name) / "home"))
+        for n in ("PLAN.md", "EXECUTION.md", "NOTES.md"):
+            self.assertIn(f"efforts/alpha/{n}", text)
+        self.assertNotIn("CHECKPOINTS.md", text)
 
     def test_fresh_resume_section(self):
         self.work.mkdir(parents=True)

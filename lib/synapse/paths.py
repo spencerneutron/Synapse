@@ -23,6 +23,7 @@ Paths stored inside a store's DB are relative ("archive/<project>/<file>",
 """
 
 import hashlib
+import json
 import os
 import re
 import sys
@@ -74,7 +75,7 @@ vault = "Synapse"                         # the Obsidian vault's name (obsidian 
 # enabled = true       # PreToolUse: deny the next hands-on call once at [nudge] calls, 2x and 4x, above min_context
 # min_context = 0.5    # share of the context window the gate needs; below it the [nudge] reminder line runs instead
 # checkpoint = true    # Stop: ask once for /synapse:checkpoint at 60% and at 90% of the window
-# wait_for_agents = true  # Stop: once per prompt, ask to wait while a dispatched sub-agent is still running
+# wait_for_agents = true  # Stop: once per prompt, ask to wait while a dispatched sub-agent is still running, unless the final message already names the wait and the agent
 # A project's .synapse.toml may override [nudge] and [gate] keys for that project.
 
 [continuation]
@@ -351,19 +352,182 @@ def work_dir(project_root: Path) -> Path:
     return Path(project_root) / ".claude-work" / "current"
 
 
-def find_work_dir(start: Path, max_levels: int = 20) -> Path:
-    """work_dir() for `start` or the nearest parent that has one. The search
-    stops at the first folder with .claude-work/current, at a folder holding
-    .git, at the filesystem root, or after max_levels folders. With no match,
-    returns work_dir(start)."""
+EFFORT_SLUG = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?")   # 1-40 chars, no leading/trailing dash
+EFFORT_OPEN = ("active", "waiting", "parked")
+EFFORT_CLOSED = ("done", "cancelled")
+_DEVICE_NAMES = {"con", "prn", "aux", "nul",
+                 *(f"com{n}" for n in range(1, 10)), *(f"lpt{n}" for n in range(1, 10))}
+
+
+def valid_slug(slug) -> bool:
+    """An effort's folder name: lower case, safe on every OS, and never one
+    that reads as an archive ID suffix (-v2) or a version (v2)."""
+    return (isinstance(slug, str) and EFFORT_SLUG.fullmatch(slug) is not None
+            and slug not in _DEVICE_NAMES
+            and not re.search(r"(?:^|-)v\d+$", slug))
+
+
+def work_root(start: Path, max_levels: int = 20) -> Path | None:
+    """The folder whose .claude-work holds current/ or efforts/: `start` or the
+    nearest parent. The search stops at the first match, at a folder holding
+    .git, at the filesystem root, or after max_levels folders. None with no match."""
     folder = Path(start)
     for _ in range(max_levels):
-        if work_dir(folder).is_dir():
-            return work_dir(folder)
+        if work_dir(folder).is_dir() or efforts_dir(folder).is_dir():
+            return folder
         if (folder / ".git").exists() or folder.parent == folder:
             break
         folder = folder.parent
-    return work_dir(start)
+    return None
+
+
+def efforts_dir(root) -> Path:
+    return Path(root) / ".claude-work" / "efforts"
+
+
+def effort_dir(root, slug: str) -> Path:
+    return efforts_dir(root) / slug
+
+
+def closed_dir(root) -> Path:
+    return efforts_dir(root) / "_closed"
+
+
+def effort_meta(folder) -> Path:
+    """The effort.json inside an effort folder (open, or moved to _closed/)."""
+    return Path(folder) / "effort.json"
+
+
+def effort_file(root, slug: str) -> Path:
+    return effort_meta(effort_dir(root, slug))
+
+
+def effort_claim(root, slug: str) -> Path:
+    """The claim a close holds while it runs (created with O_EXCL)."""
+    return effort_dir(root, slug) / ".closing"
+
+
+def split_marker(root) -> Path:
+    """Written by `synapse effort migrate --apply`: the snapshot ID and the
+    hashes of the current/ files that were split into efforts."""
+    return efforts_dir(root) / ".split.json"
+
+
+def effort_states() -> list[Path]:
+    """Every session's effort binding file (not the /clear handoffs)."""
+    try:
+        return sorted(p for p in (home() / "state").glob("effort-*.json")
+                      if not p.name.startswith("effort-handoff-"))
+    except OSError:
+        return []
+
+
+def _safe_id(session_id: str) -> str:
+    return "".join(c for c in session_id if c.isalnum() or c in "-_")
+
+
+def _root_hash(root) -> str:
+    return hashlib.sha256(os.path.normcase(str(Path(root).resolve())).encode("utf-8")).hexdigest()[:16]
+
+
+def effort_state(session_id: str) -> Path:
+    """Which effort a Claude session is on; the file's mtime is its last activity."""
+    return home() / "state" / f"effort-{_safe_id(session_id)}.json"
+
+
+def effort_handoff(root, session_id: str) -> Path:
+    """Written by a session that ends with /clear; the next session in the project may claim it."""
+    return home() / "state" / f"effort-handoff-{_root_hash(root)}-{_safe_id(session_id)}.json"
+
+
+def effort_handoffs(root) -> list[Path]:
+    try:
+        return sorted((home() / "state").glob(f"effort-handoff-{_root_hash(root)}-*.json"))
+    except OSError:
+        return []
+
+
+def archive_effort_marker(r: "Resolved", archive_id: str) -> Path:
+    """A text file holding the slug of the effort an archived session came from."""
+    return r.archive_dir / ".effort" / archive_id
+
+
+def _json_dict(path: Path):
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def bound_effort(root, session_id) -> str | None:
+    """The open effort this session is on in this work root, else None. Never raises."""
+    try:
+        if not session_id or not root:
+            return None
+        state = _json_dict(effort_state(session_id))
+        if not state or not same_path(state.get("root", ""), root):
+            return None
+        slug = state.get("slug")
+        if not valid_slug(slug):
+            return None
+        meta = _json_dict(effort_file(root, slug))
+        return slug if meta and meta.get("status") in EFFORT_OPEN else None
+    except Exception:
+        return None
+
+
+def sibling_roots(root) -> list[Path]:
+    """The other checkouts of the same repository (main checkout and linked
+    worktrees), read from .git without calling git. [] unless `root` holds .git."""
+    try:
+        git = Path(root) / ".git"
+        if git.is_file():
+            line = git.read_text(encoding="utf-8").strip()
+            if not line.startswith("gitdir:"):
+                return []
+            gitdir = Path(line[len("gitdir:"):].strip())
+            if not gitdir.is_absolute():
+                gitdir = (git.parent / gitdir).resolve()
+            if gitdir.parent.name != "worktrees":   # a submodule's gitdir is not a linked worktree
+                return []
+            common = gitdir.parent.parent
+        elif git.is_dir():
+            common = git
+        else:
+            return []
+        found = []
+        if common.name == ".git":
+            found.append(common.parent)
+        for gf in sorted((common / "worktrees").glob("*/gitdir")):
+            try:
+                found.append(Path(gf.read_text(encoding="utf-8").strip()).parent)
+            except OSError:
+                continue
+        out = []
+        for f in found:
+            if f.is_dir() and not same_path(f, root) and not any(same_path(f, o) for o in out):
+                out.append(f)
+        return out
+    except Exception:
+        return []
+
+
+def find_work_dir(start: Path, max_levels: int = 20, session_id: str | None = None,
+                  effort: str | None = None) -> Path:
+    """The folder holding a project's planning files for `start` or the nearest
+    parent that has a work root (see work_root). With `effort`, that effort's
+    folder (the caller checks it exists). With `session_id` bound to an open
+    effort, that effort's folder. Otherwise work_dir() of the root, or of
+    `start` with no match."""
+    root = work_root(start, max_levels)
+    if effort:
+        return effort_dir(root or start, effort)
+    if session_id and root:
+        slug = bound_effort(root, session_id)
+        if slug:
+            return effort_dir(root, slug)
+    return work_dir(root if root else start)
 
 
 def team_dir(name: str) -> Path:
@@ -388,10 +552,10 @@ def context_state(session_id: str) -> Path:
     return home() / "state" / f"context-{safe}.json"
 
 
-def auto_archive_state(r: Resolved, session_id: str) -> Path:
-    """What the SessionEnd archive last wrote for a Claude session: archive ID and content hash."""
+def auto_archive_state(r: Resolved, session_id: str, effort: str | None = None) -> Path:
+    """What the SessionEnd archive last wrote for a Claude session (and effort): archive ID and content hash."""
     safe = "".join(c for c in session_id if c.isalnum() or c in "-_")
-    return r.archive_dir / ".auto" / f"{safe}.json"
+    return r.archive_dir / ".auto" / (f"{safe}--{effort}.json" if effort else f"{safe}.json")
 
 
 def detached_log(session_id: str) -> Path:

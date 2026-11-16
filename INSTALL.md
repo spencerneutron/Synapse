@@ -45,7 +45,7 @@ from the folder where the user usually starts Claude Code.
 |----------|---------|----------|
 | Skills named `plan-session`, `checkpoint`, `end-session`, `recall`, `extract-session`, `share`, `emission-contract`, `workflow-recovery`, `language-sweep`, `setup`, `doctor` | `ls ~/.claude/skills .claude/skills 2>/dev/null` | Both copies load beside `/synapse:<name>`. An older Synapse copy should be retired later (the user's call) |
 | Always-on rules about planning files, recall, memory, or output style | `ls ~/.claude/CLAUDE.md ~/.claude/rules CLAUDE.md AGENTS.md CLAUDE.local.md .claude/CLAUDE.md 2>/dev/null`, then read them | Where a project's rules conflict, Synapse defers to them; tell the user which rules overlap |
-| Other `Stop` hooks, an `outputStyle`, or `disableAllHooks` | `grep -n -e '"Stop"' -e outputStyle -e disableAllHooks ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Another blocking Stop hook can stack rewrite requests. Synapse's Stop hook also blocks the stop once at 60% and once at 90% of the window to ask for `/synapse:checkpoint` when `## Resume` is stale, and once per prompt while a dispatched sub-agent is still running (`[gate] checkpoint = false` and `wait_for_agents = false` turn those off). `disableAllHooks` stops Synapse from working at all |
+| Other `Stop` hooks, an `outputStyle`, or `disableAllHooks` | `grep -n -e '"Stop"' -e outputStyle -e disableAllHooks ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Another blocking Stop hook can stack rewrite requests. Synapse's Stop hook also blocks the stop once at 60% and once at 90% of the window to ask for `/synapse:checkpoint` when `## Resume` is stale, and once per prompt while a dispatched sub-agent is still running (skipped when the final message already names the wait and the agent) (`[gate] checkpoint = false` and `wait_for_agents = false` turn those off). `disableAllHooks` stops Synapse from working at all |
 | Other `PreCompact` hooks | `grep -n -e '"PreCompact"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Each hook's stdout is capped on its own, so two sets of compaction-summary instructions can conflict with Synapse's |
 | Other `PreToolUse` hooks | `grep -n -e '"PreToolUse"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | Synapse's `synapse gate --hook` (2.7.0, on Edit, Write, MultiEdit, NotebookEdit, Bash and PowerShell) denies a hands-on call once per threshold (5, 10, 20 calls in a step) when the context is at least `[gate] min_context` of the window. A deny wins over another hook's allow and over auto and bypass modes. Another PreToolUse hook only conflicts if it also denies or rewrites input on the same calls. `[gate] enabled = false` turns the gate off |
 | Other `PostToolUse` hooks | `grep -n -e '"PostToolUse"' ~/.claude/settings.json .claude/settings.json .claude/settings.local.json 2>/dev/null` | A blocking PostToolUse hook stops the turn; one that adds context on every Bash or Edit call stacks text with Synapse's nudge. Synapse's own hook (`synapse nudge --hook`, on PostToolUse, PostToolUseFailure, UserPromptSubmit and SessionStart) gives the dispatch reminder, the context-size nudge, the resume-time line, and the resume pointer after `compact` or `clear`. 2.6.0 adds no hook entry and no matcher. It always exits 0, never blocks, and is silent on any error. The context window comes from `[nudge] context_window`, else Claude Code's auto-compact point (its auto-compact window less 33k, from 2.7.1), else the model name, lowered by the session's smallest auto-compaction; `[nudge] context_window = 0` turns the context lines off; `calls = 0` turns the dispatch reminder off. From 2.7.0 the dispatch line runs only below `[gate] min_context` of the window; above it the PreToolUse gate acts instead (previous row) |
@@ -54,7 +54,8 @@ from the folder where the user usually starts Claude Code.
 | `autoCompactWindow` in `~/.claude/settings.json` (top level or under `modelSettings`) | `grep -n autoCompactWindow ~/.claude/settings.json 2>/dev/null` | Synapse writes it only through `synapse setup --autocompact N`, on the user's OK: it copies the file to `settings.json.synapse-backup-<time>` beside itself first and refuses if a window is already set. `synapse doctor` reports the value(s) found |
 | Managed settings that allow only managed hooks | macOS `/Library/Application Support/ClaudeCode/managed-settings.json`, Linux `/etc/claude-code/managed-settings.json`, Windows `C:\Program Files\ClaudeCode\managed-settings.json` | `allowManagedHooksOnly` means Synapse cannot load; stop and tell the user |
 | A V1 or v1.5 install, here, in a parent folder, or in a child folder | `ls -d kb/scripts .claude-work/archive .claude-work/kb ../.claude-work/archive */.claude-work/archive 2>/dev/null` | Offer migration in step 6 |
-| Working files a repo would commit | `git check-ignore -q .claude-work/current/PLAN.md; echo $?` inside a repo (`1` means not ignored) | Suggest adding `.claude-work/` to that repo's `.gitignore` (ask first) |
+| Working files a repo would commit | `git check-ignore -q .claude-work/current/PLAN.md; echo $?` inside a repo (`1` means not ignored; probe `.claude-work/efforts/x/PLAN.md` too when `.claude-work/efforts/` exists) | Suggest adding `.claude-work/` to that repo's `.gitignore` (ask first) |
+| Effort folders that look broken | `synapse doctor` (the `efforts` row): a folder under `.claude-work/efforts/` with no readable `effort.json`, or a close claim older than an hour | Report it; fix with the user's OK. Synapse never deletes an effort folder |
 | Another plugin named `synapse` (the life-sciences Synapse.org connector wrapper) | `grep -n 'synapse@' ~/.claude/settings.json ~/.claude/plugins/installed_plugins.json 2>/dev/null` | Anything other than `synapse@synapse` shares the `/synapse:` namespace. Uninstall it with `claude plugin uninstall synapse@<marketplace>` (removed upstream on 2026-10-23; the Synapse.org connector is available directly), ask first. `synapse doctor` reports it |
 | An earlier v1.6+ install (its `config.toml`) | `ls ~/.claude/synapse/config.toml 2>/dev/null` | Setup reuses it and never overwrites it |
 
@@ -249,7 +250,7 @@ facts = true       # false stops listing this project's Facts at session start
 remind = true      # false turns the reminder off
 accept = "auto"    # auto: write every proposed note, list them with `synapse extract review`; "review": ask first
 on_exit = false    # true: extract in a detached headless session at exit (costs money; see below)
-artifacts = true   # false stops recording published Artifact links in .claude-work/current/ARTIFACTS.md
+artifacts = true   # false stops recording published Artifact links in ARTIFACTS.md in the planning folder
 
 [archive]
 on_exit = true     # false stops the SessionEnd archive
@@ -258,7 +259,7 @@ on_exit = true     # false stops the SessionEnd archive
 enabled = true       # false turns the PreToolUse deny and the Stop checkpoint ask off
 min_context = 0.5    # the PreToolUse deny starts at this share of the context window
 checkpoint = true    # false stops the Stop hook asking for /synapse:checkpoint
-wait_for_agents = true  # false stops the Stop hook asking to wait for a running sub-agent
+wait_for_agents = true  # false stops the Stop hook asking to wait for a running sub-agent (it skips the ask when the final message already names the wait and the agent)
 ```
 
 Prompts go only to the local Ollama server.
@@ -273,7 +274,7 @@ extractor reads files on disk, never the conversation.
 
 The SessionEnd hook is the failsafe for a session that ends without it (a
 crash, a forgotten close, `/clear`). At exit, `/clear` and `/resume` it copies
-`.claude-work/current/` (PLAN, EXECUTION, REPORT, NOTES) into the archive as
+the session's planning folder (`.claude-work/current/`, or its effort's folder under `.claude-work/efforts/`: PLAN, EXECUTION, REPORT, NOTES) into the archive as
 the files stand, which may be stale. It makes no model call and no embedding,
 and skips when nothing changed since the last archive. The next session start
 reports the archived session as never extracted, and
@@ -358,7 +359,8 @@ background sync off.
 | `~/.claude/settings.json` | `enabledPlugins`, `extraKnownMarketplaces` entries | Claude Code's installer |
 | `~/.claude/synapse/` | Config, stores (archives + `vectors.db`), venv, `state/` (which hints a session has seen, pruned after 7 days; the nudge hook's call counters, one small file per session, pruned after a day; each team's last sync), `shared/<team>/` (a git team's clone and every team's index) | `synapse setup`, `archive`, `extract`, `migrate`, `shared`, the hooks |
 | A folder team's synced folder | `Decisions/`, `Patterns/`, `Facts/`, `Retracted/`, `.synapse-team.toml` | `synapse shared init`, `/synapse:share`, `synapse shared retract` |
-| `<project>/.claude-work/current/` | `PLAN.md`, `EXECUTION.md` | The agent, during structured work |
+| `<project>/.claude-work/current/` | `PLAN.md`, `EXECUTION.md` (a project that already has them, or when `synapse` cannot run) | The agent, during structured work |
+| `<project>/.claude-work/efforts/<slug>/` | `effort.json`, `PLAN.md`, `EXECUTION.md`, `NOTES.md` (the default for new planning) | `synapse effort`, and the agent during structured work |
 | The store's notes vault | `Sessions/`, `Decisions/`, `Patterns/`, `Facts/`, `Projects/` notes | `/synapse:extract-session` |
 
 `~/.claude/synapse/` moves with `CLAUDE_CONFIG_DIR`, or anywhere with
