@@ -50,7 +50,8 @@ Update with
   applies (project facts, archived sessions never extracted, a team that has
   not synced), four passages said twice (the Emission section, the recall
   intro, "If the files do not exist", "Do not re-read them each step"), and
-  the `---` rules and long table separators. No rule was reworded.
+  the `---` rules and long table separators. No rule was reworded; the recall
+  section now names `/synapse:recall` where the removed intro did.
 - **`plan-session` and `end-session` keep their conditional branches in a
   side file.** The branches (starting or choosing an effort, status changes,
   resetting `current/`, session hooks, closing or pausing an effort, the
