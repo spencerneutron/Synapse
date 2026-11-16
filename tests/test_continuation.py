@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from helpers import LIB  # noqa: F401  (sets up sys.path and SYNAPSE_HOME)
-from test_nudge import run
+from test_nudge import bind_session, make_effort, run
 
 import continuation
 
@@ -490,6 +490,81 @@ class ResumePointer(Base):
         self.start("startup")
         self.assertFalse(old.exists())
         self.assertTrue(own.exists() and mark.exists() and fresh.exists())
+
+
+class ResumePointerEfforts(Base):
+    RESUME = "# E\n## Resume\nnext\n"
+
+    def setUp(self):
+        super().setUp()
+        self.proj = self.dir / "proj"
+        self.proj.mkdir()
+
+    def start(self, source="compact", sid="s1"):
+        out = self.send({"session_id": sid, "hook_event_name": "SessionStart",
+                         "source": source, "cwd": str(self.proj)})
+        # the effort index comes first; these tests look at the pointer lines after it
+        rows = [x for x in out["additionalContext"].split("\n") if x.startswith("Synapse: ")] if out else []
+        return "\n".join(rows) or None
+
+    def test_bound_names_the_effort(self):
+        d = make_effort(self.proj, "alpha", resume=self.RESUME)
+        make_effort(self.proj, "beta", resume=self.RESUME)
+        (d / "NOTES.md").write_text("n")
+        bind_session(self.home, "s1", self.proj, "alpha")
+        text = self.start("clear")
+        self.assertTrue(text.startswith(
+            "Synapse: work in progress on effort 'alpha' is recorded in "
+            ".claude-work/efforts/alpha/EXECUTION.md under ## Resume (file modified "), text)
+        self.assertTrue(text.endswith("read it before acting; NOTES.md beside it holds the "
+                                      "checkpoint's facts and decisions."), text)
+        self.assertNotIn("beta", text)
+        self.assertIn("efforts/alpha/EXECUTION.md", self.start("compact", sid="s1"))
+
+    def test_bound_without_resume_is_silent(self):
+        make_effort(self.proj, "alpha", resume="# E\nnothing\n")
+        make_effort(self.proj, "beta", resume=self.RESUME)
+        bind_session(self.home, "s1", self.proj, "alpha")
+        self.assertIsNone(self.start())
+
+    def test_unbound_lists_freshest_three_within_a_week(self):
+        for slug, ago in (("aa", 3600), ("bb", 60), ("cc", 7200), ("dd", 600), ("old", 8 * 86400)):
+            d = make_effort(self.proj, slug, resume=self.RESUME)
+            t = datetime.now().timestamp() - ago
+            os.utime(d / "EXECUTION.md", (t, t))
+        make_effort(self.proj, "nores", resume="# E\n")
+        make_effort(self.proj, "pk", status="parked", resume=self.RESUME)
+        text = self.start()
+        self.assertTrue(text.startswith("Synapse: efforts with a recorded checkpoint: bb (file modified "), text)
+        self.assertLess(text.index("bb ("), text.index("dd ("))
+        self.assertLess(text.index("dd ("), text.index("aa ("))
+        for absent in ("cc", "old", "nores", "pk"):
+            self.assertNotIn(f"{absent} (", text)
+        self.assertTrue(text.endswith("run `synapse effort resume <slug>` and read ## Resume in its "
+                                      "EXECUTION.md before acting."), text)
+        self.assertEqual(text.count("\n"), 0)
+
+    def test_unbound_nothing_qualifies(self):
+        make_effort(self.proj, "alpha")
+        self.assertIsNone(self.start())
+        self.assertIsNone(self.start("startup"))
+
+    def test_current_sentence_follows_on_its_own_line(self):
+        make_effort(self.proj, "alpha", resume=self.RESUME)
+        cur = self.proj / ".claude-work" / "current"
+        cur.mkdir(parents=True)
+        (cur / "EXECUTION.md").write_text(self.RESUME)
+        first, second = self.start().split("\n")
+        self.assertTrue(first.startswith("Synapse: efforts with a recorded checkpoint: alpha"))
+        self.assertTrue(second.startswith("Synapse: work in progress is recorded in "
+                                          ".claude-work/current/EXECUTION.md under ## Resume"))
+
+    def test_current_alone_when_no_effort_has_resume(self):
+        make_effort(self.proj, "alpha")
+        cur = self.proj / ".claude-work" / "current"
+        cur.mkdir(parents=True)
+        (cur / "EXECUTION.md").write_text(self.RESUME)
+        self.assertTrue(self.start().startswith("Synapse: work in progress is recorded in "))
 
 
 class NeverBlock(Base):

@@ -2,10 +2,14 @@
 """
 checkpoint.py — stamp the time inside EXECUTION.md's Resume section.
 
-  synapse checkpoint --stamp   # write "Checkpoint written: YYYY-MM-DD HH:MM +HH:MM"
+  synapse checkpoint --stamp [--effort SLUG]
+      # write "Checkpoint written: YYYY-MM-DD HH:MM +HH:MM"
 
 Used by /synapse:checkpoint. Finds the work folder (.claude-work/current) from
-the current folder, then puts the stamp line right after the "## Resume"
+the current folder (with --effort SLUG, or when this Claude session,
+CLAUDE_CODE_SESSION_ID, is bound to an open effort: that effort's folder; in a
+project with efforts and no binding it says so and names the open efforts),
+then puts the stamp line right after the "## Resume"
 heading in EXECUTION.md, replacing an earlier stamp inside that section only.
 Every other byte is kept, line endings included. The write is atomic. If the
 file or the heading is missing, it says so on stderr, exits 1, and writes
@@ -78,13 +82,31 @@ def main(argv: list[str]) -> int:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import paths
     cwd = Path.cwd()
-    target = paths.find_work_dir(cwd) / "EXECUTION.md"
+    slug = None
+    for i, a in enumerate(argv):
+        if a == "--effort" or a.startswith("--effort="):
+            slug = a.partition("=")[2] if "=" in a else (argv[i + 1] if i + 1 < len(argv) else "")
+    root = paths.work_root(cwd)
+    efforts = []
+    if root and paths.efforts_dir(root).is_dir():
+        import effort
+        efforts = sorted(e["slug"] for e in effort.open_efforts(root))
+    if slug is not None and not (root and paths.valid_slug(slug) and paths.effort_file(root, slug).is_file()):
+        print(f"error: no effort {slug!r} (open: {', '.join(efforts) or 'none'})", file=sys.stderr)
+        return 1
+    sid = os.environ.get("CLAUDE_CODE_SESSION_ID") or None
+    folder = paths.find_work_dir(cwd, session_id=sid, effort=slug)
+    unbound = bool(efforts) and slug is None and folder == paths.work_dir(root)
+    target = folder / "EXECUTION.md"
     link = target
     target = Path(os.path.realpath(target)) if target.is_symlink() else target
     try:
         data = target.read_bytes()
     except OSError:
-        print(f"error: {target} is missing; create it first (plan-session)", file=sys.stderr)
+        more = (f" this project uses effort folders: run `synapse effort resume <slug>` first "
+                f"or pass --effort <slug> (open: {', '.join(efforts)})") if unbound else ""
+        print(f"error: {target} is missing; create it first (plan-session).{more}"
+              if more else f"error: {target} is missing; create it first (plan-session)", file=sys.stderr)
         return 1
     stamp = stamp_text()
     out = apply(data, stamp)
@@ -114,6 +136,9 @@ def main(argv: list[str]) -> int:
     except ValueError:
         shown = link
     print(f"Checkpoint stamped: {stamp} in {shown}")
+    if unbound:
+        print(f"note: this session is on no effort; stamped .claude-work/current/EXECUTION.md "
+              f"(open efforts: {', '.join(efforts)})")
     return 0
 
 

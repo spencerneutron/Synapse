@@ -4,7 +4,7 @@
 store's archive/<project>/NOTES_<session-id>.md.
 Omit any section with no entries. If all are empty, write only:
 _No open items — session closed clean._
-/synapse:checkpoint keeps a working copy in .claude-work/current/NOTES.md during
+/synapse:checkpoint keeps a working copy in NOTES.md in this folder during
 the session; /synapse:end-session merges it. -->
 
 **Closed:** <YYYY-MM-DD HH:MM> (local)

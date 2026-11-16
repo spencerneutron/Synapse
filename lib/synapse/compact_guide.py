@@ -61,8 +61,11 @@ def build(data: dict) -> str:
     if root is not None:
         try:
             import paths
-            work = paths.find_work_dir(root)
-            found = [(work / n).as_posix() for n in ("PLAN.md", "EXECUTION.md", "CHECKPOINTS.md")
+            work = paths.find_work_dir(root, session_id=data.get("session_id"))
+            wroot = paths.work_root(root)
+            in_effort = wroot is not None and paths.same_path(work.parent, paths.efforts_dir(wroot))
+            names = ("PLAN.md", "EXECUTION.md", "NOTES.md" if in_effort else "CHECKPOINTS.md")
+            found = [(work / n).as_posix() for n in names
                      if (work / n).is_file()]
             if found:
                 parts.append("Planning files that exist and are the source of truth for plan, progress, and checkpoints: "

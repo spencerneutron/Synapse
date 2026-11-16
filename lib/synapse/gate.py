@@ -17,7 +17,7 @@ gate.py — hook gates for the main session, where a reminder line was not enoug
    window and EXECUTION.md's ## Resume has not been written since the context
    reached that mark, block the stop once asking for /synapse:checkpoint. At
    most once at 60% and once at 90% per session; never when stop_hook_active
-   is true; below 90% only when .claude-work/current/ exists.
+   is true; below 90% only when the session's planning folder exists.
 3. Wait for agents (Stop, after 2). When the Stop input's background_tasks
    lists a sub-agent still running, block once per prompt asking the session
    to end the turn with one line naming what it waits for, then verify the
@@ -211,7 +211,7 @@ def running_agent(data: dict) -> bool:
                for t in tasks)
 
 
-def capture_artifacts(paths, data: dict, s: dict):
+def capture_artifacts(paths, data: dict, s: dict, sid=None):
     """Record the Artifacts this turn published in ARTIFACTS.md, in the one transcript
     scan the Stop hook makes. Returns that scan's (usage, observed) for context_now, or
     None when the scan did not happen. Prints nothing and never raises."""
@@ -228,7 +228,7 @@ def capture_artifacts(paths, data: dict, s: dict):
             items += [(u, None) for u in urls if u not in known]
             if items:
                 cwd = data.get("cwd") if isinstance(data.get("cwd"), str) else os.getcwd()
-                artifacts.record(paths.find_work_dir(Path(cwd)), items)
+                artifacts.record(paths.find_work_dir(Path(cwd), session_id=sid), items)
         except Exception:
             pass
         return scanned
@@ -240,7 +240,7 @@ def stop(paths, sid: str, data: dict) -> str:
     if data.get("agent_id"):
         return ""
     s = paths.settings()
-    scanned = capture_artifacts(paths, data, s) if s["extract_artifacts"] else None
+    scanned = capture_artifacts(paths, data, s, sid) if s["extract_artifacts"] else None
     if data.get("stop_hook_active"):
         return ""
     return checkpoint_ask(paths, sid, data, s, scanned) or wait_ask(paths, sid, data, s)
@@ -295,7 +295,7 @@ def checkpoint_ask(paths, sid: str, data: dict, s: dict, scanned=None) -> str:
         return ""
     level = "high" if ctx >= window * continuation.HIGH else "low"
     cwd = data.get("cwd") if isinstance(data.get("cwd"), str) else os.getcwd()
-    work = paths.find_work_dir(Path(cwd))
+    work = paths.find_work_dir(Path(cwd), session_id=sid)
     if level == "low" and not work.is_dir():
         return ""
     if _marker(paths, sid, f"ckpt.{level}").exists():

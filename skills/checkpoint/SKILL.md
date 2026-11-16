@@ -1,14 +1,14 @@
 ---
 name: checkpoint
-description: Use between stages of a multi-stage request, before stepping away, when Synapse reports a large context, or when the Stop gate asks for it. Writes the live state to .claude-work/current/ without ending the turn, so /clear afterwards loses nothing.
-allowed-tools: Bash(synapse checkpoint *)
+description: Use between stages of a multi-stage request, before stepping away, when Synapse reports a large context, or when the Stop gate asks for it. Writes the live state to the session's planning folder without ending the turn, so /clear afterwards loses nothing.
+allowed-tools: Bash(synapse checkpoint *), Bash(synapse effort *)
 ---
 
 # Checkpoint Skill
 
 Save what only this conversation knows (objective, position, facts the user stated, reasons for decisions) to disk, then keep working. `/clear` and `/compact` remove that record.
 
-Working folder: `.claude-work/current/` at the project root.
+Working folder: the session's planning folder. With effort folders (`.claude-work/efforts/` exists) that is the effort the session is on, `.claude-work/efforts/<slug>/`. If the project has efforts and this session has taken none up, run `synapse effort resume <slug>` (or `synapse effort start <slug> --title "..."`) first. With no efforts folder, a project whose `.claude-work/current/` holds PLAN.md or EXECUTION.md keeps using `current/`. With neither, start an effort (`synapse effort start <slug> --title "..."`, a short lower-case slug from the task) and write `## Resume` in its EXECUTION.md; if the `synapse` command is not available (command not found), use `.claude-work/current/` and say so once. If it prints an `error:` line, fix the argument and run it again; do not fall back. Write only that folder's files.
 
 ## Procedure
 
@@ -49,7 +49,7 @@ From the project root run:
 synapse checkpoint --stamp
 ```
 
-It records the time inside `## Resume`. If it is unavailable or fails, carry on: the resume pointer then uses the file's modification time.
+It follows the session's effort and records the time inside `## Resume`. With no effort taken up in a project with efforts it says so and names the open ones: take one up, then stamp again. If it is unavailable or fails, carry on: the resume pointer then uses the file's modification time.
 
 ### 5. Say it once, then continue
 

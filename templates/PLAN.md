@@ -1,6 +1,6 @@
 # PLAN — <objective>
 
-<!-- Long-lived strategy. Update only for durable decisions, scope changes, and
+<!-- Long-lived strategy. One plan per piece of work. In a project that uses effort folders (.claude-work/efforts/), new work gets its own effort, not a new phase in this file. Update only for durable decisions, scope changes, and
 reusable insights (AGENTS.md — Planning Files). Archived by /synapse:end-session; the SessionEnd hook archives it as it stands if the session ends without it. -->
 
 ## Purpose
@@ -21,8 +21,8 @@ surfaces into the plan. Delete the section if the project has none. -->
 
 ## Strategy
 
-- **Phase A — <name>.** <What it delivers; why it comes first.>
-- **Phase B — <name>.** <...>
+1. <Step, what it delivers, and why it comes first.>
+2. <...>
 
 ## Decision Log
 
@@ -34,5 +34,5 @@ surfaces into the plan. Delete the section if the project has none. -->
 
 ## Progress
 
-- [ ] Phase A — <name>
-- [ ] Phase B — <name>
+- [ ] <Step 1>
+- [ ] <Step 2>

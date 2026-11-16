@@ -1,5 +1,48 @@
 # Changelog
 
+## 2.9.0 — 2026-11-15 — Effort folders
+
+No store schema change. A project with existing `.claude-work/current/` files
+behaves as before: `.claude-work/current/`, no index, the same archive IDs.
+New planning in a project with no planning files starts an effort folder. A
+session in a project with exactly one open effort and no planning files in
+`current/` is put on it at start.
+Update with
+`claude plugin update synapse@synapse` and start new sessions.
+
+### Added
+
+- **Effort folders.** A project with `.claude-work/efforts/` keeps one
+  planning folder per effort, `.claude-work/efforts/<slug>/`, with its own
+  `PLAN.md`, `EXECUTION.md` and a CLI-written `effort.json` for the status
+  (`active`, `waiting`, `parked`, `done`, `cancelled`).
+- **`synapse effort`:** `list`, `start`, `resume`, `wait`, `park`, `done`,
+  `cancel` and `migrate`. `done` and `cancel` archive the effort under
+  `YYYY-MM-DD-HHMM-<slug>` and run only on the user's word.
+- **A session binding.** `start` and `resume` bind the session to an effort.
+  The hooks, `synapse archive` and `synapse checkpoint --stamp` then use that
+  effort's folder; both also take `--effort SLUG`.
+- **An index at SessionStart.** The open efforts, one line each, derived from
+  the `effort.json` files. A session reads no planning file until it knows
+  which effort the request belongs to.
+- **`synapse effort migrate`.** Prints a JSON proposal that splits a large
+  `current/PLAN.md` into efforts; `--apply FILE` writes an edited proposal
+  after a snapshot of `current/`; `--retire-current` moves the old files to
+  `efforts/_closed/`. `plan-session` carries the procedure (`migrate.md`),
+  including turning repo-wide constraints into Facts.
+- **`synapse doctor` `efforts` row.** A folder with no readable
+  `effort.json`, a close claim older than an hour, a closed effort left in
+  place; the `gitignore` check also probes the efforts path.
+
+### Changed
+
+- **Skills and rules.** `plan-session` becomes "pick or start an effort" in a
+  project with efforts and drops the reset paragraph there; `checkpoint` and
+  `end-session` follow the session's effort (`end-session` runs
+  `synapse effort done <slug> --json` for a finished effort). `core.md`'s
+  Planning Files section says where the files live in both layouts.
+- **Templates.** `PLAN.md` has no phase lettering: one plan per effort.
+
 ## 2.8.1 — 2026-11-15 — The wait ask reads the message
 
 No store schema change; update with `claude plugin update synapse@synapse`

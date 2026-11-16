@@ -111,5 +111,74 @@ class ResolveTests(unittest.TestCase):
         self.assertEqual(paths.to_display_path("archive/billing-api/x.md", r), str(r.store_path / "archive/billing-api/x.md"))
 
 
+class WorkRootTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.root = self.tmp / "proj"
+        (self.root / "src" / "deep").mkdir(parents=True)
+
+    def test_legacy_current_resolves_as_before(self):
+        cur = paths.work_dir(self.root)
+        cur.mkdir(parents=True)
+        deep = self.root / "src" / "deep"
+        self.assertEqual(paths.find_work_dir(deep), cur)
+        self.assertEqual(paths.work_root(deep), self.root)
+        self.assertEqual(paths.find_work_dir(deep, session_id="s1"), cur)
+
+    def test_no_work_folder_returns_start(self):
+        deep = self.root / "src" / "deep"
+        self.assertIsNone(paths.work_root(deep))
+        self.assertEqual(paths.find_work_dir(deep), paths.work_dir(deep))
+
+    def test_efforts_without_current(self):
+        paths.efforts_dir(self.root).mkdir(parents=True)
+        deep = self.root / "src" / "deep"
+        self.assertEqual(paths.work_root(deep), self.root)
+        self.assertEqual(paths.find_work_dir(deep), paths.work_dir(self.root))   # does not exist; callers cope
+        self.assertEqual(paths.find_work_dir(deep, effort="a"), paths.effort_dir(self.root, "a"))
+
+    def test_stops_at_git(self):
+        (self.root / "src" / ".git").mkdir()
+        paths.work_dir(self.root).mkdir(parents=True)
+        self.assertIsNone(paths.work_root(self.root / "src" / "deep"))
+
+    def test_auto_archive_state_per_effort(self):
+        r = paths.resolve(cwd=self.root)
+        self.assertEqual(paths.auto_archive_state(r, "s-1").name, "s-1.json")
+        self.assertEqual(paths.auto_archive_state(r, "s-1", "alpha").name, "s-1--alpha.json")
+
+
+class SiblingRootsTests(unittest.TestCase):
+    def test_submodule_git_file_has_no_siblings(self):
+        with tempfile.TemporaryDirectory() as t:
+            top = Path(t).resolve() / "super"
+            sub = top / "sub"
+            (top / ".git" / "modules" / "sub").mkdir(parents=True)
+            sub.mkdir()
+            (sub / ".git").write_text("gitdir: ../.git/modules/sub\n")
+            self.assertEqual(paths.sibling_roots(sub), [])
+
+    def test_linked_worktree_git_file_still_finds_main(self):
+        with tempfile.TemporaryDirectory() as t:
+            main = Path(t).resolve() / "main"
+            wt = Path(t).resolve() / "wt"
+            (main / ".git" / "worktrees" / "wt").mkdir(parents=True)
+            wt.mkdir()
+            (wt / ".git").write_text(f"gitdir: {main / '.git' / 'worktrees' / 'wt'}\n")
+            self.assertEqual(paths.sibling_roots(wt), [main])
+
+
+class SlugTests(unittest.TestCase):
+    def test_valid_slug_table(self):
+        good = ["a", "alpha", "auth-token-rotation", "a1", "1a", "x" * 40, "v2x", "version"]
+        bad = ["", "-a", "a-", "A", "a_b", "a b", "a/b", "x" * 41, "con", "nul", "com1", "lpt9",
+               "v2", "alpha-v2", "a-v10", "..", "caf\u00e9"]
+        for s in good:
+            self.assertTrue(paths.valid_slug(s), s)
+        for s in bad:
+            self.assertFalse(paths.valid_slug(s), s)
+        self.assertFalse(paths.valid_slug(None))
+
+
 if __name__ == "__main__":
     unittest.main()

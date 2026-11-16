@@ -218,5 +218,195 @@ class ArchiveAutoTests(unittest.TestCase):
                 os.environ["SYNAPSE_HOME"] = old
 
 
+class ArchiveEffortTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        t = Path(self.tmp.name)
+        self.home, self.proj = t / "home", t / "proj"
+        (self.home / "state").mkdir(parents=True)
+        self.cur = self.proj / ".claude-work" / "current"
+        self.cur.mkdir(parents=True)
+        self.efforts = self.proj / ".claude-work" / "efforts"
+        self.env = {"CLAUDE_CODE_SESSION_ID": ""}
+
+    def effort(self, slug, text="plan\n", status="active"):
+        d = self.efforts / slug
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "effort.json").write_text(json.dumps({"slug": slug, "status": status}))
+        (d / "PLAN.md").write_text(text)
+        (d / "EXECUTION.md").write_text("exec " + text)
+        return d
+
+    def bind(self, sid, slug):
+        (self.home / "state" / f"effort-{sid}.json").write_text(
+            json.dumps({"root": os.path.abspath(str(self.proj)), "slug": slug}))
+
+    def hook(self, sid, reason="other", **env):
+        ev = {"session_id": sid, "reason": reason, "cwd": str(self.proj)}
+        r = run_cli(["archive", "--auto", "--hook"], self.home, json.dumps(ev).encode(), **env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, b"")
+
+    def adir(self):
+        found = list((self.home / "stores" / "main" / "archive").glob("*"))
+        return found[0] if found else None
+
+    def ids(self):
+        d = self.adir()
+        return sorted({p.name.split("_", 1)[1][:-3] for p in d.glob("PLAN_*.md")}) if d else []
+
+    def archive(self, *args, cwd=None, **env):
+        e = dict(self.env, **env)
+        r = run_cli(["archive", *args], self.home, **e) if cwd is None else \
+            run_cli(["archive", "--workdir", str(cwd), *args], self.home, **e)
+        return r
+
+    def test_manual_from_subfolder_finds_folder(self):
+        (self.cur / "PLAN.md").write_text("p\n")
+        sub = self.proj / "a" / "b"
+        sub.mkdir(parents=True)
+        r = self.archive(cwd=sub, **{"SYNAPSE_OPTIONAL": "1"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = json.loads(r.stdout)
+        self.assertIsNone(out["effort"])
+        self.assertEqual(Path(out["folder"]), self.cur)
+        self.assertEqual(len(out["copied"]), 1)
+
+    def test_manual_effort_flag(self):
+        self.effort("alpha")
+        r = self.archive("--effort", "alpha", cwd=self.proj)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = json.loads(r.stdout)
+        self.assertEqual(out["effort"], "alpha")
+        self.assertEqual(Path(out["folder"]), self.efforts / "alpha")
+        self.assertRegex(out["session_id"], r"^\d{4}-\d{2}-\d{2}-\d{4}-alpha$")
+        marker = self.adir() / ".effort" / out["session_id"]
+        self.assertEqual(marker.read_text().strip(), "alpha")
+
+    def test_manual_effort_flag_unknown(self):
+        self.effort("alpha")
+        (self.efforts / "bare").mkdir()
+        for slug in ("nope", "bare"):
+            r = self.archive("--effort", slug, cwd=self.proj)
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("alpha", r.stderr.decode())
+        self.assertIsNone(self.adir())
+
+    def test_manual_bound_by_env_and_explicit_id_still_marked(self):
+        self.effort("alpha")
+        self.bind("sess1", "alpha")
+        r = self.archive("--id", "mine", cwd=self.proj, CLAUDE_CODE_SESSION_ID="sess1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = json.loads(r.stdout)
+        self.assertEqual((out["session_id"], out["effort"]), ("mine", "alpha"))
+        self.assertTrue((self.adir() / ".effort" / "mine").is_file())
+
+    def test_auto_bound_goes_to_effort_with_own_state(self):
+        d = self.effort("alpha")
+        self.bind("s1", "alpha")
+        self.hook("s1")
+        (sid,) = self.ids()
+        self.assertRegex(sid, r"^\d{4}-\d{2}-\d{2}-\d{4}-alpha$")
+        self.assertEqual((self.adir() / f"PLAN_{sid}.md").read_text(), "plan\n")
+        self.assertEqual((self.adir() / ".effort" / sid).read_text().strip(), "alpha")
+        self.assertTrue((self.adir() / ".auto" / "s1--alpha.json").is_file())
+        self.assertFalse((self.adir() / ".auto" / "s1.json").exists())
+        before = (self.adir() / f"PLAN_{sid}.md").stat().st_mtime_ns
+        self.hook("s1")   # unchanged: skipped
+        self.assertEqual(self.ids(), [sid])
+        self.assertEqual(before, (self.adir() / f"PLAN_{sid}.md").stat().st_mtime_ns)
+        (d / "PLAN.md").write_text("plan2\n")
+        self.hook("s1")   # changed: same ID reused
+        self.assertEqual(self.ids(), [sid])
+        self.assertEqual((self.adir() / f"PLAN_{sid}.md").read_text(), "plan2\n")
+
+    def test_effort_compared_with_its_own_newest_archive(self):
+        self.effort("alpha", "A\n")
+        self.effort("beta", "B\n")
+        self.bind("sa", "alpha")
+        self.bind("sb", "beta")
+        self.hook("sa")
+        self.hook("sb")
+        n = len(self.ids())
+        self.assertEqual(n, 2)
+        self.hook("sa")   # alpha unchanged though beta's archive is newest
+        self.assertEqual(len(self.ids()), 2)
+        self.hook("sa", reason="resume")
+        self.assertEqual(len(self.ids()), 2)
+
+    def test_current_unchanged_not_archived_again_when_effort_is_newest(self):
+        (self.cur / "PLAN.md").write_text("cur\n")
+        (self.cur / "EXECUTION.md").write_text("cexec\n")
+        self.hook("plain")
+        self.assertEqual(len(self.ids()), 1)
+        self.effort("alpha", "A\n")
+        self.bind("sa", "alpha")
+        self.hook("sa")
+        self.assertEqual(len(self.ids()), 2)
+        self.hook("other-session")   # unbound: current/, unchanged since its unmarked archive
+        self.assertEqual(len(self.ids()), 2)
+
+    def test_cli_from_subfolder_uses_root_project(self):
+        (self.cur / "PLAN.md").write_text("cur\n")
+        sub = self.proj / "pkg" / "deep"
+        sub.mkdir(parents=True)
+        r = run_cli(["archive", "--workdir", str(sub)], self.home, b"")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout)["project"], "proj")
+
+    def test_hook_effort_session_from_subfolder_uses_root_project(self):
+        self.effort("alpha", "A\n")
+        self.bind("sa", "alpha")
+        sub = self.proj / "pkg"
+        sub.mkdir()
+        ev = {"session_id": "sa", "reason": "other", "cwd": str(sub)}
+        r = run_cli(["archive", "--auto", "--hook"], self.home, json.dumps(ev).encode())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        (a,) = (self.home / "stores").glob("*/archive/*")
+        self.assertEqual(a.name, "proj")
+
+    def test_no_efforts_dir_behaves_as_before(self):
+        (self.cur / "PLAN.md").write_text("cur\n")
+        self.hook("s1")
+        self.hook("s2")   # same content as the newest archive
+        (sid,) = self.ids()
+        self.assertRegex(sid, r"^\d{4}-\d{2}-\d{2}-\d{4}$")
+        self.assertFalse((self.adir() / ".effort").exists())
+
+    def handoffs(self):
+        return list((self.home / "state").glob("effort-handoff-*.json"))
+
+    def test_clear_writes_handoff_even_with_nothing_to_archive_or_setting_off(self):
+        self.effort("alpha")
+        self.bind("s1", "alpha")
+        (self.home / "config.toml").write_text("[archive]\non_exit = false\n")
+        self.hook("s1", reason="clear")
+        (h,) = self.handoffs()
+        data = json.loads(h.read_text())
+        self.assertEqual((data["slug"], data["from"]), ("alpha", "s1"))
+        self.assertEqual(self.ids(), [])
+
+    def test_auto_bound_session_archives_its_effort(self):
+        self.effort("alpha", "alpha plan\n")
+        (self.cur / "NOTES.md").write_text("leftover\n")   # no PLAN/EXECUTION: does not block
+        ev = {"session_id": "n1", "hook_event_name": "SessionStart", "source": "startup", "cwd": str(self.proj)}
+        r = run_cli(["nudge", "--hook"], self.home, json.dumps(ev).encode())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(b"This session is on alpha", r.stdout)
+        self.hook("n1")
+        (sid,) = self.ids()
+        self.assertEqual((self.adir() / f"PLAN_{sid}.md").read_text(), "alpha plan\n")
+
+    def test_handoff_only_for_bound_clear(self):
+        self.effort("alpha")
+        self.bind("s1", "alpha")
+        self.hook("s1", reason="other")
+        self.hook("unbound", reason="clear")
+        self.assertEqual(self.handoffs(), [])
+        self.hook("s1", reason="clear")
+        self.assertEqual(len(self.handoffs()), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

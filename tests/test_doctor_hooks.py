@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import helpers  # noqa: F401  (isolates SYNAPSE_HOME, sets sys.path)
 import doctor
 
 HOOK = {"hooks": {"PostToolUse": [{"hooks": [{"type": "command", "command": "echo hi"}]}]}}

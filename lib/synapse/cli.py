@@ -5,7 +5,7 @@ synapse — command-line entry point for the Synapse plugin.
   synapse where [--project P] [--json]   where data resolves for this folder
   synapse setup [--autocompact N]        provision ~/.claude/synapse; N sets Claude Code's auto-compact window
   synapse doctor [--json] [--project-dir D]  read-only health and conflict report
-  synapse archive [--project P]          archive .claude-work/current into the store
+  synapse archive [--project P] [--effort S]  archive .claude-work/current into the store
   synapse archive --auto --hook          SessionEnd: archive at exit, /clear, /resume; no model call
   synapse recall "<query>" [...]         semantic search over the active store
   synapse recall-check <golden.toml>     score recall against a golden set
@@ -15,7 +15,9 @@ synapse — command-line entry point for the Synapse plugin.
   synapse compact-guide --hook           PreCompact: what the compaction summary should keep
   synapse nudge --hook   hooks: dispatch reminder, context-size nudge, resume pointer
   synapse gate --hook                    hooks: cost-aware deny (PreToolUse); checkpoint ask, wait for agents (Stop)
-  synapse checkpoint --stamp             record the time in EXECUTION.md's Resume section
+  synapse checkpoint --stamp [--effort S]  record the time in EXECUTION.md's Resume section
+  synapse effort <verb> [...]            list | start | resume | wait | park | done | cancel | migrate
+                                         (per-effort planning folders in .claude-work/efforts/)
   synapse share <subcommand> [...]       scrub | lint | add (share a note with a team)
   synapse shared <subcommand> [...]      init | join | sync | status | retract | push
   synapse extract <subcommand> [...]     init | embed-archive | embed-note | status |
@@ -52,6 +54,7 @@ COMMANDS = {
     "nudge": "nudge",
     "gate": "gate",
     "checkpoint": "checkpoint",
+    "effort": "effort",
     "share": "share",
     "shared": "shared",
     "extract": "extract",
